@@ -10,6 +10,7 @@ run = [
   "cargo build --workspace --all-targets --locked",
   "cargo build --workspace --all-targets --locked --features quenchant-arith/fast",
   "cargo build --workspace --all-targets --locked --features quenchant/anodized,quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized",
+  "cargo build --locked -p quenchant --features gates",
 ]
 
 # The Dylint library builds and lints from its own package directory, where the

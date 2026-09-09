@@ -1,14 +1,16 @@
 # quenchant
 
-Explicit arithmetic and domain boundaries for Rust, with the compiler and source gates that enforce them.
+Specification-first hardening for Rust: types, obligations, tests, and gates that make evidence explicit.
 
-Rust libraries for explicit arithmetic and domain boundaries, paired with the compiler and source gates used to maintain them. One workspace pins the toolchain, dependencies, and verification tasks. The policy library is built from the same tree it checks.
+Arithmetic and domain boundaries are stated in types, obligations are authored beside the code they constrain, and the compiler and source gates refuse what leaves either implicit. One workspace pins the toolchain, the dependencies, and the verification tasks; the policy library is built from the same tree it checks.
+
+Written for code that is generated as much as written. A synthesizing agent reproduces the shapes its context rewards: with these instruments in the tree, the rewarded shape is a nominal type, a stated obligation, a conclusion whose strength is in its type, and a gate that refuses the rest. The libraries make the correct shape the path of least resistance; the gates make every other shape a compile error.
 
 ## Crate map
 
 | Package                                                               | Consumer surface                             | Role                                                                                           |
 | --------------------------------------------------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| [quenchant](crates/quenchant/README.md)                               | `#[quenchant::spec(...)]`                    | Consumer namespace; `0.0.0` carries the specification facade, `0.0.1` the library re-exports   |
+| [quenchant](crates/quenchant/README.md)                               | `quenchant::arith`, `quenchant::shape`       | Umbrella package re-exporting the publishable libraries under one namespace                    |
 | [quenchant-arith](crates/quenchant-arith/README.md)                   | `quenchant_arith::arith`                     | Nominal integers with explicit strict, checked, wrapping, saturating, and unchecked arithmetic |
 | [quenchant-shape](crates/quenchant-shape/README.md)                   | `quenchant_shape::shape` and exported macros | Reason-preserving absence, closed reason sites, and transparent domain types                   |
 | [quenchant-anodized](crates/quenchant-anodized/README.md)             | Dependency named `quenchant`                 | Public `#[quenchant::spec(...)]` facade and optional published instrumentation                 |
@@ -29,19 +31,19 @@ Backend selection does not by itself enable violation panics. The verification t
 
 ## Use a library
 
-From an application beside a checkout, each library is named directly:
+From an application beside a checkout, one dependency covers the family:
 
 ```toml
 [dependencies]
-quenchant-arith = { version = "=0.0.0", path = "../quenchant/crates/quenchant-arith" }
-quenchant-shape = { version = "=0.0.0", path = "../quenchant/crates/quenchant-shape" }
+quenchant = { version = "=0.0.1", path = "../quenchant/crates/quenchant" }
 ```
 
-The `quenchant` package carries the specification attribute at `0.0.0`, and `0.0.1` re-exports the libraries through it so that one dependency covers the family:
+Selecting a single library instead keeps the same versions:
 
 ```toml
 [dependencies]
-quenchant = { version = "=0.0.0", path = "../quenchant/crates/quenchant" }
+quenchant-arith = { version = "=0.0.1", path = "../quenchant/crates/quenchant-arith" }
+quenchant-shape = { version = "=0.0.1", path = "../quenchant/crates/quenchant-shape" }
 ```
 
 The path form works before a registry release. Version declarations identify the intended family; they are not a claim that a package has already been published. Each package README gives its own installation and example.

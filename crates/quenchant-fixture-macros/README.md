@@ -10,7 +10,7 @@ From another crate in this workspace:
 
 ```toml
 [dev-dependencies]
-quenchant-fixture-macros = { path = "../quenchant-fixture-macros", version = "=0.0.0" }
+quenchant-fixture-macros = { path = "../quenchant-fixture-macros", version = "=0.0.1" }
 ```
 
 Normal consumers do not need this package. The Dylint harness links the actual compiled macro artifact into its separately compiled fixtures.

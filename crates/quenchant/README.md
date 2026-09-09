@@ -1,8 +1,6 @@
 # quenchant
 
-The consumer namespace for the quenchant libraries. At `0.0.0` the namespace is the specification facade alone: a consumer adds this package and writes `#[quenchant::spec(...)]` without naming the backend package. Every item is a re-export and this package declares no interface of its own.
-
-`0.0.1` widens the namespace to `quenchant::arith`, `quenchant::shape`, the crate-root macros `reason_enum!`, `nominal_type!`, and `delegate_ops!`, and `quenchant::gates` behind a feature of that name. A consumer that wants those at `0.0.0` depends on `quenchant-arith`, `quenchant-shape`, and `quenchant-gates` by name.
+One namespace over the publishable quenchant libraries. A consumer adds this package and reaches `quenchant::arith`, `quenchant::shape`, and the `#[quenchant::spec(...)]` attribute without naming each library separately. It re-exports its members and declares no interface of its own.
 
 ## Install
 
@@ -10,21 +8,42 @@ From an application beside a workspace checkout:
 
 ```toml
 [dependencies]
-quenchant = { version = "=0.0.0", path = "../quenchant/crates/quenchant" }
+quenchant = { version = "=0.0.1", path = "../quenchant/crates/quenchant" }
 
 [features]
 anodized = ["quenchant/anodized"]
 ```
 
-After publication, the same version can be selected without the path. The default build is `no_std`.
+After publication, the same version can be selected without the path. The default build is `no_std`. A consumer that wants one library alone can depend on that package directly; the two arrangements select the same code.
 
 ## Example
 
 ```rust
+use quenchant::arith::{self, ArithmeticError, Int, Operation};
+use quenchant::shape::Maybe;
+
+quenchant::reason_enum! {
+    pub mod lookup {
+        #[derive(Debug, Eq, PartialEq)]
+        pub enum Unavailable { NotFound }
+    }
+}
+
+#[derive(Debug, Eq, PartialEq)]
+enum Label { Original }
+
 #[quenchant::spec(ensures: |ref output| output.is_ok())]
 fn accept() -> Result<(), core::convert::Infallible> {
     Ok(())
 }
+
+assert_eq!(
+    arith::checked_add(Int::from(250_u8), Int::from(10_u8)),
+    Err(ArithmeticError::Overflow(Operation::Add)),
+);
+
+let absent: Maybe<Label, lookup::Unavailable> = Maybe::Absent(lookup::Unavailable::NotFound);
+assert_eq!(absent, Maybe::Absent(lookup::Unavailable::NotFound));
 
 assert_eq!(accept(), Ok(()));
 ```
@@ -33,23 +52,24 @@ The attribute resolves through this package because the expansion writes `::quen
 
 ## What the namespace contains
 
-| Path              | Package              | Contents                                              |
-| ----------------- | -------------------- | ----------------------------------------------------- |
-| `quenchant::spec` | `quenchant-anodized` | The specification attribute and its expansion helpers |
+| Path               | Package              | Contents                                                                       |
+| ------------------ | -------------------- | ------------------------------------------------------------------------------ |
+| `quenchant::arith` | `quenchant-arith`    | Nominal integers and the named arithmetic families                             |
+| `quenchant::shape` | `quenchant-shape`    | Reason-preserving absence and transparent domain types                         |
+| `quenchant::spec`  | `quenchant-anodized` | The specification attribute and its expansion helpers                          |
+| Crate-root macros  | `quenchant-shape`    | `reason_enum!`, `nominal_type!`, and `delegate_ops!`                           |
+| `quenchant::gates` | `quenchant-gates`    | Invocation-state and adequacy-witness reporting, behind the `gates` feature    |
 
 ## Features
 
-| Feature    | Effect                                                                    |
-| ---------- | ------------------------------------------------------------------------- |
-| `anodized` | Selects the published specification backend in the facade; requires `std` |
+| Feature    | Effect                                                                                   |
+| ---------- | ---------------------------------------------------------------------------------------- |
+| `anodized` | Selects the published specification backend in every re-exported library; requires `std` |
+| `gates`    | Adds `quenchant::gates`; that library reads Cargo and nextest output and requires `std`  |
 
 The `anodized` feature must also be declared in the consuming crate: the expansion tests a consumer-side condition, and enabling a dependency feature is not a substitute for it.
 
 ## What the namespace omits
-
-`quenchant-arith` and `quenchant-shape` carry the arithmetic and shape libraries. They are named directly at this version; `0.0.1` re-exports them as `quenchant::arith` and `quenchant::shape`.
-
-`quenchant-gates` reads Cargo and nextest output and requires `std`, so it stays behind a feature rather than joining the default namespace.
 
 `quenchant-dylints` is a compiler plugin. Dylint loads its `cdylib` from a path or a Git revision paired with the matching compiler, so no Rust crate links it and no re-export can stand in for that pairing.
 
