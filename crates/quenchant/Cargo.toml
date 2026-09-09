@@ -5,7 +5,7 @@ name = "quenchant"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "One namespace over the quenchant arithmetic, shape, and specification libraries"
+description = "The #[quenchant::spec(...)] specification attribute under the quenchant namespace"
 readme = "README.md"
 homepage.workspace = true
 repository.workspace = true
@@ -18,22 +18,12 @@ publish.workspace = true
 # alias: a package cannot take a dependency under its own name.
 [dependencies]
 quenchant-anodized.workspace = true
-quenchant-arith.workspace = true
-quenchant-gates = { workspace = true, optional = true }
-quenchant-shape.workspace = true
 
-# `anodized` forwards the consumer-side selection to every re-exported library,
-# because each one tests that condition in its own crate. `gates` is separate
-# and off by default: the gate library reads Cargo and nextest output and needs
-# `std`, which the arithmetic and shape libraries do not.
+# `anodized` forwards the consumer-side selection to the facade, because the
+# facade tests that condition in its own crate.
 [features]
 default = []
-anodized = [
-  "quenchant-anodized/anodized",
-  "quenchant-arith/anodized",
-  "quenchant-shape/anodized",
-]
-gates = ["dep:quenchant-gates"]
+anodized = ["quenchant-anodized/anodized"]
 
 [lints]
 workspace = true

@@ -84,24 +84,8 @@ version = "=0.0.0"
 path = "crates/quenchant-anodized"
 version = "=0.0.0"
 
-# Nominal integer arithmetic, re-exported as `quenchant::arith`.
-# consumers:
-# - quenchant
-[workspace.dependencies.quenchant-arith]
-path = "crates/quenchant-arith"
-version = "=0.0.0"
-
-# Invocation-state and adequacy-witness reporting, re-exported as
-# `quenchant::gates` behind the umbrella's optional feature of that name.
-# consumers:
-# - quenchant (optional)
-[workspace.dependencies.quenchant-gates]
-path = "crates/quenchant-gates"
-version = "=0.0.0"
-
 # Domain shapes shared by the policy packages.
 # consumers:
-# - quenchant
 # - quenchant-dylints
 # - quenchant-gates
 [workspace.dependencies.quenchant-shape]

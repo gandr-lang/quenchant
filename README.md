@@ -8,7 +8,7 @@ Rust libraries for explicit arithmetic and domain boundaries, paired with the co
 
 | Package                                                               | Consumer surface                             | Role                                                                                           |
 | --------------------------------------------------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| [quenchant](crates/quenchant/README.md)                               | `quenchant::arith`, `quenchant::shape`       | Umbrella package re-exporting the publishable libraries under one namespace                    |
+| [quenchant](crates/quenchant/README.md)                               | `#[quenchant::spec(...)]`                    | Consumer namespace; `0.0.0` carries the specification facade, `0.0.1` the library re-exports   |
 | [quenchant-arith](crates/quenchant-arith/README.md)                   | `quenchant_arith::arith`                     | Nominal integers with explicit strict, checked, wrapping, saturating, and unchecked arithmetic |
 | [quenchant-shape](crates/quenchant-shape/README.md)                   | `quenchant_shape::shape` and exported macros | Reason-preserving absence, closed reason sites, and transparent domain types                   |
 | [quenchant-anodized](crates/quenchant-anodized/README.md)             | Dependency named `quenchant`                 | Public `#[quenchant::spec(...)]` facade and optional published instrumentation                 |
@@ -29,19 +29,19 @@ Backend selection does not by itself enable violation panics. The verification t
 
 ## Use a library
 
-From an application beside a checkout, one dependency covers the family:
-
-```toml
-[dependencies]
-quenchant = { version = "=0.0.0", path = "../quenchant/crates/quenchant" }
-```
-
-Selecting a single library instead keeps the same versions:
+From an application beside a checkout, each library is named directly:
 
 ```toml
 [dependencies]
 quenchant-arith = { version = "=0.0.0", path = "../quenchant/crates/quenchant-arith" }
 quenchant-shape = { version = "=0.0.0", path = "../quenchant/crates/quenchant-shape" }
+```
+
+The `quenchant` package carries the specification attribute at `0.0.0`, and `0.0.1` re-exports the libraries through it so that one dependency covers the family:
+
+```toml
+[dependencies]
+quenchant = { version = "=0.0.0", path = "../quenchant/crates/quenchant" }
 ```
 
 The path form works before a registry release. Version declarations identify the intended family; they are not a claim that a package has already been published. Each package README gives its own installation and example.
