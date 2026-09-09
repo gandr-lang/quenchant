@@ -30,6 +30,13 @@ run = "cargo run --quiet --locked -p quenchant-gates -- action-pins"
 description = "Verify the exact package publication eligibility boundary"
 run = "cargo run --quiet --locked -p quenchant-gates -- publish-allowlist"
 
+["check:deny"]
+description = "Check dependency advisories, versions, licenses, and sources"
+run = [
+  "cargo deny fetch db",
+  "cargo deny --all-features --locked check --graph target/cargo-deny advisories bans licenses sources",
+]
+
 ["check:anodized"]
 description = "Report the resolved specification state of the workspace"
 run = "cargo run -p quenchant-gates --locked -- anodized --manifest-path Cargo.toml"

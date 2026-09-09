@@ -8,6 +8,10 @@ All notable changes to quenchant are documented here.
 
 - *(repo)* Adopt shared changelog guidance
 
+### Unreleased Continuous Integration
+
+- *(ci)* Run cargo-deny gate
+
 ### Unreleased Configuration
 
 - *(config)* Enforce dependency policy
