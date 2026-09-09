@@ -13,6 +13,10 @@
 //! with distinct diagnostics. Failure to obtain an inventory remains an
 //! operational failure rather than evidence that its obligations passed.
 
+extern crate alloc;
+
+mod repository;
+
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -50,6 +54,20 @@ fn main() -> ExitCode
         eprintln!("missing gate\n{USAGE}");
         return ExitCode::FAILURE;
     };
+    if matches!(
+        subcommand.as_str(),
+        "public-boundary"
+            | "pins"
+            | "action-pins"
+            | "publish-allowlist"
+            | "conflict-markers"
+            | "toolchain-bump"
+    ) {
+        return repository::dispatch(
+            quenchant_gates::semantic::SourceText(&subcommand),
+            arguments,
+        );
+    }
     let Some(flag) = arguments.next()
     else {
         eprintln!("missing `--manifest-path`\n{USAGE}");

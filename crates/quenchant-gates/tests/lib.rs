@@ -10,4 +10,6 @@ mod anodized;
 #[cfg(test)]
 mod catalog;
 #[cfg(test)]
+mod repository;
+#[cfg(test)]
 mod witnesses;

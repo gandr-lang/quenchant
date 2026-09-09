@@ -123,6 +123,14 @@ version = "=0.0.1"
 version = "1.0.47"
 default-features = false
 
+# Bounded-time matching of refused repository content.
+# consumers:
+# - quenchant-gates
+[workspace.dependencies.regex]
+version = "1.13.1"
+default-features = false
+features = ["perf", "std"]
+
 # JSON reader for Cargo and nextest machine output.
 # consumers:
 # - quenchant-gates
@@ -140,6 +148,21 @@ version = "1.0.151"
 version = "3.0.4"
 default-features = false
 features = ["clone-impls", "full", "parsing", "printing", "proc-macro"]
+
+# Format-preserving compiler pin reads and edits.
+# consumers:
+# - quenchant-gates
+[workspace.dependencies.toml_edit]
+version = "0.25.13"
+default-features = false
+features = ["display", "parse"]
+
+# YAML action references, including quoted and flow-style mappings.
+# consumers:
+# - quenchant-gates
+[workspace.dependencies.yaml-rust2]
+version = "0.12.0"
+default-features = false
 
 [workspace.lints.clippy]
 # all = { correctness, suspicious, style, complexity, perf }
