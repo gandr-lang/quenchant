@@ -8,7 +8,7 @@ From an application beside a workspace checkout:
 
 ```toml
 [dependencies]
-quenchant-shape = { version = "=0.0.0-rc.0", path = "../quenchant/crates/quenchant-shape" }
+quenchant-shape = { version = "=0.0.0", path = "../quenchant/crates/quenchant-shape" }
 ```
 
 Registry-only installation follows publication. The default library is `no_std`, uses no allocator, and forbids unsafe code in its implementation.
