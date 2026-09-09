@@ -8,7 +8,7 @@ Use the dependency name `quenchant`, because emitted helper paths use that name.
 
 ```toml
 [dependencies]
-quenchant = { package = "quenchant-anodized", version = "=0.0.0", path = "../quenchant/crates/quenchant-anodized" }
+quenchant = { package = "quenchant-anodized", version = "=0.0.0-rc.0", path = "../quenchant/crates/quenchant-anodized" }
 
 [features]
 anodized = ["quenchant/anodized"]

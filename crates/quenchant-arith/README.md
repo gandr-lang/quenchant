@@ -8,7 +8,7 @@ From an application beside a workspace checkout:
 
 ```toml
 [dependencies]
-quenchant-arith = { version = "=0.0.0", path = "../quenchant/crates/quenchant-arith" }
+quenchant-arith = { version = "=0.0.0-rc.0", path = "../quenchant/crates/quenchant-arith" }
 ```
 
 After publication, the same version can be selected without the path. The default library is `no_std` and requires no allocator.
