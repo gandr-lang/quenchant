@@ -8,7 +8,7 @@ From an application beside a checkout:
 
 ```toml
 [dependencies]
-quenchant = { package = "quenchant-anodized", version = "=0.0.0", path = "../quenchant/crates/quenchant-anodized" }
+quenchant = { package = "quenchant-anodized", version = "=0.0.0-rc.0", path = "../quenchant/crates/quenchant-anodized" }
 
 [features]
 anodized = ["quenchant/anodized"]
