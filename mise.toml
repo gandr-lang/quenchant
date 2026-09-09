@@ -29,11 +29,11 @@ package_manager = "aube"
 
 [env]
 # Rustup resolves the repository pin from its standard CARGO_HOME installation.
-# The selected toolchain supplies Cargo/rustc; proxies remain available for
-# Rustup-driven auxiliaries. An absent installation or pin fails activation.
+# Proxies precede the resolved toolchain so Rustup supplies RUSTUP_TOOLCHAIN to
+# compiler-plugin builds. An absent installation or pin fails activation.
 _.path = [
-  "{{ exec(command=(get_env(name='CARGO_HOME', default=env.HOME ~ '/.cargo') ~ '/bin/rustup' | quote) ~ ' which cargo') | dirname }}",
   "{{ get_env(name='CARGO_HOME', default=env.HOME ~ '/.cargo') }}/bin",
+  "{{ exec(command=(get_env(name='CARGO_HOME', default=env.HOME ~ '/.cargo') ~ '/bin/rustup' | quote) ~ ' which cargo') | dirname }}",
 ]
 
 [task_config]

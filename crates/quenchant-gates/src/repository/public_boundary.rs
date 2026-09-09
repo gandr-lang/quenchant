@@ -187,6 +187,8 @@ fn scan(
 ///   addressed material, or private email.
 /// - fails: Git, file access, and decoding failures remain `GateError`; deleted
 ///   working-tree files are not scanned.
+/// - ensures: non-UTF8 text retains ASCII boundary checks; NUL-bearing binary
+///   files are excluded.
 /// - panics: none.
 ///
 /// # Errors
@@ -198,6 +200,7 @@ fn scan(
 ///   contributor email separate the three observable surfaces.
 /// - witness: `repository::public_boundary::tests::tracked_tree_and_history_are_checked`
 /// - witness: `repository::public_boundary::tests::private_email_is_refused`
+/// - witness: `repository::public_boundary::tests::non_utf8_text_keeps_its_ascii_boundaries`
 pub fn check(root: &Path) -> Result<Maybe<Passed, refusal::Refused>, GateError>
 {
     let patterns = patterns()?;
@@ -206,12 +209,15 @@ pub fn check(root: &Path) -> Result<Maybe<Passed, refusal::Refused>, GateError>
             return Ok(Maybe::Absent(refusal::Refused::ControlDirectory(path)));
         }
         let absolute = root.join(&path);
-        let text = match std::fs::read_to_string(&absolute) {
-            | Ok(text) => text,
+        let bytes = match std::fs::read(&absolute) {
+            | Ok(bytes) => bytes,
             | Err(error) if error.kind() == ErrorKind::NotFound => continue,
-            | Err(error) if error.kind() == ErrorKind::InvalidData => continue,
             | Err(error) => return Err(GateError::io(&path, ErrorMessage(&error.to_string()))),
         };
+        if bytes.contains(&0) {
+            continue;
+        }
+        let text = String::from_utf8_lossy(&bytes);
         if let Maybe::Absent(reason) = scan(
             SourceText(&text),
             SourceText(&path.display().to_string()),
@@ -276,6 +282,8 @@ pub fn check(root: &Path) -> Result<Maybe<Passed, refusal::Refused>, GateError>
 /// # Specification
 /// - ensures: acceptance excludes seven marker characters followed by
 ///   whitespace or end-of-line in tracked text.
+/// - ensures: non-UTF8 text retains marker recognition; NUL-bearing binary
+///   files are excluded.
 /// - provides: `conflict::Refused::Marker` identifies a violating file and
 ///   line.
 /// - fails: inventory and readable-text access failures return `GateError`.
@@ -288,17 +296,19 @@ pub fn check(root: &Path) -> Result<Maybe<Passed, refusal::Refused>, GateError>
 /// - hypothesis: L3 exact-seven, longer-decoration, and suffix boundaries
 ///   distinguish widened or weakened recognition.
 /// - witness: `repository::public_boundary::tests::conflict_marker_boundaries`
+/// - witness: `repository::public_boundary::tests::non_utf8_text_keeps_its_ascii_boundaries`
 pub fn conflicts(root: &Path) -> Result<Maybe<Passed, conflict::Refused>, GateError>
 {
     for path in super::tracked_paths(root)? {
-        let text = match std::fs::read_to_string(root.join(&path)) {
-            | Ok(text) => text,
-            | Err(error) if matches!(error.kind(), ErrorKind::NotFound | ErrorKind::InvalidData) =>
-            {
-                continue;
-            },
+        let bytes = match std::fs::read(root.join(&path)) {
+            | Ok(bytes) => bytes,
+            | Err(error) if error.kind() == ErrorKind::NotFound => continue,
             | Err(error) => return Err(GateError::io(&path, ErrorMessage(&error.to_string()))),
         };
+        if bytes.contains(&0) {
+            continue;
+        }
+        let text = String::from_utf8_lossy(&bytes);
         for (line, text) in text.lines().enumerate() {
             if ["<<<<<<<", "=======", ">>>>>>>", "|||||||"]
                 .iter()
@@ -475,6 +485,36 @@ mod tests
                 kind: Material::PrivateHost
             })
         );
+    }
+
+    #[test]
+    fn non_utf8_text_keeps_its_ascii_boundaries()
+    {
+        let fixture = repository();
+        let path = fixture.0.join("legacy.txt");
+        let text = [b"\xff\nmachine.".as_slice(), b"local\n"].concat();
+        std::fs::write(&path, &text).unwrap();
+        super::super::output(
+            Command::new("git")
+                .current_dir(&fixture.0)
+                .args(["add", "."]),
+        )
+        .unwrap();
+        assert_eq!(
+            check(&fixture.0).unwrap(),
+            Maybe::Absent(refusal::Refused::Material {
+                location: "legacy.txt:2".into(),
+                kind: Material::PrivateHost
+            })
+        );
+        std::fs::write(&path, b"\xff\n<<<<<<< branch\n").unwrap();
+        assert_eq!(
+            conflicts(&fixture.0).unwrap(),
+            Maybe::Absent(conflict::Refused::Marker("legacy.txt:2".into()))
+        );
+        std::fs::write(&path, [b"\0".as_slice(), &text].concat()).unwrap();
+        assert_eq!(check(&fixture.0).unwrap(), Maybe::Present(Passed));
+        assert_eq!(conflicts(&fixture.0).unwrap(), Maybe::Present(Passed));
     }
 
     #[test]

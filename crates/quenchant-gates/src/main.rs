@@ -1,7 +1,9 @@
-//! Consumer-scoped invocation and witness verification.
+//! Consumer-scoped verification and repository-policy refusals.
 //!
 //! ```text
 //! quenchant-gates <anodized | witnesses> --manifest-path <Cargo.toml>
+//! quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]
+//! quenchant-gates toolchain-bump --version <stable> [--root <repository>]
 //! ```
 //!
 //! An explicit consumer manifest selects both gates' scope, including for an
@@ -29,15 +31,14 @@ use quenchant_gates::anodized::invocation_state;
 use quenchant_gates::inventory;
 
 /// Invalid argument shapes receive the complete supported command syntax.
-const USAGE: &str = "usage: quenchant-gates <anodized | witnesses> --manifest-path <Cargo.toml> [--require-enforcing]";
+const USAGE: &str = "usage: quenchant-gates <anodized | witnesses> --manifest-path <Cargo.toml> [--require-enforcing]\n       quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]\n       quenchant-gates toolchain-bump --version <stable> [--root <repository>]";
 
-/// Argument interpretation selects one consumer-scoped gate.
+/// Argument interpretation selects one consumer or repository operation.
 ///
 /// # Specification
-/// - requires: the arguments name one gate, `--manifest-path`, and the
-///   workspace manifest to read.
-/// - ensures: runs the named gate against that manifest and exits successfully
-///   exactly when the gate reaches a verdict with no findings.
+/// - requires: arguments name one operation and its documented scope.
+/// - ensures: consumer gates use their mandatory manifest; repository commands
+///   use the selected root and exit successfully only on acceptance.
 /// - fails: prints the usage text and exits unsuccessfully on an unrecognized
 ///   invocation, and prints the gate's own error on an operational failure.
 /// - panics: none.
