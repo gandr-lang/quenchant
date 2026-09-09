@@ -1,36 +1,34 @@
-//! The specification-enforcement state of a Cargo invocation.
+//! Report the compiler cfg evidence for one named consumer invocation.
 //!
-//! `anodized-macros` chooses instrumentation when its host artifact is built.
-//! `anodized_discard_specs` removes checks and takes precedence over every
-//! other mode; `anodized_panic` rejects violations; `anodized_print` alone only
-//! reports them. With neither flag, specifications are type-checked but not
-//! enforced.
+//! The published backend chooses its mode when its host artifact is compiled.
+//! Discard wins over other cfgs; panic rejects violations; print alone reports
+//! them; neither enforcing flag leaves only predicate compilation.
 //!
-//! # Specification
-//! The gate asks `cargo rustc -Z unstable-options --print cfg` at the consumer
-//! manifest's directory. Cargo resolves configuration, `RUSTFLAGS`, and
-//! `CARGO_ENCODED_RUSTFLAGS` for this invocation; the installed gate's own cfgs
-//! are irrelevant. Discarded specifications fail every lane. An enforcing lane
-//! additionally requires the panic state, requested with `--require-enforcing`.
-//! Missing compiler evidence or a failed query is an operational error.
+//! Cargo resolves the consumer's configuration and environment when queried
+//! with `rustc -Z unstable-options --print cfg`. The installed gate's own cfgs
+//! do not describe that invocation. A failed or unreadable query is an
+//! operational failure, not evidence of a benign default mode.
 //!
-//! This is invocation-state evidence, not a census of compiled dependencies.
-//! In particular, explicit targets can separate host proc-macro flags from
-//! target flags. Consumer enforcing lanes must also execute a specification
-//! sentinel built with their graph-wide flags; cached artifacts and target-only
-//! flags cannot be certified by a target cfg report.
+//! Backend discard is rejected by this policy, and `--require-enforcing` also
+//! requires panic mode. The facade's consumer-side feature is a different
+//! selection boundary: this query neither counts emitted checks nor certifies
+//! that a cached host artifact used target-only flags. Enforcing lanes also run
+//! a deliberately violated specification under their actual dependency graph.
+//!
+//! Omitting executable instrumentation changes neither an authored obligation
+//! nor its authority, and supplies no evidence for that obligation.
 
 use std::path::Path;
 use std::process::Command;
 
-/// The resolved cfg listing printed by Cargo's compiler query.
+/// Compiler-query output, distinct from flag arguments or authored source.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug)]
 pub struct CfgText<'text>(&'text str);
 
 impl<'text> From<&'text str> for CfgText<'text>
 {
-    /// Wrap the borrowed cfg listing in the semantic type.
+    /// Borrowed text enters the compiler-cfg interpretation boundary.
     ///
     /// # Specification
     /// trivial.
@@ -41,23 +39,23 @@ impl<'text> From<&'text str> for CfgText<'text>
     }
 }
 
-/// Which checks this invocation requests.
+/// Checking mode selected by the resolved invocation cfgs.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EnforcementState
 {
-    /// Instrumentation is removed, even if another checking flag is present.
+    /// Discard cfg takes precedence over every requested checking mode.
     Discarded,
-    /// Violations panic; printing may also be enabled.
+    /// Panic cfg is selected without discard; printing may also be selected.
     Enforcing,
-    /// Violations print without rejecting execution.
+    /// Print cfg is selected without discard or panic.
     PrintOnly,
-    /// Predicates are type-checked without runtime enforcement.
+    /// No discard, panic, or print cfg is selected.
     NonEnforcing,
 }
 
 impl core::fmt::Display for EnforcementState
 {
-    /// Write the state's name.
+    /// Stable mode labels identify the measured cfg classification.
     ///
     /// # Specification
     /// - ensures: writes the lower-case name of the state, hyphenated where it
@@ -79,29 +77,29 @@ impl core::fmt::Display for EnforcementState
     }
 }
 
-/// The policy the current lane requires.
+/// Policy applied to one measured invocation state.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Requirement
 {
-    /// Report the state, rejecting only discarded specifications.
+    /// Observation permits every mode except explicit discard.
     Observe,
-    /// Require checks that panic on violations.
+    /// Acceptance requires the panic-enabled mode.
     Enforcing,
 }
 
-/// Whether measured state satisfies lane policy.
+/// Acceptance of measured cfg state under the selected policy.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Verdict
 {
-    /// The measured invocation satisfies the requested policy.
+    /// The observation meets the requested mode requirement.
     Pass,
-    /// The measured invocation violates the requested policy.
+    /// The observation does not meet the requested mode requirement.
     Fail,
 }
 
 impl EnforcementState
 {
-    /// Apply lane policy without conflating observation with enforcement.
+    /// Observation and enforcing policy have different acceptance sets.
     ///
     /// # Specification
     /// - ensures: discarded specifications always fail; other states pass
@@ -127,25 +125,26 @@ impl EnforcementState
     }
 }
 
-/// Why the invocation could not be measured.
+/// Operational failures that prevent an invocation-state measurement.
 #[derive(Debug)]
 pub enum GateError
 {
-    /// The requested manifest cannot be resolved to a file.
+    /// The consumer manifest location cannot be resolved.
     Manifest(std::io::Error),
-    /// Cargo could not be started or waited for.
+    /// Starting or collecting the Cargo process failed.
     CargoNotRun(std::io::Error),
-    /// Cargo rejected the query; its diagnostics are retained.
+    /// The query exited unsuccessfully with diagnostic text.
     CargoRefused(String),
-    /// Compiler output was not UTF-8 text.
+    /// Query bytes cannot be interpreted as UTF-8 cfg text.
     InvalidText(alloc::string::FromUtf8Error),
-    /// Output lacks the compiler's target cfg evidence.
+    /// The output supplies no complete target-evidence trio.
     MissingCompilerCfgs,
 }
 
 impl core::fmt::Display for GateError
 {
-    /// Write the error's cause, retaining the diagnostic it carries.
+    /// Error rendering keeps the failed operation and its underlying evidence
+    /// together.
     ///
     /// # Specification
     /// - ensures: writes one sentence naming the failed step and the retained
@@ -180,7 +179,7 @@ impl core::error::Error for GateError
 {
 }
 
-/// Resolve the consumer invocation's cfgs and classify its enforcement state.
+/// Consumer-local Cargo configuration determines the cfg observation.
 ///
 /// # Specification
 /// - requires: Cargo supports the nightly `--print cfg` query.
@@ -231,7 +230,8 @@ pub fn invocation_state(manifest: &Path) -> Result<EnforcementState, GateError>
     enforcement_state(CfgText::from(output.as_str()))
 }
 
-/// Classify exact cfg names with the macro's discard-before-panic precedence.
+/// Exact cfg spelling and precedence determine the published backend's
+/// requested mode.
 ///
 /// # Specification
 /// - requires: `cfgs` is the compiler cfg listing, not Rust flags or source
@@ -299,7 +299,7 @@ mod tests
     use super::Verdict;
     use super::enforcement_state;
 
-    /// Independent compiler evidence shared by the mode cases.
+    /// Target evidence remains fixed while checking-mode flags vary.
     const TARGET: &str = r#"target_arch="aarch64"
 target_os="linux"
 target_pointer_width="64"

@@ -1,41 +1,28 @@
-//! Derive a Verus proof input from each declared specification and check it.
+//! Interpret a declared source fragment in verifier input without inventing
+//! clauses.
 //!
-//! No predicate is authored here. Each unit is assembled by relocating the
-//! source's own tokens: the nominal declarations, the specification attribute's
-//! `captures` bindings and `ensures` closure body, and the function's unchanged
-//! signature and body. The derived postcondition is attached as
-//! `ret => ensures (predicate)`, the form the verifier reads, and the verifier
-//! is the commissioned binary `VERUS_BIN` names.
+//! The derivation relocates nominal declarations, authored `captures` and
+//! `ensures` tokens, and the original function signature and body. The return
+//! predicate is attached in the verifier's `ret => ensures (...)` form. Only
+//! the executable explicitly selected by `VERUS_BIN` supplies verifier output.
 //!
-//! # Every specification-bearing function is named
+//! Reporting names three source populations: derivable attribute predicates,
+//! prose `requires`/`ensures` obligations without such an attribute, and
+//! obligations inside macro definitions without a directly derivable item.
+//! Unreached source is not an empty successful verification result.
 //!
-//! A verdict over the functions carrying a specification attribute would be
-//! vacuous over an empty set, and silent about a function whose rustdoc states
-//! a specification that no attribute carries. The run therefore names three
-//! populations, each read off the source rather than a list kept here: the
-//! functions whose attribute declares a predicate, which reach the verifier;
-//! the functions whose `# Specification` block declares a `requires` or
-//! `ensures` clause with no attribute to derive from; and the `macro_rules!`
-//! bodies whose expansions carry a block that no top-level item does.
+//! One interpretation choice is explicit: entry captures become bindings inside
+//! the derived postcondition. The supported captures inspect by-value parameter
+//! entry values; extending that fragment requires re-establishing the relation,
+//! not merely accepting another syntax node.
 //!
-//! # Declared translations
+//! Closed reason sites travel with their sealing module, trait, enum, and
+//! implementations so derivation does not broaden their domain silently.
 //!
-//! One translation is stated here rather than inferred from the source:
-//!
-//! - A `captures` binding is evaluated on entry by the specification attribute.
-//!   In the derived unit it becomes a `let` inside the postcondition, where a
-//!   by-value parameter still denotes its entry value. The two agree for a
-//!   capture over by-value parameters, which is every capture this crate
-//!   declares.
-//!
-//! A `reason_enum!` site is relocated whole: its `sealed` submodule, the
-//! sealed supertrait, the enum, and both implementations. A derived signature
-//! bounded by that site's reason trait therefore ranges over the source's own
-//! sealed reason domain and nothing wider.
-//!
-//! A refusal is a recorded verdict rather than an operational failure: it says
-//! the derived clause alone does not discharge under the verifier's own
-//! obligations.
+//! A verifier refusal is a reached result under that verifier's obligations.
+//! Source extraction, operational failure, refusal, and accepted obligations
+//! remain distinct. None alone establishes general correspondence to every
+//! production configuration or automatic transfer to another proof backend.
 
 use std::io::Write as _;
 use std::path::Path;
@@ -49,21 +36,21 @@ use syn::parse::Parse;
 use syn::parse::ParseStream;
 use syn::punctuated::Punctuated;
 
-/// Why a derivation stopped before producing a checked verdict.
+/// Failures preventing a derivation or verification step from completing.
 #[derive(Debug)]
 enum DerivationError
 {
-    /// A source, output, or verifier operation failed.
+    /// Input, output, or process evidence is unavailable.
     Operational(String),
-    /// A source construct falls outside the supported derivation.
+    /// The source requires a translation outside the admitted fragment.
     Rejected(String),
-    /// A source file did not parse as Rust.
+    /// Source syntax cannot be interpreted as a Rust file.
     Syntax(syn::Error),
 }
 
 impl core::fmt::Display for DerivationError
 {
-    /// Report which half of the derivation refused, and what it read.
+    /// Diagnostics retain the failed stage and its supporting report.
     ///
     /// # Specification
     /// - ensures: names the refusing half and carries the underlying report
@@ -106,7 +93,8 @@ impl core::error::Error for DerivationError
 
 impl From<std::io::Error> for DerivationError
 {
-    /// Carry an input, output, or process failure as an operational one.
+    /// I/O failures remain operational rather than becoming rejected proof
+    /// obligations.
     ///
     /// # Specification
     /// trivial.
@@ -118,7 +106,7 @@ impl From<std::io::Error> for DerivationError
 
 impl From<syn::Error> for DerivationError
 {
-    /// Carry a parse failure with its own span report.
+    /// Syntax failure retains the parser's source-location evidence.
     ///
     /// # Specification
     /// trivial.
@@ -128,28 +116,29 @@ impl From<syn::Error> for DerivationError
     }
 }
 
-/// The answer to one classification question about a source construct.
+/// A source-classification result carries its analysis-domain identity.
 #[repr(transparent)]
 struct Answer(bool);
 
-/// One entry of a specification attribute's argument list.
+/// Admitted attribute entries distinguish entry captures from result
+/// predicates.
 enum SpecEntry
 {
-    /// An entry-evaluated binding the postcondition reads.
+    /// Entry-state evaluation supplies a name available to the postcondition.
     Capture
     {
-        /// The name the postcondition reads.
+        /// The captured value remains addressable by this authored name.
         binder: syn::Ident,
-        /// The expression evaluated on entry.
+        /// Entry evaluation fixes the state later read by the predicate.
         value: syn::Expr,
     },
-    /// The postcondition, written as a closure over the returned value.
+    /// The closure binds the returned value for the authored predicate.
     Ensures(syn::ExprClosure),
 }
 
 impl Parse for SpecEntry
 {
-    /// Read one labelled clause of the specification attribute.
+    /// Clause labels select the supported attribute grammar.
     ///
     /// # Specification
     /// - requires: `input` is positioned at the start of one attribute entry.
@@ -192,36 +181,36 @@ impl Parse for SpecEntry
     }
 }
 
-/// A function whose declared specification reaches the verifier.
+/// An admitted specification remains paired with its target-language unit.
 struct Target
 {
-    /// The function's own name, as the verdict reports it.
+    /// Verdict output retains the authored function name.
     name: syn::Ident,
-    /// The complete Rust unit the verifier reads.
+    /// Target-language tokens supplied to the commissioned verifier.
     unit: TokenStream,
 }
 
-/// A specification-bearing construct the derivation does not carry to the
-/// verifier.
+/// Named source obligations remain visible when no proof input can be produced.
 struct Unreached
 {
-    /// The construct's own name.
+    /// Source spelling identifies the construct needing further interpretation.
     name: syn::Ident,
-    /// Why the derivation stops short of a proof input here.
+    /// Adapter limitations remain distinct from verifier refutations.
     reason: String,
 }
 
-/// Everything one run read out of the two source files.
+/// Source inventory separates admitted units from named translation limits.
 struct Derivation
 {
-    /// The functions carrying a derived postcondition.
+    /// These source functions have a derived postcondition unit.
     targets: Vec<Target>,
-    /// The specification-bearing constructs the derivation names but does not
-    /// carry.
+    /// These named specification-bearing constructs remain outside the
+    /// derivation.
     unreached: Vec<Unreached>,
 }
 
-/// Derive every proof input, check each one, and report its verdict.
+/// A run reports both commissioned verifier answers and source obligations it
+/// did not reach.
 ///
 /// # Specification
 /// - requires: `VERUS_BIN` names the commissioned verifier, and the working
@@ -278,7 +267,8 @@ fn main() -> Result<(), DerivationError>
     Ok(())
 }
 
-/// Check one derived unit and read the verifier's own answer.
+/// The external verifier, not the adapter, supplies the unit's verification
+/// answer.
 ///
 /// # Specification
 /// - requires: `path` holds a complete derived unit and `verifier` is
@@ -322,7 +312,7 @@ fn verdict(
     Ok(format!("{name}: not reached — {first}\n"))
 }
 
-/// Collect the nominal declarations a derived unit makes Verus-visible.
+/// Admitted nominal declarations provide the generated unit's type context.
 ///
 /// # Specification
 /// - ensures: emits each top-level enum and struct with its non-doc attributes
@@ -368,7 +358,7 @@ fn declarations(file: &syn::File) -> Result<TokenStream, DerivationError>
     Ok(emitted)
 }
 
-/// Translate one `reason_enum!` site into Verus-visible declarations.
+/// Relocation preserves one source site's closed reason boundary.
 ///
 /// # Specification
 /// - requires: `tokens` are the site's module, carrying exactly its reason
@@ -410,17 +400,17 @@ fn reason_site(tokens: &TokenStream) -> Result<TokenStream, DerivationError>
     reason.attrs.retain(|attribute| is_doc(attribute).0);
     let implementer = &reason.ident;
     Ok(quote! {
-        /// A closed absence site, relocated from its `reason_enum!` invocation.
+        /// This emission keeps one source site's reason vocabulary closed.
         pub mod #name
         {
-            /// Seal the reason set to the enum declared at this site.
+            /// Restrict membership to the relocated enum.
             mod sealed
             {
-                /// Marker implemented only by this site's reason enum.
+                /// Membership evidence is supplied only for this site's relocated enum.
                 pub trait Sealed {}
             }
 
-            /// A reason belonging to this closed absence site.
+            /// The relocated site admits only its declared reason vocabulary.
             pub trait Reason: sealed::Sealed {}
 
             #reason
@@ -431,7 +421,8 @@ fn reason_site(tokens: &TokenStream) -> Result<TokenStream, DerivationError>
     })
 }
 
-/// Whether an attribute is a doc comment.
+/// Documentation attributes survive relocation without importing unrelated
+/// source attributes.
 ///
 /// # Specification
 /// trivial.
@@ -440,7 +431,7 @@ fn is_doc(attribute: &syn::Attribute) -> Answer
     Answer(attribute.path().is_ident("doc"))
 }
 
-/// Whether an attribute is the specification attribute, in either spelling.
+/// Only the supported source spellings identify a specification annotation.
 ///
 /// # Specification
 /// - requires: `attribute` is one item's own attribute.
@@ -706,7 +697,8 @@ fn collect(
     Ok(())
 }
 
-/// Assemble the derived postcondition from the attribute's own tokens.
+/// Predicate assembly retains authored entry captures and the returned-value
+/// binding.
 ///
 /// # Specification
 /// - requires: `entries` are one attribute's parsed argument list.
@@ -785,7 +777,8 @@ fn predicate(
     })
 }
 
-/// The witnesses the adapter's adequacy hypotheses name.
+/// Witnesses distinguish supported translation, explicit refusal, and
+/// operational boundaries.
 #[cfg(test)]
 mod tests
 {
@@ -811,13 +804,15 @@ mod tests
     use super::reason_site;
     use super::verdict;
 
-    /// The environment marker selecting the child half of a `main` witness.
+    /// Child mode selects the real adapter entry point inside the test harness.
     const CHILD: &str = "VERUS_DERIVE_WITNESS_CHILD";
 
-    /// The directory holding the stub verifiers the witnesses write.
+    /// Controlled external-program fixtures live beneath this test-output
+    /// directory.
     const STUBS: &str = "target/verus-stubs";
 
-    /// The report a stub verifier accepting every unit produces.
+    /// An always-accepting fixture tests report assembly, not the truth of the
+    /// generated units.
     const REPORT: &str = concat!(
         "map: verified\n",
         "and_then: verified\n",
@@ -832,17 +827,19 @@ mod tests
         "fmt: not reached — the specification attribute declares no predicate\n",
     );
 
-    /// A formatter sink that records the attempted write and refuses it.
+    /// A failed formatter write leaves its attempted text observable.
     #[repr(transparent)]
     struct Refusing
     {
-        /// The text the formatter attempted to write.
+        /// Attempted output remains inspectable even though the sink rejects
+        /// it.
         attempted: String,
     }
 
     impl core::fmt::Write for Refusing
     {
-        /// Record the attempted text and refuse the write.
+        /// Write failure preserves the attempted fragment for the failure
+        /// observer.
         ///
         /// # Specification
         /// - ensures: keeps the attempted text and refuses unconditionally, so
@@ -868,7 +865,8 @@ mod tests
         }
     }
 
-    /// Each refusal renders its own half and carries its own report.
+    /// Error rendering keeps operational, derivation, and syntax failures
+    /// distinct.
     #[test]
     fn each_refusal_renders_its_half()
     {
@@ -905,7 +903,8 @@ mod tests
         );
     }
 
-    /// A capture entry carries its binder and its expression.
+    /// Capture parsing preserves both the authored binder and its entry
+    /// expression.
     #[test]
     fn a_capture_entry_carries_its_binding()
     {
@@ -922,7 +921,7 @@ mod tests
         );
     }
 
-    /// A postcondition entry carries its closure.
+    /// Postcondition parsing retains the closure's binding and predicate.
     #[test]
     fn a_postcondition_entry_carries_its_closure()
     {
@@ -943,7 +942,7 @@ mod tests
         );
     }
 
-    /// Any other entry label refuses the derivation at its own span.
+    /// Unsupported labels fail at the offending source token.
     #[test]
     fn an_unknown_label_refuses_derivation()
     {
@@ -957,7 +956,7 @@ mod tests
         );
     }
 
-    /// Exactly two attribute spellings are accepted.
+    /// Annotation recognition admits only the two implemented source spellings.
     #[test]
     fn two_attribute_spellings_are_accepted()
     {
@@ -1085,7 +1084,7 @@ mod tests
         assert!(String::from_utf8_lossy(&refused.stderr).contains("error[E0277]"));
     }
 
-    /// A site that is not one module carrying one enum is refused.
+    /// Site shapes outside the single-module, single-enum grammar are refused.
     #[test]
     fn an_unsupported_site_is_refused()
     {
@@ -1111,7 +1110,8 @@ mod tests
         }
     }
 
-    /// A derived predicate binds its captures and its output name.
+    /// Generated predicates preserve capture evaluation and the authored result
+    /// binding.
     #[test]
     fn a_predicate_binds_captures_and_output()
     {
@@ -1132,7 +1132,8 @@ mod tests
         );
     }
 
-    /// An argument list carrying no derivable postcondition is refused.
+    /// Incomplete or conflicting clause lists produce refusal rather than a
+    /// guessed predicate.
     #[test]
     fn an_underivable_list_is_refused()
     {
@@ -1172,7 +1173,8 @@ mod tests
         }
     }
 
-    /// A method's unit carries its impl header and the declarations.
+    /// Method relocation retains the implementation context required by its
+    /// declaration.
     #[test]
     fn a_method_unit_carries_its_header()
     {
@@ -1336,7 +1338,8 @@ mod tests
         );
     }
 
-    /// The derivation names every population it reads off one file.
+    /// Reached units and named omissions account for the source populations the
+    /// adapter recognizes.
     #[test]
     fn derivation_names_every_population()
     {
@@ -1418,7 +1421,8 @@ mod tests
         );
     }
 
-    /// Every answer a stub verifier gives is reported verbatim.
+    /// Controlled verifier answers distinguish acceptance from refutation in
+    /// the adapter's reporting.
     #[test]
     fn a_verifier_answer_is_reported_verbatim()
     {
@@ -1458,7 +1462,8 @@ mod tests
         }
     }
 
-    /// A verifier that cannot run at all is an operational failure.
+    /// Failure to launch a verifier cannot be reported as a verification
+    /// verdict.
     #[test]
     fn an_unlaunchable_verifier_is_operational()
     {
@@ -1476,7 +1481,7 @@ mod tests
         );
     }
 
-    /// A run with no commissioned verifier reports the absent binary.
+    /// An uncommissioned verifier remains an explicit operational boundary.
     #[test]
     fn main_reports_an_absent_verifier()
     {

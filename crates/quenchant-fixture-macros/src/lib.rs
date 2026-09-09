@@ -1,39 +1,39 @@
-//! Attribute macros the Dylint UI matrix expands.
+//! A real foreign expansion for authored-versus-generated declaration evidence.
 //!
-//! A gate that exempts foreign expansions has to be read against a real
-//! foreign expansion, and the shapes that matter are the ones a third-party
-//! macro produces rather than the ones a fixture can write by hand. This crate
-//! is that third party: it lives outside the crate under test, so rustc treats
-//! its expansions as external, and it is a workspace member so the lint wall
-//! covers its own source.
+//! A fixture written entirely by hand cannot exercise compiler provenance
+//! across a crate boundary. This package supplies that boundary while remaining
+//! inside the workspace's own lint wall.
 //!
-//! One shape ships here. [`client`] re-emits the annotated inherent `impl`
-//! unchanged and generates a client `impl` beside it whose methods are named by
-//! passing the author's own method identifiers through. The generated methods
-//! carry no rustdoc and never could: their names read as the author's syntax
-//! while their declarations are the macro's.
+//! `client` retains the original item and creates a sibling whose method names
+//! reuse the author's tokens. Its new declarations have no authored rustdoc.
+//! The distinction tests why name provenance alone cannot determine who owns an
+//! item's documentation. Empty generated bodies are intentional fixture data,
+//! not a client implementation offered to applications.
+#![cfg_attr(doc, doc = include_str!("../README.md"))]
 
 use proc_macro2::Delimiter;
 use proc_macro2::Group;
 use proc_macro2::TokenStream;
 use proc_macro2::TokenTree;
 
-/// A Rust fragment this crate's own source spells out.
+/// Tokens originating in the fixture generator rather than the annotated item.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 struct MacroSource<'source>(&'source str);
 
-/// Generate a client `impl` whose methods reuse the author's identifiers.
+/// Manufacture declarations that retain authored name tokens across a foreign
+/// boundary.
 ///
 /// # Specification
-/// - requires: the annotated item is an inherent `impl` whose body declares
-///   methods.
-/// - ensures: re-emits the annotated item unchanged and appends a unit struct
-///   named after the subject and an `impl` on it carrying one method per
-///   declared method, each named by the author's own identifier token; an item
-///   that is not an `impl` with a body is re-emitted alone.
-/// - provides: the foreign expansion the presence gate's UI matrix reads a
-///   manufactured declaration off.
+/// - requires: the simple inherent-implementation shape used by the UI
+///   fixtures.
+/// - ensures: retains the original item. A recognized subject and body produce
+///   a zero-sized `SubjectClient` sibling and one empty `pub fn name(&self)`
+///   method per declared method, using the original method-name tokens.
+/// - ensures: an item without a recognized subject and body is emitted alone.
+/// - provides: manufactured declaration provenance distinct from name
+///   provenance; all new tokens other than method identifiers belong to this
+///   macro.
 /// - panics: none.
 ///
 /// # Adequacy
@@ -53,7 +53,8 @@ pub fn client(
     proc_macro::TokenStream::from(client_expansion(TokenStream::from(item)))
 }
 
-/// Return the annotated item followed by its generated client `impl`.
+/// Retain the authored item beside declarations whose names borrow its token
+/// provenance.
 ///
 /// # Specification
 /// - requires: `item` is the token stream of the annotated item.
@@ -117,7 +118,8 @@ fn client_expansion(item: TokenStream) -> TokenStream
     expansion
 }
 
-/// Return the tokens of a source fragment this macro writes itself.
+/// Generator-owned syntax receives fresh tokens independently of authored
+/// identifiers.
 ///
 /// # Specification
 /// - requires: `source` is a Rust fragment this crate's own source spells out.

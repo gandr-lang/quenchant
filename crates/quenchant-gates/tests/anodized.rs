@@ -1,5 +1,4 @@
-//! Cargo configuration and environment precedence at the installed CLI
-//! boundary.
+//! Installed-command evidence for consumer selection and flag precedence.
 
 #[test]
 fn consumer_configuration_and_encoded_flags_select_the_state()
@@ -30,8 +29,9 @@ rustflags = ["--cfg", "anodized_print"]
     )
     .unwrap();
 
-    // The command starts outside this consumer: its manifest must select the
-    // config, while encoded flags must override both config and RUSTFLAGS.
+    // Launching elsewhere distinguishes manifest-selected configuration from
+    // caller-local configuration; encoded flags must override both it and
+    // RUSTFLAGS.
     for (encoded, expected, expected_code) in [
         (None, "enforcing", Some(0_i32)),
         (

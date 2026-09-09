@@ -1,42 +1,25 @@
-//! The `# Specification` presence rule, checked on every function the crate
-//! authors.
+//! Authored specification presence without pretending to decide satisfaction.
 //!
-//! The specification is authored before the implementation, so an item whose
-//! rustdoc states no specification states that its author reached the body
-//! without deciding what the body owes. Presence is therefore a property of the
-//! source rather than a judgement about it, and a gate can hold it.
+//! The gate requires an item's specification to be stated before its body is
+//! credited. It recognizes the section and rejects contradictory uses of the
+//! sole-body `trivial.` marker. It does not validate arbitrary predicate
+//! meaning, establish completeness, or infer an implementation's intended
+//! behavior.
 //!
-//! # Presence, not grammar
+//! Free functions, methods, required trait declarations, foreign declarations,
+//! and locally generated items can have author-owned documentation. Derived
+//! items, foreign manufactured declarations, harness entry points, and test
+//! functions follow their distinct authorship or test-syntax boundaries.
 //!
-//! This gate answers one question — is there a block — and two refinements of
-//! it, both about the canonical body `trivial.`: anything written beside the
-//! word contradicts the claim that there is nothing to specify, and the word
-//! behind a bullet is a clause named `trivial` rather than a claim about the
-//! whole block. The clause grammar itself belongs to the specification
-//! attributes and to review; the companion
-//! [`crate::adequacy::ADEQUACY_BLOCK_GRAMMAR`] shows the shape a grammar gate
-//! takes where one is warranted.
+//! A name span alone is insufficient: a generated client method can reuse the
+//! author's identifier while its declaration remains foreign. Both provenance
+//! questions therefore participate in the decision. If a consumer makes those
+//! generated siblings documentation-owned, this rule needs an explicit revised
+//! boundary rather than an accidental blanket exemption.
 //!
-//! # Which items the author can document
-//!
-//! Every function and method whose text the crate writes carries the block:
-//! free functions, inherent methods, trait impl methods, provided and required
-//! trait methods, foreign declarations, and functions a crate-local
-//! `macro_rules!` expands. An item whose rustdoc the author cannot write is
-//! exempt for that reason alone — a derive expansion, a function a macro from
-//! another crate emits, and the test harness's own generated entry point are
-//! nobody's prose to write. `#[test]` functions are outside the rule by
-//! guidance: the test names its subject and the assertions are the statement.
-//!
-//! A macro from another crate reaches that exemption two ways, and the rule
-//! asks about both. It can manufacture the item's name, which the name span's
-//! source text answers; it can also manufacture the declaration while passing
-//! the author's own identifier through into it, which the declaration's own
-//! span answers. The second shape is a generated client method named after the
-//! method it forwards to: the name reads as authored, and the declaration it
-//! names is nobody's prose to write. Reversal: a consumer appears whose
-//! generated siblings warrant documentation, which makes the declaration test
-//! too broad and moves the decision to an allow-list of macro sources.
+//! Presence is one source-shape check. Adequacy grammar and runnable witness
+//! resolution are separate stages, and a failure in generated checking still
+//! needs classification regardless of who manufactured its declaration.
 
 use clippy_utils::diagnostics::span_lint_and_help;
 use clippy_utils::in_automatically_derived;
@@ -70,29 +53,13 @@ use crate::semantic::SectionHeading;
 declare_lint! {
     /// ### What it does
     ///
-    /// Requires a `# Specification` rustdoc block on every function and method
-    /// the crate authors, and denies a block that writes the `trivial` marker
-    /// beside anything else or as a bullet.
+    /// Authored functions and methods require a specification section. A trivial marker must be the section's only content and must not be a bullet.
     ///
-    /// The canonical `trivial` body is `trivial.`, with the terminal period,
-    /// because clippy's `doc_paragraphs_missing_punctuation`, denied in the
-    /// workspace lint wall, refuses a doc paragraph that ends without one. The
-    /// rule also accepts `trivial` without the period, and in either case no
-    /// bullet marker and no clause stands beside it.
+    /// `trivial.` is the canonical body, including the punctuation required by the prose lint. The reader also accepts `trivial`; both spellings exclude bullet syntax and accompanying clauses.
     ///
     /// ### Why is this bad?
     ///
-    /// The specification is authored before the body it governs, so a body
-    /// arriving without one records that nothing was decided about what it
-    /// owes. The absence is also silent in a way the clauses are not: a wrong
-    /// clause is read and argued with, while a missing block reads as an item
-    /// with nothing to say. Where an item genuinely has nothing to state, the
-    /// marker says exactly that and stays a judgement a reviewer can see and
-    /// disagree with — which is why nothing shares a block with it. A block
-    /// claiming at once that there is nothing to specify and that here is the
-    /// specification has stated neither, and a bulleted `- trivial` claims
-    /// neither: it reads as one oddly named clause, and the reader who wrote it
-    /// believes the item is marked.
+    /// The authored specification precedes the body and exposes its obligations to review. A missing section leaves those obligations unavailable. The trivial marker instead makes an explicit, reviewable claim that no further statement is needed; combining it with clauses contradicts that claim, while a bulleted marker is not the required declaration.
     ///
     /// ### The exception
     ///
@@ -103,41 +70,17 @@ declare_lint! {
     /// carry no rustdoc at all, so a closure inside a documented function is
     /// covered by that function's block.
     ///
-    /// Beyond those, an item is exempt exactly when its own syntax is not this
-    /// crate's: neither its name nor its declaration is text the author wrote.
-    /// That covers a function a macro from another crate emits, the entry point
-    /// the test harness generates, and a method such a macro generates under
-    /// the author's own identifier — its name reads as authored, and the
-    /// declaration that name belongs to is nobody's prose to write. A function
-    /// a crate-local `macro_rules!` expands is *not* exempt — the author writes
-    /// that macro's body, so the block is written there once and every
-    /// expansion carries it.
+    /// Outside the explicit attribute exemptions, recognized authorship requires both an authored identifier and a crate-owned declaration signature. Foreign-generated functions and test entry points are exempt, including a manufactured method that borrows an authored name. Crate-local `macro_rules!` expansions remain covered: their author can place the specification in the template.
     ///
-    /// Reversal: a consumer appears whose generated siblings warrant
-    /// documentation, which makes the declaration test too broad and moves the
-    /// decision to an allow-list of macro sources.
+    /// Revisit declaration-based exemption if generated siblings acquire independently authored documentation obligations. That case requires narrower macro-source admission.
     ///
     /// ### Blind spots
     ///
-    /// This is a presence gate, and presence is nearly all it decides. A block
-    /// whose body is empty satisfies it, as does one whose clauses are
-    /// misspelled or out of order: the fixed clause grammar is not read here. A
-    /// block on the wrong item is likewise invisible to it — the rule asks each
-    /// item for its own heading and never whether the prose beneath describes
-    /// that item.
+    /// Heading presence and trivial-marker shape are the implemented checks. Empty bodies, misspelled or reordered clauses, and prose describing the wrong item remain outside this reader's validation.
     ///
-    /// The manufactured-name exemption reads the name span's source text, so it
-    /// exempts the `#[doc(hidden)]` `__anodized_*` sibling a specification
-    /// attribute on a trait definition synthesizes out of the author's method
-    /// name, and a span the compiler has no source text for, while the author's
-    /// own declaration at that same span — whose name is the text written there
-    /// — stays inside the rule.
+    /// Name recognition compares source text with the item's identifier. Manufactured `__anodized_*` siblings and unavailable source text are exempt under that heuristic; the original declaration whose identifier matches the same span remains covered.
     ///
-    /// The manufactured-declaration exemption reads the signature span rather
-    /// than the whole item span, because rustc counts every attribute macro as
-    /// external and the whole item span carries the attribute. A macro that
-    /// rewrote an author's signature token by token, rather than re-emitting
-    /// it, would take that author's own method out of the rule with it.
+    /// Declaration recognition uses the signature rather than the attribute-bearing whole-item span, because rustc classifies attribute macros as external. A macro rebuilding authored signature tokens would also lose recognized authorship under this rule.
     ///
     /// ### Example
     ///
@@ -146,7 +89,7 @@ declare_lint! {
     /// fn one_based(value: ZeroBased) -> OneBased { value.successor() }
     /// ```
     ///
-    /// Use instead:
+    /// An authored specification:
     ///
     /// ```rust
     /// /// Convert a zero-based coordinate into a one-based coordinate.
@@ -158,7 +101,7 @@ declare_lint! {
     /// fn one_based(value: ZeroBased) -> OneBased { value.successor() }
     /// ```
     ///
-    /// Or, where the item has nothing to state:
+    /// An explicit claim that no further statement is needed:
     ///
     /// ```rust
     /// /// Return the number of nodes in the arena.
@@ -174,12 +117,13 @@ declare_lint! {
 
 impl_lint_pass!(WorkflowSpecification => [SPECIFICATION_PRESENT]);
 
-/// Late lint pass requiring the `# Specification` block.
+/// Compiler-side enforcement of specification presence and trivial-marker
+/// shape.
 pub struct WorkflowSpecification;
 
 impl<'tcx> LateLintPass<'tcx> for WorkflowSpecification
 {
-    /// Check a free function, at its own name.
+    /// A free function's authored name anchors its specification obligation.
     ///
     /// # Specification
     /// - ensures: checks a function item and ignores every other item kind,
@@ -199,7 +143,7 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowSpecification
         check_presence(cx, item.owner_id.def_id, span, sig.span);
     }
 
-    /// Check an inherent or trait impl method, at its own name.
+    /// Implementation methods retain their own specification obligations.
     ///
     /// # Specification
     /// - ensures: checks a method and ignores every other associated item kind.
@@ -222,7 +166,7 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowSpecification
         );
     }
 
-    /// Check a required or provided trait method, at its own name.
+    /// Trait declarations and defaults are inspected at their own names.
     ///
     /// # Specification
     /// - ensures: checks a method declaration, with or without a body, and
@@ -246,7 +190,8 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowSpecification
         );
     }
 
-    /// Check a foreign function declaration, at its own name.
+    /// Foreign function declarations remain specification-bearing authored
+    /// interfaces.
     ///
     /// # Specification
     /// - ensures: checks a foreign function and ignores every other foreign
@@ -266,20 +211,21 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowSpecification
     }
 }
 
-/// Why an item fails the `# Specification` presence rule.
+/// Missing or contradictory specification declarations.
 enum SpecificationDefect
 {
-    /// The item's rustdoc carries no `# Specification` heading.
+    /// The item's documentation supplies no exact specification heading.
     BlockAbsent,
-    /// The block writes the trivial marker beside another line.
+    /// Another nonblank line accompanies the trivial marker.
     MarkerNotAlone,
-    /// The block writes the trivial marker as a bullet.
+    /// Bullet syntax replaces the required bare marker.
     MarkerAsBullet,
 }
 
 impl SpecificationDefect
 {
-    /// Return the diagnostic text for this defect.
+    /// The defect selects a diagnostic describing the rejected declaration
+    /// shape.
     ///
     /// # Specification
     /// trivial.
@@ -303,20 +249,17 @@ impl SpecificationDefect
     }
 }
 
-/// The heading that opens the specification block.
+/// Exact heading used to locate the item's authored specification.
 const HEADING: &str = "# Specification";
 
-/// The word a block writes when there is nothing to specify.
+/// Marker vocabulary for an explicit claim of trivial specification.
 ///
-/// The canonical body is `trivial.` — this word plus the terminal period the
-/// prose wall asks of every doc paragraph, since clippy's
-/// `doc_paragraphs_missing_punctuation` denies one that ends without it. The
-/// rule also accepts the word without the period, and in either case no bullet
-/// marker and no clause stands beside it. One constant, so the spelling the
-/// guidance settles on stays one edit away.
+/// The accepted bare forms are `trivial.` and `trivial`; the punctuated form
+/// also satisfies the prose lint. Neither permits accompanying clauses or
+/// bullet syntax. This constant owns the shared marker spelling.
 const TRIVIAL_MARKER: &str = "trivial";
 
-/// The accepted shapes, attached to every denial as its help.
+/// Denial help exposes the admitted specification declaration forms.
 const ACCEPTED_SHAPES: &str = concat!(
     "write the block as clauses in the fixed order — `- requires:`, `- ensures:`, `- provides:`, ",
     "`- fails:`, `- panics:`, `- intension:` — or, where the item has nothing to state, as the ",
@@ -324,7 +267,8 @@ const ACCEPTED_SHAPES: &str = concat!(
     "and in either case no bullet marker and no clause beside it",
 );
 
-/// Check the `# Specification` presence rule on one function.
+/// Authorship and section shape determine whether this function receives a
+/// presence diagnostic.
 ///
 /// # Specification
 /// - requires: `def_id` identifies a crate-local function, method, or foreign
@@ -388,7 +332,8 @@ fn check_presence(
     );
 }
 
-/// Return whether an item's own syntax is syntax this crate wrote.
+/// Name and signature provenance jointly determine recognized declaration
+/// ownership.
 ///
 /// # Specification
 /// - requires: `def_id` identifies a crate-local item, and `declaration` is
@@ -445,8 +390,8 @@ fn authored(
     AuthoredItem(name_span_carries_identifier(cx, def_id, name).0)
 }
 
-/// Return whether the source text under an item's name span is the item's own
-/// identifier.
+/// Source text must identify the declared item rather than a manufactured
+/// sibling.
 ///
 /// # Specification
 /// - requires: `def_id` identifies a crate-local item and `span` is that item's
@@ -495,20 +440,20 @@ fn name_span_carries_identifier(
     NameSpanCarriesIdentifier(written.strip_prefix("r#").unwrap_or(written) == identifier.as_str())
 }
 
-/// How one nonblank line of a `# Specification` body reads against the marker's
-/// canon.
+/// A nonblank line's relationship to the admitted trivial-marker forms.
 #[derive(Clone, Copy)]
 enum MarkerSpelling
 {
-    /// The word alone, with or without the terminal period: the canonical body.
+    /// The bare marker uses an accepted punctuated or unpunctuated spelling.
     Canonical,
-    /// The word written as a bullet, which the canon excludes.
+    /// A bullet marker makes the declaration malformed.
     Bulleted,
-    /// Any other line — a clause, or prose.
+    /// Clauses and ordinary prose are distinct from the trivial marker.
     NotTheMarker,
 }
 
-/// Return how one body line reads against the marker's canon.
+/// Marker recognition separates bare declarations from bullets and other
+/// content.
 ///
 /// # Specification
 /// - requires: `line` is one nonblank line of a `# Specification` body.
@@ -537,7 +482,7 @@ fn marker_spelling(line: RustdocLine<'_>) -> MarkerSpelling
     }
 }
 
-/// Return whether a section writes the trivial marker beside another line.
+/// A marker is contradictory when another nonblank line shares its section.
 ///
 /// # Specification
 /// - requires: `body` is the unfolded body of a `# Specification` section, as
@@ -576,7 +521,8 @@ fn marker_beside_clause(body: &[String]) -> MarkerBesideClause
     MarkerBesideClause(marker && clause)
 }
 
-/// Return whether a section writes the trivial marker as a bullet.
+/// Bullet-form markers remain invalid even when their section contains nothing
+/// else.
 ///
 /// # Specification
 /// - requires: `body` is the unfolded body of a `# Specification` section, as
@@ -615,8 +561,8 @@ mod tests
     use crate::semantic::RustdocLine;
     use crate::semantic::SectionHeading;
 
-    /// Read the `# Specification` body of a doc block as a `///` comment
-    /// reaches the pass: one leading space on every line.
+    /// Fixture documentation preserves the leading space contributed by a
+    /// source doc comment.
     ///
     /// # Specification
     /// trivial.

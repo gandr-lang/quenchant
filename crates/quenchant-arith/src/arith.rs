@@ -1,48 +1,54 @@
-//! Named integer arithmetic with explicit overflow semantics.
+//! Arithmetic meaning is selected explicitly, not by optimization profile.
 //!
-//! [`Int`] contains a machine integer without allocating. The sealed
-//! [`Integer`] trait supports every signed and unsigned width, including
-//! pointer widths. Strict operations panic in every profile. Checked operations
-//! classify invalid inputs. Wrapping and saturating operations express modular
-//! and clamped domains. With `fast`, the default family is unsafe; explicitly
-//! strict operations remain safe and profile-independent, including standard
-//! operator implementations.
+//! The sealed operation trait admits the standard machine-integer
+//! representations. Strict operations and standard operators retain their safe
+//! panic behavior; checked operations retain a typed cause; wrapping and
+//! saturation select different value relations.
+//!
+//! Only the unprefixed `fast` family is unchecked. Its safety precondition
+//! still belongs to the caller when instrumentation is enabled: optional
+//! checking is not permission to invoke an unsafe operation on invalid inputs.
+//!
+//! The nominal representation adds no allocation. Predicate instrumentation and
+//! its failure reporting are a separate cost and evidence boundary.
 
-/// A nominal boundary around an integer representation.
+/// A private transparent representation boundary; arithmetic uses the sealed
+/// integer trait.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
 #[repr(transparent)]
 #[must_use]
 pub struct Int<Representation>(Representation);
 
-/// The arithmetic operation named by an error.
+/// The attempted relation retained in a typed arithmetic failure.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub enum Operation
 {
-    /// Addition.
+    /// Width-bounded addition without a separate carry result.
     Add,
-    /// Subtraction.
+    /// Subtraction in the operands' signed or unsigned representation.
     Sub,
-    /// Multiplication.
+    /// Multiplication at the operands' representation width.
     Mul,
-    /// Truncating division.
+    /// Integer division truncated toward zero, not floor division.
     Div,
-    /// Truncating remainder.
+    /// Remainder paired with truncating integer division.
     Rem,
 }
 
-/// A representable arithmetic boundary failure.
+/// Invalid arithmetic inputs remain distinguishable without parsing a panic.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ArithmeticError
 {
-    /// The exact result is outside the representation's bounds.
+    /// Includes signed `MIN / -1` and `MIN % -1`, as well as ordinary range
+    /// overflow.
     Overflow(Operation),
-    /// Division or remainder received a zero right operand.
+    /// Separates a zero right operand from the signed overflow pair.
     ZeroDivisor(Operation),
 }
 
 impl core::fmt::Display for Operation
 {
-    /// Write the operation's name.
+    /// Operation labels used by arithmetic diagnostics.
     ///
     /// # Specification
     /// - provides: one of `addition`, `subtraction`, `multiplication`,
@@ -71,7 +77,7 @@ impl core::fmt::Display for Operation
 
 impl core::fmt::Display for ArithmeticError
 {
-    /// Write the failing operation and the cause that classified it.
+    /// Diagnostics retain both the attempted operation and its failure class.
     ///
     /// # Specification
     /// - provides: the operation's name, then `: result is out of range` for
@@ -104,14 +110,14 @@ impl core::error::Error for ArithmeticError
 /// specifications.
 mod sealed
 {
-    /// Only the supported nominal machine-integer representations implement
-    /// this.
+    /// Membership is restricted to the nominal representations implemented
+    /// here.
     pub trait Sealed
     {
     }
 }
 
-/// A supported nominal machine integer.
+/// Machine arithmetic whose representation and operation policy are explicit.
 ///
 /// # Specification
 /// - ensures: operations have the primitive representation's exact mathematical
@@ -149,7 +155,7 @@ mod sealed
 #[quenchant::spec]
 pub trait Integer: sealed::Sealed + Copy + Default + Eq + core::fmt::Debug
 {
-    /// Evaluate an operation with strict bounds.
+    /// Exact arithmetic with profile-independent panic boundaries.
     ///
     /// # Specification
     /// - ensures: returns the exact representable result, truncating division
@@ -171,7 +177,7 @@ pub trait Integer: sealed::Sealed + Copy + Default + Eq + core::fmt::Debug
         operation: Operation,
     ) -> Self;
 
-    /// Evaluate a boundary operation with a classified failure.
+    /// Exact arithmetic whose invalid inputs remain distinguishable errors.
     ///
     /// # Specification
     /// - ensures: returns the exact representable result.
@@ -201,7 +207,7 @@ pub trait Integer: sealed::Sealed + Copy + Default + Eq + core::fmt::Debug
         operation: Operation,
     ) -> Result<Self, ArithmeticError>;
 
-    /// Evaluate a modular operation.
+    /// Fixed-width arithmetic interpreted in the modular domain.
     ///
     /// # Specification
     /// - ensures: overflow wraps modulo the representation width; signed MIN /
@@ -225,7 +231,7 @@ pub trait Integer: sealed::Sealed + Copy + Default + Eq + core::fmt::Debug
         operation: Operation,
     ) -> Self;
 
-    /// Evaluate an operation clamped to the representation bounds.
+    /// Arithmetic interpreted by projection onto the representable interval.
     ///
     /// # Specification
     /// - ensures: overflow clamps; remainder is exact because its mathematical
@@ -249,7 +255,7 @@ pub trait Integer: sealed::Sealed + Copy + Default + Eq + core::fmt::Debug
         operation: Operation,
     ) -> Self;
 
-    /// Evaluate an operation whose representability the caller has proved.
+    /// Exact arithmetic admitted by a caller-held validity proof.
     ///
     /// # Specification
     /// - requires: the operation has a representable result and no zero
@@ -282,21 +288,22 @@ pub trait Integer: sealed::Sealed + Copy + Default + Eq + core::fmt::Debug
     ) -> Self;
 }
 
-/// Implement the primitive border once for each machine representation.
+/// Keep primitive conversion and arithmetic within each representation's trait
+/// boundary.
 macro_rules! integers {
     ($($representation:ty),+ $(,)?) => {$ (
         impl sealed::Sealed for Int<$representation> {}
 
         impl Int<$representation> {
-            /// The smallest representable integer.
+            /// Lower endpoint of this nominal representation's integer interval.
             pub const MIN: Self = Self(<$representation>::MIN);
-            /// The largest representable integer.
+            /// Upper endpoint of this nominal representation's integer interval.
             pub const MAX: Self = Self(<$representation>::MAX);
         }
 
-        // Primitive values are unpacked only at these standard-trait borders.
+        // Conversion traits own primitive ingress and egress.
         impl From<$representation> for Int<$representation> {
-            /// Name a primitive integer value.
+            /// Primitive ingress preserves the complete integer value.
             ///
             /// # Specification
             /// trivial.
@@ -304,7 +311,7 @@ macro_rules! integers {
             fn from(value: $representation) -> Self { Self(value) }
         }
         impl From<Int<$representation>> for $representation {
-            /// Release a named integer's primitive value.
+            /// Primitive egress preserves the value while removing its nominal boundary.
             ///
             /// # Specification
             /// trivial.
@@ -314,7 +321,7 @@ macro_rules! integers {
 
         #[quenchant::spec]
         impl Integer for Int<$representation> {
-            /// Evaluate the operation with strict bounds at this representation.
+            /// Representation-specific strictness remains independent of build profile.
             ///
             /// # Specification
             /// - provides: the primitive `strict_add`, `strict_sub`,
@@ -333,8 +340,7 @@ macro_rules! integers {
                 })
             }
 
-            /// Evaluate the operation at this representation with a
-            /// classified failure.
+            /// Representation failures retain the operation that could not produce a value.
             ///
             /// # Specification
             /// - ensures: the result agrees with the primitive `checked_*`
@@ -389,7 +395,7 @@ macro_rules! integers {
                 }
             }
 
-            /// Evaluate the operation modulo this representation's width.
+            /// Overflow belongs to the representation's modular domain.
             ///
             /// # Specification
             /// - ensures: the result equals the primitive `wrapping_*` result
@@ -411,7 +417,7 @@ macro_rules! integers {
             })]
             #[inline]
             fn wrapping(self, rhs: Self, operation: Operation) -> Self {
-                // reason: this family explicitly requests modular arithmetic.
+                // The selected family promises modular interpretation.
                 Self(match operation {
                     Operation::Add => self.0.wrapping_add(rhs.0),
                     Operation::Sub => self.0.wrapping_sub(rhs.0),
@@ -423,8 +429,7 @@ macro_rules! integers {
                 })
             }
 
-            /// Evaluate the operation clamped to this representation's
-            /// bounds.
+            /// Out-of-range mathematical results project onto representation endpoints.
             ///
             /// # Specification
             /// - ensures: addition, subtraction, multiplication, and division
@@ -446,21 +451,20 @@ macro_rules! integers {
             })]
             #[inline]
             fn saturating(self, rhs: Self, operation: Operation) -> Self {
-                // reason: this family explicitly requests a clamped mathematical result.
+                // The selected family promises interval projection.
                 Self(match operation {
                     Operation::Add => self.0.saturating_add(rhs.0),
                     Operation::Sub => self.0.saturating_sub(rhs.0),
                     Operation::Mul => self.0.saturating_mul(rhs.0),
                     #[expect(clippy::arithmetic_side_effects, reason = "This named primitive border deliberately panics on a zero divisor, as its specification states.")]
                     Operation::Div => self.0.saturating_div(rhs.0),
-                    // The remainder fits for every nonzero divisor, including MIN % -1.
+                    // Every defined remainder is representable; MIN % -1 uses zero.
                     #[expect(clippy::arithmetic_side_effects, reason = "This named primitive border deliberately panics on a zero divisor, as its specification states.")]
                     Operation::Rem => self.0.wrapping_rem(rhs.0),
                 })
             }
 
-            /// Evaluate an operation whose representability the caller has
-            /// proved, at this representation.
+            /// A checked-validity proof admits the representation's unchecked path.
             ///
             /// # Specification
             /// - provides: the primitive unchecked result for addition,
@@ -499,7 +503,7 @@ integers!(
     u8, u16, u32, u64, u128, usize, i8, i16, i32, i64, i128, isize
 );
 
-/// Emit each named family and its permanently strict standard operator.
+/// Named arithmetic families share a permanently strict safe-operator boundary.
 macro_rules! binary_family {
     (
         $default:ident,
@@ -638,8 +642,7 @@ macro_rules! binary_family {
         {
             type Output = Self;
 
-            /// Apply the permanently strict family through the standard
-            /// operator.
+            /// Safe operator syntax retains strictness even when `fast` is enabled.
             ///
             /// # Specification
             /// - provides: the strict family's result for the named operation,
@@ -664,7 +667,7 @@ binary_family!(mul, strict_mul, wrapping_mul, saturating_mul, Mul, mul, Mul);
 binary_family!(div, strict_div, wrapping_div, saturating_div, Div, div, Div);
 binary_family!(rem, strict_rem, wrapping_rem, saturating_rem, Rem, rem, Rem);
 
-/// Checked addition at an input boundary.
+/// Addition exposes an unrepresentable sum as a boundary failure.
 ///
 /// # Specification
 /// - ensures: returns the exact sum when representable.
@@ -691,7 +694,7 @@ where
     left.checked(right, Operation::Add)
 }
 
-/// Checked subtraction at an input boundary.
+/// Subtraction exposes an unrepresentable difference as a boundary failure.
 ///
 /// # Specification
 /// - ensures: returns the exact difference when representable.
@@ -719,7 +722,7 @@ where
     left.checked(right, Operation::Sub)
 }
 
-/// Checked multiplication at an input boundary.
+/// Multiplication exposes an unrepresentable product as a boundary failure.
 ///
 /// # Specification
 /// - ensures: returns the exact product when representable.
@@ -747,7 +750,8 @@ where
     left.checked(right, Operation::Mul)
 }
 
-/// Checked truncating division at an input boundary.
+/// Division retains the distinction between a zero divisor and quotient
+/// overflow.
 ///
 /// # Specification
 /// - ensures: returns the representable quotient, truncated toward zero.
@@ -775,7 +779,8 @@ where
     left.checked(right, Operation::Div)
 }
 
-/// Checked truncating remainder at an input boundary.
+/// Remainder retains primitive validity rules, including the signed MIN/-1
+/// boundary.
 ///
 /// # Specification
 /// - ensures: returns the primitive truncating remainder when defined.

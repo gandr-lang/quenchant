@@ -1,13 +1,15 @@
-//! The signature plane: primitives exposed before a nominal boundary.
+//! Primitive exposure before a declared local transparent boundary.
 //!
-//! The traversal walks a function declaration's declared HIR types beside their
-//! substituted `rustc_middle` types, descending through references, pointers,
-//! tuples, arrays, slices, function pointers, generic arguments, and type
-//! aliases. It stops at the first local `#[repr(transparent)]` ADT, which is
-//! the workspace's nominal wrapper boundary.
+//! HIR preserves how a signature was written; normalized compiler types expose
+//! aliases and substitutions. Walking them together prevents either spelling
+//! from hiding a primitive inside references, pointers, aggregates, function
+//! signatures, or inspected generic arguments.
 //!
-//! The traversal is an explicit worklist so it never recurses over the depth of
-//! a user-written type.
+//! The first local transparent ADT stops this traversal. That is a structural
+//! policy boundary, not evidence that its name or domain meaning is adequate.
+//! Async outputs also need their declared HIR view when normalization exposes
+//! only an opaque future. An explicit worklist bounds traversal by the visited
+//! type structure instead of the host stack's recursion depth.
 
 use quenchant_shape::shape::Maybe;
 
@@ -85,35 +87,36 @@ use crate::semantic::DisallowedPrimitive;
 use crate::semantic::PrimitiveDiagnosticEmitted;
 use crate::semantic::SemanticBoundaryAdt;
 
-/// One work item of the order-preserving primitive-signature traversal.
+/// Explicit continuation state preserves signature traversal and diagnostic
+/// order.
 enum PrimitiveWork<'tcx>
 {
-    /// A HIR type paired with its substituted semantic type.
+    /// Source spelling remains paired with its instantiated type.
     SemanticTy(&'tcx Ty<'tcx>, rustc_ty::Ty<'tcx>),
-    /// A HIR function declaration paired with its semantic signature.
+    /// Declared parameters remain paired with the instantiated function
+    /// signature.
     SemanticFnDecl(&'tcx FnDecl<'tcx>, rustc_ty::FnSig<'tcx>),
-    /// A HIR type checked syntactically because semantic normalization hid the
-    /// declared type, as async function signatures do.
+    /// Source-only inspection preserves a declared type hidden by
+    /// normalization.
     HirTy(&'tcx Ty<'tcx>),
-    /// A HIR-only function pointer declaration.
+    /// Function-pointer syntax is traversed without a substituted signature.
     HirFnDecl(&'tcx FnDecl<'tcx>),
-    /// An opaque async return type whose declared `Future::Output` is checked.
+    /// An opaque future still exposes a declared output for inspection.
     Opaque(&'tcx OpaqueTy<'tcx>),
-    /// A declared `Future::Output` type, checked syntactically and descended
-    /// through its type arguments.
+    /// Source-level output inspection follows generic arguments across opaque
+    /// normalization.
     ///
-    /// Normalization hides an async signature's declared output behind the
-    /// opaque future, so there is no substituted type to walk beside this one.
-    /// The traversal therefore applies the nominal-boundary rule to the HIR
-    /// path itself: it stops at a local `#[repr(transparent)]` type and
-    /// otherwise keeps descending, so `Option<u8>` is not accepted merely
-    /// because its head is nominal.
+    /// An async return's normalized future hides the declared output. This path
+    /// therefore applies the boundary rule directly to HIR: only a local
+    /// transparent type stops descent. A nominal container such as `Option<u8>`
+    /// cannot hide its primitive argument.
     OpaqueOutputTy(&'tcx Ty<'tcx>),
-    /// Emit at a path node when no generic-argument descendant emitted.
+    /// A path-level diagnostic remains available if no descendant supplied one.
     PathFallback(&'tcx Ty<'tcx>, DiagnosticCount),
 }
 
-/// Check every input and explicit output type in one function declaration.
+/// Signature inspection follows inputs and explicit outputs until a declared
+/// semantic boundary.
 ///
 /// # Specification
 /// - requires: `fn_decl` and `fn_sig` describe the same function, `fn_sig`
@@ -208,14 +211,11 @@ pub fn check_fn_decl<'tcx>(
                     },
                     | TyKind::Path(ref qpath) => {
                         work.push(PrimitiveWork::PathFallback(ty, diagnostics));
-                        // economy: HIR arguments are zipped positionally with
-                        // the substituted ones, which a type alias can reorder
-                        // or drop (`type Flip<A, B> = Result<B, A>`). A wrong
-                        // pairing costs diagnostic precision — the span may name
-                        // the sibling argument — but not the verdict, because
-                        // `PathFallback` still reports the path itself when no
-                        // descendant does. Mapping through the alias's own
-                        // generics is the upgrade if alias-heavy code arrives.
+                        // economy: positional pairing can misidentify a descendant span when
+                        // aliases reorder or discard arguments, as `type Flip<A, B> = Result<B, A>`
+                        // does. `PathFallback` preserves the denial when descendants supply none.
+                        // Alias-aware substitution would improve span precision for alias-heavy
+                        // inputs.
                         if let Maybe::Present(generic_args) = last_segment_args(qpath) {
                             let semantic_args = semantic_type_args(cx, semantic_ty);
                             let mut pairs: Vec<_> = generic_args
@@ -369,7 +369,8 @@ pub fn check_fn_decl<'tcx>(
     PrimitiveDiagnosticEmitted(diagnostics.0 > 0_usize)
 }
 
-/// Return the `Future` bound on an opaque async return type, when present.
+/// The first trait bound must identify the language future before output
+/// inspection applies.
 ///
 /// # Specification
 /// - ensures: returns the first trait bound of the opaque type exactly when it
@@ -395,7 +396,7 @@ fn future_trait_ref<'tcx>(
     Maybe::Absent(future_bound::Missing::FirstTraitNotFuture)
 }
 
-/// Return the declared `Future::Output` type from a future trait reference.
+/// A single associated-type equality exposes the future's declared output.
 ///
 /// # Specification
 /// - ensures: returns the type bound to `Output` exactly when the reference's
@@ -430,7 +431,8 @@ fn future_output_ty<'tcx>(
     }
 }
 
-/// Return substituted semantic type arguments represented by a path type.
+/// Normalized ADT arguments and tuple components expose substituted child
+/// types.
 ///
 /// # Specification
 /// - ensures: returns the type arguments of a normalized ADT and the components
@@ -452,7 +454,8 @@ fn semantic_type_args<'tcx>(
     }
 }
 
-/// Return the last path segment's generic arguments, if any.
+/// Final-segment syntax determines which generic arguments were written on a
+/// path.
 ///
 /// # Specification
 /// - ensures: returns the arguments written on the path's last segment, for a
@@ -480,8 +483,8 @@ fn last_segment_args<'hir>(
     }
 }
 
-/// Return whether `primitive` is one of the policy's banned signature
-/// primitives.
+/// The primitive policy fixes the scalar and string types that require a
+/// nominal boundary.
 ///
 /// # Specification
 /// - ensures: answers affirmatively for `bool`, `char`, every integer and float
@@ -501,8 +504,7 @@ fn is_disallowed_primitive(primitive: PrimTy) -> DisallowedPrimitive
     ))
 }
 
-/// Return whether an ADT is a semantic wrapper boundary for type-boundary
-/// linting.
+/// A locally declared transparent ADT terminates primitive exposure analysis.
 ///
 /// # Specification
 /// - ensures: answers affirmatively exactly when the ADT is defined in this
@@ -514,7 +516,8 @@ fn is_semantic_boundary_adt(adt: rustc_ty::AdtDef<'_>) -> SemanticBoundaryAdt
     SemanticBoundaryAdt(adt.did().is_local() && adt.repr().transparent())
 }
 
-/// Return whether a resolved HIR path names a semantic wrapper boundary.
+/// Source-path resolution applies the same local transparent boundary as
+/// semantic types.
 ///
 /// # Specification
 /// - requires: `resolution` is the resolution of a type path.
@@ -538,8 +541,8 @@ fn resolves_to_semantic_boundary(
     is_semantic_boundary_adt(cx.tcx.adt_def(def_id))
 }
 
-/// Return whether a substituted semantic type contains a disallowed primitive
-/// before a nominal workspace boundary.
+/// Primitive exposure is detected before traversal reaches an admitted nominal
+/// boundary.
 ///
 /// # Specification
 /// - requires: `ty` is a substituted `rustc_middle` type in `cx`'s typing
@@ -591,11 +594,12 @@ fn middle_ty_contains_primitive<'tcx>(
     ContainsPrimitive(false)
 }
 
-/// Normalize aliases/projections where rustc can do so in this typing context.
+/// Typing-context normalization exposes aliases and projections where rustc can
+/// resolve them.
 ///
-/// Shared with the ownership plane, which walks the same substituted types and
-/// needs the same alias handling: a type alias must be seen through before a
-/// field's type can be classified.
+/// Ownership analysis uses this same interpretation before classifying field
+/// types. Sharing normalization prevents aliases from acquiring different
+/// meanings in the signature and ownership analyses.
 ///
 /// # Specification
 /// - ensures: returns the normalized type where rustc can normalize it in this
@@ -611,7 +615,7 @@ pub fn normalize_middle_ty<'tcx>(
         .unwrap_or(ty)
 }
 
-/// Emit the primitive signature diagnostic at `span`.
+/// The selected source span identifies the primitive exposure being reported.
 ///
 /// # Specification
 /// trivial.

@@ -1,17 +1,38 @@
 # quenchant-fixture-macros
 
-The attribute macros the Dylint UI matrix expands, so a rule about foreign expansions is read against a real one.
+A separate procedural-macro crate used as foreign code by the Dylint UI matrix. Its generated declarations let the matrix distinguish an authored method from a generated sibling that happens to reuse the author's identifier token.
 
-`quenchant-dylints`'s gates decide whether an item is the author's own syntax. rustc answers that with span hygiene, and hygiene only says "external" when the macro really is defined in another crate. A fixture cannot stage that from inside the crate under test, and a macro written in the lint crate itself would answer the opposite way, so the shapes those gates are read against live here.
+This package is fixture infrastructure, not a runtime client generator. `publish = false` is part of its package boundary.
 
-The crate is a workspace member, so the lint wall covers its own source, and it is a development dependency of `quenchant-dylints` alone. Nothing outside the UI matrix expands it.
+## Install for a local fixture
 
-## Provision
+From another crate in this workspace:
 
-- **`client`.** Re-emits the annotated inherent `impl` unchanged and generates a client `impl` beside it. Each generated method is named by passing the author's own method identifier token through, so its name span is the author's while its declaration is the macro's. The generated methods carry no rustdoc.
+```toml
+[dev-dependencies]
+quenchant-fixture-macros = { path = "../quenchant-fixture-macros", version = "=0.0.0" }
+```
 
-That combination is the shape a presence rule cannot decide from a name alone: the name reads as authored, and no author can document the declaration it names.
+Normal consumers do not need this package. The Dylint harness links the actual compiled macro artifact into its separately compiled fixtures.
+
+## Example
+
+```rust
+struct Endpoint;
+
+#[quenchant_fixture_macros::client]
+impl Endpoint {
+    fn request(&self) {}
+}
+
+Endpoint.request();
+EndpointClient.request();
+```
+
+`client` preserves the original item and adds an `EndpointClient` sibling. Generated methods reuse original method-name tokens while their declarations are manufactured by the macro. Their empty bodies and missing documentation are intentional test data, not a production fallback.
+
+The supported input is the simple inherent-implementation shape used by these fixtures. An item without a recognizable implementation subject and body is emitted unchanged. The macro does not claim to parse or implement an arbitrary client API.
 
 ## License
 
-Apache-2.0 OR Apache-2.0 WITH LLVM-exception.
+`Apache-2.0 WITH LLVM-exception`: the [license](../../LICENSE.Apache-2.0.txt) and its [exception](../../LICENSE.LLVM-exception.txt).

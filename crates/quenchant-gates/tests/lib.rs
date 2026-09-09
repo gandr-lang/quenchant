@@ -1,10 +1,9 @@
-//! The gate crate's behavioral suite, consolidated into one target so a
-//! witness path names the suite it belongs to.
+//! One integration target gives every gate witness a stable suite-qualified
+//! path.
 //!
-//! Each file's contents sit inside a `#[cfg(test)]` module named for the file,
-//! declared here rather than nested a second time inside the file itself: the
-//! module path a witness spells stays `gates::<file>::<test>`, and the suite
-//! reads under the same wall as the library.
+//! File modules are declared once here under `#[cfg(test)]`. Their witness
+//! paths are `gates::<file>::<test>`, and their code remains subject to the
+//! library's lint policy.
 
 #[cfg(test)]
 mod anodized;

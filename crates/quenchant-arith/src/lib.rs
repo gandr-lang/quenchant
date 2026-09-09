@@ -1,7 +1,8 @@
-//! Profile-independent arithmetic for nominal integer values.
+//! Nominal integer arithmetic with an explicit overflow policy.
 //!
-//! [`arith`] owns the complete source surface and its executable
-//! specifications.
+//! [`arith`] contains the representation boundaries, named families, and
+//! executable specification predicates.
+#![cfg_attr(doc, doc = include_str!("../README.md"))]
 #![cfg_attr(not(feature = "anodized"), no_std)]
 
 #[cfg(all(test, not(feature = "anodized")))]

@@ -1,14 +1,14 @@
-//! Reading `- witness:` bullets out of a crate's rustdoc, and resolving them.
+//! Interpret authored witness obligations before resolving their package scope.
 //!
-//! The bullets are read from **parsed** declarations rather than from raw
-//! source text: a `- witness:` line inside a doc code fence, a string literal
-//! or an ordinary comment is not an obligation, and a text scan cannot tell
-//! the difference.
+//! Parsed declarations separate rustdoc from strings and ordinary comments.
+//! Within the documentation, code-fenced examples do not become live witness
+//! obligations. A declaration-only boundary contributes no implementation
+//! witness to resolve.
 //!
-//! The `# Adequacy` section runs from its heading to the next heading of any
-//! level, the same rule the dylint gate applies. A reader that instead consumed
-//! to the end of the doc block would absorb whatever an attribute macro
-//! appends after the author's prose.
+//! The next heading at any level ends an adequacy section. This agrees with the
+//! compiler-side grammar and prevents later or macro-injected prose from
+//! supplying missing author evidence. Exact source addresses and authored paths
+//! survive into findings; matching another package's test is not repair.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -46,31 +46,33 @@ quenchant_shape::reason_enum! {
     }
 }
 
-/// The heading that opens the adequacy block.
+/// Exact section label shared with the compiler-side adequacy grammar.
 const HEADING: &str = "# Adequacy";
 
-/// One `- witness:` obligation, and where it was written.
+/// An authored witness path retains its diagnostic source address.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct WitnessClaim
 {
-    /// The file the bullet was written in.
+    /// Source file owning the obligation.
     pub path: PathBuf,
-    /// The one-based line of the bullet.
+    /// One-based source coordinate used for repair.
     pub line: LineNumber,
-    /// The exact witness path, without its backticks.
+    /// Unquoted authored spelling used for exact alias lookup.
     pub witness: String,
 }
 
-/// One rustdoc block, with the source line of every line it holds.
+/// Documentation lines retain their original source coordinates during
+/// interpretation.
 #[repr(transparent)]
 #[derive(Clone, Debug, Default)]
 struct DocBlock
 {
-    /// The block's lines, each with the source line it was written on.
+    /// Coordinates remain paired with text after attribute extraction.
     lines: Vec<(LineNumber, String)>,
 }
 
-/// Collect every witness obligation written in one Rust source file.
+/// Parsed declarations distinguish live witness obligations from source text
+/// used as data.
 ///
 /// # Specification
 /// - requires: `source` is the complete text of `path`, parseable as Rust.
@@ -109,7 +111,8 @@ pub fn witness_claims(
     Ok(claims)
 }
 
-/// Resolve every claim against the owning package's own test targets.
+/// Witness-path resolution requires an unambiguous target in the owning
+/// package.
 ///
 /// # Specification
 /// - requires: `catalog` holds the inventory of the whole workspace, and
@@ -174,8 +177,8 @@ pub fn resolve(
     findings
 }
 
-/// Explain an unresolved witness, naming a repair when the inventory offers
-/// one.
+/// Repair guidance distinguishes sibling ownership from an in-package spelling
+/// mismatch.
 ///
 /// # Specification
 /// - requires: `catalog` holds no target of `package` exposing `witness`, which
@@ -210,7 +213,8 @@ fn unresolved_detail(
     String::from("no target of this crate runs the path; it is absent or renamed")
 }
 
-/// Add every witness obligation carried by one rustdoc block.
+/// Section and declaration-only boundaries determine which obligations enter
+/// resolution.
 ///
 /// # Specification
 /// - requires: `block` holds the lines of one parsed declaration's rustdoc,
@@ -261,7 +265,7 @@ fn collect_block(
     claims.append(&mut collected);
 }
 
-/// Return whether a rustdoc line opens a heading of any level.
+/// Any Markdown heading level terminates the current evidence section.
 ///
 /// # Specification
 /// - requires: `line` is one rustdoc line.
@@ -285,7 +289,7 @@ pub fn opens_heading(line: DocLine<'_>) -> OpensHeading
     OpensHeading(rest.len() < trimmed.len() && rest.starts_with(' '))
 }
 
-/// Extract the exact path named by a `- witness:` bullet.
+/// Only one complete quoted path is eligible for verbatim witness lookup.
 ///
 /// # Specification
 /// - requires: `line` is one rustdoc line.
@@ -317,7 +321,8 @@ fn exact_witness(line: DocLine<'_>) -> Maybe<WitnessPath<'_>, witness_syntax::Mi
     Maybe::Present(WitnessPath::from(witness))
 }
 
-/// Every rustdoc block in a parsed file, in an unspecified order.
+/// Declaration traversal collects documentation independently of source
+/// nesting.
 ///
 /// # Specification
 /// - requires: `file` is a parsed Rust source file.
@@ -377,7 +382,7 @@ fn doc_blocks(file: &syn::File) -> Vec<DocBlock>
     blocks
 }
 
-/// Add the documentation block carried by one attribute list, when nonempty.
+/// Attribute documentation contributes a block only when it carries text.
 ///
 /// # Specification
 /// - requires: `attrs` is one declaration's complete attribute list.
@@ -423,7 +428,7 @@ fn push_block(
     blocks.push(DocBlock { lines });
 }
 
-/// The one-based source line an attribute's first token sits on.
+/// Attribute token positions anchor extracted documentation in the source file.
 ///
 /// # Specification
 /// - ensures: returns the line the attribute's span starts on, one-based as the
@@ -434,7 +439,7 @@ fn attr_start_line(attr: &syn::Attribute) -> LineNumber
     LineNumber(syn::spanned::Spanned::span(attr).start().line)
 }
 
-/// Return the attributes of an item.
+/// Item-kind dispatch preserves the attributes belonging to each declaration.
 ///
 /// # Specification
 /// - ensures: returns the item's own attribute slice for every item kind that
@@ -462,7 +467,7 @@ fn item_attrs(item: &syn::Item) -> &[syn::Attribute]
     }
 }
 
-/// Return the attributes of an impl item.
+/// Implementation members retain their own attribute lists.
 ///
 /// # Specification
 /// - ensures: returns the impl item's own attribute slice for every kind that
@@ -479,7 +484,7 @@ fn impl_item_attrs(item: &syn::ImplItem) -> &[syn::Attribute]
     }
 }
 
-/// Return the attributes of a trait item.
+/// Trait members retain their own attribute lists.
 ///
 /// # Specification
 /// - ensures: returns the trait item's own attribute slice for every kind that
@@ -496,7 +501,7 @@ fn trait_item_attrs(item: &syn::TraitItem) -> &[syn::Attribute]
     }
 }
 
-/// Return the attributes of a foreign item.
+/// Foreign declarations retain their own attribute lists.
 ///
 /// # Specification
 /// - ensures: returns the foreign item's own attribute slice for every kind

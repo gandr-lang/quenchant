@@ -1,31 +1,20 @@
-//! The `# Adequacy` rustdoc grammar, machine-checked wherever the block exists.
+//! Parse an authored adequacy hypothesis without crediting the evidence it
+//! names.
 //!
-//! The block is the item's test plan. It states which rung of the adequacy
-//! ladder carries the item's decision surfaces, and it names the tests a
-//! reviewer can apply a mutant against and watch fail. A block that states no
-//! rung has named no plan, and a block that names no test has named no
-//! evidence — in both cases the prose reads like an obligation and discharges
-//! nothing.
+//! A block supplies a proposed rung and witness paths. The grammar makes those
+//! claims addressable; it does not decide whether a test discriminates a
+//! relevant fault, whether a property class was omitted, or whether the
+//! selected observations can expose the implementation effect under discussion.
 //!
-//! # What this gate does and does not decide
+//! Which new or substantially changed items require a block remains a review
+//! question. Required trait declarations may state their reasoned
+//! declaration-only boundary; an implementation cannot use that boundary to
+//! excuse its behavior.
 //!
-//! This is a **shape** gate. It checks the grammar of the block wherever an
-//! item carries one; whether an item is *required* to carry one stays with
-//! review, because "nontrivial and new or substantially refactored" is not a
-//! property of the HIR.
-//!
-//! Whether a named witness resolves to exactly one runnable test needs the
-//! workspace's test inventory, which no lint pass can see. That is the G0 gate
-//! in `quenchant-gates`, and it reads the same bullets under the same
-//! section rule.
-//!
-//! # The section terminates at the next heading
-//!
-//! Rustdoc-injecting attribute macros append their own heading after author
-//! prose. A reader that ran to the end of the doc block would absorb the
-//! injected bullets and complete a truncated section with them, so the section
-//! ends at the next heading of any level — the rule [`section_lines`] applies
-//! to every fixed-grammar section this crate reads.
+//! Runnable resolution needs a package/target inventory and belongs to
+//! `quenchant-gates`. Here, the shared section reader stops at the next heading
+//! at any level so injected or unrelated bullets cannot repair an incomplete
+//! authored claim.
 
 use quenchant_shape::shape::Maybe;
 
@@ -84,27 +73,15 @@ use crate::semantic::TraitRequiredMethod;
 declare_lint! {
     /// ### What it does
     ///
-    /// Checks the grammar of an item's `# Adequacy` rustdoc section wherever
-    /// one is present: exactly one `- hypothesis:` bullet naming an adequacy
-    /// ladder rung, at least one `- witness:` bullet naming an exact test path,
-    /// and `- declaration-only:` — with a reason — only on a required trait
-    /// method.
+    /// An authored adequacy section pairs one rung-bearing hypothesis with either exact witness paths or a reasoned declaration-only exemption; the exemption is admitted only on a required trait method.
     ///
     /// ### Why is this bad?
     ///
-    /// The block is the item's test plan and the reviewer's index into its
-    /// evidence. A hypothesis that names no rung has stated no plan; a block
-    /// that names no witness has named no evidence; and a `declaration-only`
-    /// exemption on an item with a body excuses the very code that needed
-    /// witnessing. Each defect reads as a discharged obligation and discharges
-    /// nothing, which is worse than an absent block: the absence is visible.
+    /// Review needs an addressable hypothesis and the evidence offered for it. Missing rungs, missing witnesses, and body-bearing declarations claiming exemption leave that relationship unstated while appearing to supply it.
     ///
     /// ### What this gate does not decide
     ///
-    /// Whether an item must carry a block at all stays with review. Whether a
-    /// named witness resolves to exactly one runnable test in the item's own
-    /// crate needs the workspace test inventory, and is the `workflow-gates`
-    /// G0 gate.
+    /// Review determines which items owe an adequacy section. Runnable-path resolution requires package and target inventory and belongs to the `quenchant-gates witnesses` command.
     ///
     /// ### Example
     ///
@@ -114,7 +91,7 @@ declare_lint! {
     /// fn parse() {}
     /// ```
     ///
-    /// Use instead:
+    /// A section satisfying the grammar:
     ///
     /// ```rust
     /// /// # Adequacy
@@ -130,12 +107,13 @@ declare_lint! {
 
 impl_lint_pass!(WorkflowAdequacy => [ADEQUACY_BLOCK_GRAMMAR]);
 
-/// Late lint pass checking the `# Adequacy` block grammar.
+/// Compiler-side grammar validation for authored adequacy sections.
 pub struct WorkflowAdequacy;
 
 impl<'tcx> LateLintPass<'tcx> for WorkflowAdequacy
 {
-    /// Check any item's block, at its own name.
+    /// Item-local documentation determines the obligation reported at the
+    /// item's name.
     ///
     /// # Specification
     /// - ensures: reads the block wherever the item carries one; an item is
@@ -151,7 +129,7 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowAdequacy
         check_block(cx, item.owner_id.def_id, span, TraitRequiredMethod(false));
     }
 
-    /// Check an associated item's block, at its own name.
+    /// An implementation member is a body-bearing adequacy site.
     ///
     /// # Specification
     /// - ensures: reads the block wherever the item carries one; an implemented
@@ -171,7 +149,7 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowAdequacy
         );
     }
 
-    /// Check a trait item's block, at its own name.
+    /// Required trait methods alone may use the reasoned body-free exemption.
     ///
     /// # Specification
     /// - ensures: reads the block wherever the item carries one, admitting the
@@ -196,7 +174,7 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowAdequacy
         );
     }
 
-    /// Check a foreign item's block, at its own name.
+    /// Foreign declarations remain distinct from required trait methods.
     ///
     /// # Specification
     /// - ensures: reads the block wherever the item carries one; a foreign
@@ -217,34 +195,35 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowAdequacy
     }
 }
 
-/// Why an `# Adequacy` block fails the fixed grammar.
+/// Defects in the relationship between an adequacy hypothesis and its offered
+/// evidence.
 enum AdequacyDefect
 {
-    /// The block states no hypothesis at all.
+    /// No bullet states the hypothesis being tested.
     HypothesisMissing,
-    /// The block states more than one hypothesis.
+    /// Multiple hypotheses violate the section's single-plan grammar.
     HypothesisDuplicated,
-    /// The hypothesis names no rung of the adequacy ladder.
+    /// The hypothesis does not identify an evidence-ladder rung.
     HypothesisNamesNoRung,
-    /// A witness or exemption bullet precedes the hypothesis.
+    /// Evidence is offered before the hypothesis it should support.
     HypothesisNotFirst,
-    /// The block names no witness and claims no exemption.
+    /// Neither runnable evidence nor a declaration-only boundary is stated.
     WitnessMissing,
-    /// A `- witness:` bullet names no single backticked path.
+    /// Witness text does not denote one complete quoted value.
     WitnessMalformed,
-    /// The exemption sits on an item that is not a required trait method.
+    /// This declaration kind cannot claim the required-method exemption.
     ExemptionNotDeclaration,
-    /// The exemption states no reason.
+    /// The body-free exemption lacks its justification.
     ExemptionUnreasoned,
-    /// The exemption is combined with witnesses.
+    /// Runnable witnesses and a declaration-only exemption are combined.
     ExemptionWithWitness,
-    /// The exemption appears more than once.
+    /// The declaration-only boundary is stated more than once.
     ExemptionDuplicated,
 }
 
 impl AdequacyDefect
 {
-    /// Return the diagnostic text for this defect.
+    /// Each grammar defect selects its own repair-directed diagnostic.
     ///
     /// # Specification
     /// trivial.
@@ -292,7 +271,7 @@ impl AdequacyDefect
     }
 }
 
-/// Check the `# Adequacy` block on one item, when it carries one.
+/// An item's exact adequacy heading activates grammar reporting for that item.
 ///
 /// # Specification
 /// - requires: `def_id` identifies a crate-local item, `span` is its own name
@@ -321,10 +300,10 @@ fn check_block(
     clippy_utils::diagnostics::span_lint(cx, ADEQUACY_BLOCK_GRAMMAR, span, defect.message().0);
 }
 
-/// The heading that opens the adequacy block.
+/// Exact section label used to discover an authored adequacy claim.
 const HEADING: &str = "# Adequacy";
 
-/// Return the grammar defect in one `# Adequacy` section, if any.
+/// Ordered interpretation preserves the first reportable grammar failure.
 ///
 /// # Specification
 /// - requires: `bullets` is the folded bullet list of an `# Adequacy` section,
@@ -411,7 +390,7 @@ fn grammar_defect(
     Maybe::Absent(grammar_check::Accepted::WellFormed)
 }
 
-/// Return whether a hypothesis value names a rung of the adequacy ladder.
+/// Token boundaries distinguish an evidence-ladder rung from a substring.
 ///
 /// # Specification
 /// - requires: `value` is the folded value of the `- hypothesis:` bullet.
@@ -437,7 +416,7 @@ fn names_ladder_rung(value: HypothesisValue<'_>) -> NamesLadderRung
     )
 }
 
-/// Return the exact path a `- witness:` bullet names.
+/// Quoted witness values remain distinct from surrounding explanatory prose.
 ///
 /// # Specification
 /// - requires: `bullet` is a folded `- witness:` bullet.
@@ -489,8 +468,8 @@ mod tests
     use crate::semantic::SectionHeading;
     use crate::semantic::TraitRequiredMethod;
 
-    /// Build a doc block the way a `///` comment reaches the pass: one leading
-    /// space, and whatever further indentation the author wrote.
+    /// Fixture text reproduces the doc-comment prefix while retaining authored
+    /// indentation.
     ///
     /// # Specification
     /// trivial.
@@ -499,8 +478,8 @@ mod tests
         lines.iter().map(|line| format!(" {}", line.0)).collect()
     }
 
-    /// Read the `# Adequacy` section of a doc block, as [`super::check_block`]
-    /// reads a real one.
+    /// Fixture interpretation uses the same section boundary as the reporting
+    /// path.
     ///
     /// # Specification
     /// trivial.

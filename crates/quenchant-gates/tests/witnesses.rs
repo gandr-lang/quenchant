@@ -1,5 +1,5 @@
-//! Witness extraction and resolution: what counts as an obligation, and what
-//! each way of failing to resolve one is called.
+//! Obligation extraction and resolution distinguish source scope, ownership,
+//! and repair classes.
 
 use std::path::Path;
 
@@ -11,8 +11,8 @@ use quenchant_gates::witnesses::opens_heading;
 use quenchant_gates::witnesses::resolve;
 use quenchant_gates::witnesses::witness_claims;
 
-/// An inventory holding one library test and two integration targets of one
-/// crate, plus a sibling crate exposing a test of its own.
+/// Library, integration, and sibling-owned aliases distinguish the resolver's
+/// ownership cases.
 ///
 /// # Specification
 /// trivial.
@@ -49,7 +49,7 @@ fn catalog() -> TestCatalog
     .expect("the fixture listing is supported")
 }
 
-/// Extract the claims of one source string, failing the test on a parse error.
+/// Fixture parsing must succeed before witness extraction is observed.
 ///
 /// # Specification
 /// trivial.
@@ -62,7 +62,8 @@ fn claims(source: SourceText<'_>) -> Vec<String>
         .collect()
 }
 
-/// Resolve one source string's claims and report the finding kinds, in order.
+/// Ordered finding classes expose resolution decisions independently of
+/// wording.
 ///
 /// # Specification
 /// trivial.
@@ -78,7 +79,7 @@ fn kinds(
         .collect()
 }
 
-/// Resolve one source string's claims and report the finding details, in order.
+/// Ordered repair details expose the candidates supplied by resolution.
 ///
 /// # Specification
 /// trivial.

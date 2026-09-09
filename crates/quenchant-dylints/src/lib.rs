@@ -1,32 +1,25 @@
-//! Reusable Dylint gates for Rust workflow boundaries.
+//! Compiler-visible policy boundaries, kept separate from verification
+//! evidence.
 //!
-//! Seven rules ship here. Four are the type and call planes:
-//! `#[repr(transparent)]` on single-field wrappers, semantic-wrapper
-//! (non-primitive) function and method signatures, the outright ban on
-//! recursive call cycles, and its type-plane closure — the ban on ADTs that own
-//! their way back to themselves.
+//! Layout and signature rules constrain the type-level approximation. Call and
+//! ownership graphs expose different routes to recursion. Their findings are
+//! useful refutations within those analyses, not general termination proofs.
 //!
-//! Specification attributes use `anodized`. The former `specifications`
-//! adoption lints guarded competing predicate attributes, bypassable early
-//! exits, and injected predicate documentation. Those premises disappeared with
-//! the pinned `#[spec]` expansion; their registrations and analysis were
-//! removed.
+//! The remaining rules read authored rustdoc: specification presence, adequacy
+//! grammar, and declared judgment scrutinees. A correctly shaped statement has
+//! not thereby been satisfied. Runnable witness resolution belongs to
+//! `quenchant-gates`, which can inspect the workspace inventory that a lint
+//! pass cannot see.
 //!
-//! Three read rustdoc off the items the crate authors. `specification_present`
-//! requires a `# Specification` block on every function and method, and denies
-//! a block whose `trivial` marker sits beside a clause; an item counts as the
-//! crate's own only where both its name and its declaration are text the author
-//! wrote, so a method a macro from another crate generates under the author's
-//! identifier is exempt, and the reversal is a consumer whose generated
-//! siblings warrant documentation. The `# Adequacy` block
-//! is shape-checked in place, its companion resolution gate (G0) running beside
-//! the lint crate in `quenchant-gates`; the `# Judgement` block marks the
-//! checking judgement's own scrutinees, and a match over one of them is denied
-//! a fallback arm.
+//! Authorship is determined from both the declaration and its name. A foreign
+//! macro can manufacture a method while reusing an author's identifier; that
+//! generated sibling must not acquire the author's documentation obligation by
+//! token coincidence. This distinction never makes a generated assertion
+//! failure safe to ignore.
 //!
-//! The lint library is a `cdylib` built under a pinned nightly because a lint
-//! pass links rustc's internal libraries; see the crate `README.md` for the pin
-//! and its rationale.
+//! Specification fixtures use the public facade and published backend. The
+//! `cdylib` itself links compiler internals, so its compiler, Clippy source,
+//! and Dylint driver are one compatibility boundary.
 
 #![feature(rustc_private)]
 #![expect(
@@ -43,26 +36,16 @@ extern crate rustc_session;
 extern crate rustc_span;
 
 mod adequacy;
-
 mod callgraph;
-
 mod graph;
-
 mod judgement;
-
 mod ownership;
-
 mod rustdoc;
-
 mod semantic;
-
 mod signature;
-
 mod specification;
-
 #[cfg(test)]
 mod specification_tests;
-
 mod termination;
 
 use std::collections::HashMap;
@@ -124,8 +107,7 @@ dylint_linting::dylint_library!();
 declare_lint! {
     /// ### What it does
     ///
-    /// Requires every single-field named or tuple struct to declare
-    /// `#[repr(transparent)]`.
+    /// A one-field named or tuple struct must make its transparent layout explicit.
     ///
     /// ### Why is this bad?
     ///
@@ -140,7 +122,7 @@ declare_lint! {
     /// struct UserId(u64);
     /// ```
     ///
-    /// Use instead:
+    /// Explicit layout:
     ///
     /// ```rust
     /// #[repr(transparent)]
@@ -154,17 +136,11 @@ declare_lint! {
 declare_lint! {
     /// ### What it does
     ///
-    /// Rejects function and method signatures that expose Rust primitives in
-    /// workspace-owned APIs, including primitives below structural type layers,
-    /// selected transparent containers, and type aliases.
+    /// Workspace-authored signatures must reach a nominal boundary before exposing primitives, including beneath structural layers, inspected containers, and aliases.
     ///
     /// ### Why is this bad?
     ///
-    /// Bare primitives erase semantic roles at crate boundaries. Nominal domain
-    /// wrappers keep distinct meanings distinct for humans, tools, and agents.
-    /// This lint establishes only that the signature reaches a local nominal
-    /// transparent boundary. The wrapper's field visibility, conversion traits,
-    /// and documentation remain the responsibility of Clippy and review.
+    /// Nominal domain types distinguish meanings that share a primitive representation. This check recognizes local transparent boundaries; field privacy, conversion discipline, and the adequacy of the domain meaning remain separate Clippy and review obligations.
     ///
     /// ### Example
     ///
@@ -172,7 +148,7 @@ declare_lint! {
     /// fn parse(offset: usize) -> Option<bool> { Some(true) }
     /// ```
     ///
-    /// Use instead:
+    /// An interface retaining domain roles and absence evidence:
     ///
     /// ```rust
     /// #[repr(transparent)]
@@ -181,7 +157,16 @@ declare_lint! {
     /// #[repr(transparent)]
     /// struct ParseSucceeded(bool);
     ///
-    /// fn parse(offset: ByteOffset) -> Option<ParseSucceeded> { Some(ParseSucceeded(true)) }
+    /// quenchant_shape::reason_enum! {
+    ///     mod parse_attempt {
+    ///         pub enum Pending { MoreInputRequired }
+    ///     }
+    /// }
+    ///
+    /// trait Parser {
+    ///     fn parse(&self, offset: ByteOffset)
+    ///         -> quenchant_shape::shape::Maybe<ParseSucceeded, parse_attempt::Pending>;
+    /// }
     /// ```
     pub PRIMITIVE_SIGNATURE,
     Deny,
@@ -191,37 +176,19 @@ declare_lint! {
 declare_lint! {
     /// ### What it does
     ///
-    /// Denies every function that participates in a crate-local recursive call
-    /// cycle.
+    /// Every local function in a recursive call component receives a denial.
     ///
     /// ### Why is this bad?
     ///
-    /// Rust guarantees no tail-call optimization, so recursion whose depth
-    /// scales with input is a latent stack overflow on real data. The policy
-    /// requires the explicit worklist, heap frame stack, or iterative loop instead.
+    /// Input-dependent call depth can exhaust the stack because Rust supplies no tail-call elimination guarantee. An explicit worklist, heap continuation stack, or loop makes that control state bounded independently of the host call stack.
     ///
     /// ### The exception
     ///
-    /// An owner-approved exception is `#[expect(recursion_forbidden, reason =
-    /// "...")]` on the item itself, and the item must also carry a complete
-    /// `# Termination` rustdoc section with the fixed bullet grammar
-    /// `- reason:`, `- measure:`, `- boundedness:`, `- input recursion:`.
-    /// Lint levels are inherited, but approval is not: an expectation on an
-    /// enclosing module or on the crate root approves nothing inside it.
-    /// A claim of `- input recursion: none.` is rejected when a call inside the
-    /// cycle passes data derived from the function's own parameters; prose
-    /// written after the claim does not weaken it.
+    /// An approved exception is item-local `#[expect(recursion_forbidden, reason = "...")]` plus a complete `# Termination` section containing ordered `reason`, `measure`, `boundedness`, and `input recursion` bullets. Enclosing lint levels do not confer approval. A no-input-recursion claim is refuted by a cycle edge carrying parameter-derived data, including when explanatory prose follows the claim.
     ///
     /// ### Blind spots
     ///
-    /// This is a call-plane gate over crate-local HIR call edges, and it is a
-    /// floor rather than a proof. A cycle whose edge carries no such edge is
-    /// not denied: derived-trait recursion routes through non-local `std`
-    /// generics, compiler-generated drop glue has no HIR function, and a callee
-    /// reached through a *function pointer* has had its definition id erased by
-    /// the coercion. A function *item* held in a binding keeps its `FnDef` type
-    /// and is resolved, and a call written inside a closure counts as a call by
-    /// the function that builds the closure.
+    /// Only recovered local HIR edges participate. Derived-trait calls through external generics, compiler-generated drop glue, and definition-erasing function-pointer coercions can hide cycles. A bound function item retains `FnDef` identity and remains resolvable. Calls inside closures count conservatively against the function constructing the closure.
     ///
     /// ### Example
     ///
@@ -229,7 +196,7 @@ declare_lint! {
     /// fn depth(node: Node) -> Depth { depth(node.child()) }
     /// ```
     ///
-    /// Use instead:
+    /// Explicit iteration:
     ///
     /// ```rust
     /// fn depth(node: Node) -> Depth {
@@ -250,33 +217,19 @@ declare_lint! {
 declare_lint! {
     /// ### What it does
     ///
-    /// Denies every locally defined ADT that owns its way back to itself,
-    /// directly or through other types.
+    /// Local ADTs are denied when owned fields can lead back to the same type.
     ///
     /// ### Why is this bad?
     ///
-    /// Pointer-linked recursive data defeats destruction and duplication
-    /// totality at once: drop glue and derived `Clone` both recurse over the
-    /// pointee, with a depth that scales with the data. Neither is a HIR
-    /// function, so the call-plane gate cannot see either. The sanctioned
-    /// recursive data shape is flat and id-addressed — children are indices
-    /// into an arena or interning table.
+    /// Ownership-linked recursion can make destruction and derived cloning recurse with data depth even when no authored function does. Their generated behavior is outside the call graph. Flat arenas and interning tables make children identities rather than recursively owned nodes.
     ///
     /// ### What forms an edge
     ///
-    /// The question is asked of the field's *type*, not of its spelling: a
-    /// `Box` whose pointee returns only through an arena index closes no cycle,
-    /// and a `Vec<Self>` closes one without naming a pointer at all. Array,
-    /// slice and tuple components are owned; the type arguments of an ADT are
-    /// owned at every parameter that reaches an owned field position, which for
-    /// an ADT outside the crate means every parameter. References, raw
-    /// pointers, function pointers, closures and trait objects own nothing, and
-    /// `PhantomData` and `Weak` are non-owning by name.
+    /// Ownership follows instantiated field types. `Vec<Self>` can close a cycle; a box containing only an arena index does not. Arrays, slices, and tuples own their components. Local generic positions use inferred field ownership, while external positions are conservatively owning. References, raw pointers, function pointers, closures, trait objects, `PhantomData`, and `Weak` contribute no edge in this analysis.
     ///
     /// ### The allow-list
     ///
-    /// A generic from another crate that owns none of its arguments is declared
-    /// in the workspace's `dylint.toml`, and each entry states the evidence:
+    /// External generics can be declared non-owning in workspace `dylint.toml` only with a justification:
     ///
     /// ```toml
     /// [quenchant-dylints]
@@ -285,13 +238,11 @@ declare_lint! {
     /// ]
     /// ```
     ///
-    /// An entry stating no justification is refused, so the type it names stays
-    /// conservatively owning.
+    /// A missing justification leaves the external type conservatively owning and produces a configuration diagnostic.
     ///
     /// ### Blind spots
     ///
-    /// A cycle closed through a trait object, a closure capture, or a raw
-    /// pointer is not denied: none of the three names the type it reaches.
+    /// Trait objects, closure captures, and raw pointers can hide a concrete return path and therefore escape this type-identity analysis.
     ///
     /// ### Example
     ///
@@ -302,7 +253,7 @@ declare_lint! {
     /// }
     /// ```
     ///
-    /// Use instead:
+    /// Flat identity-addressed storage:
     ///
     /// ```rust
     /// #[repr(transparent)]
@@ -329,7 +280,8 @@ impl_lint_pass!(WorkflowBoundaries => [
     RECURSIVE_OWNED_POINTER,
 ]);
 
-/// Register the workflow Dylint passes.
+/// The driver's symbol entry point installs the workspace's compiler-policy
+/// passes.
 ///
 /// # Specification
 /// - requires: the driver calls this once per compilation, before any pass
@@ -368,48 +320,50 @@ pub fn register_lints(
     lint_store.register_late_pass(Box::new(|_| Box::new(WorkflowSpecification)));
 }
 
-/// The diagnostic emitted at every member of a recursive call cycle.
+/// Every member of a recovered call cycle receives this denial.
 const RECURSION_MESSAGE: &str = concat!(
     "function participates in a recursive call cycle; recursion is forbidden — write the ",
     "iterative form (worklist, explicit frame stack), or take the owner-approved exception ",
     "(`#[expect(recursion_forbidden, reason = \"...\")]` plus a complete `# Termination` section)",
 );
 
-/// The diagnostic emitted when the exception was inherited, not written here.
+/// Inherited lint state cannot supply item-local exception approval.
 const INHERITED_EXPECT_MESSAGE: &str = concat!(
     "recursion exception must be attached to this item: an ",
     "`#[expect(recursion_forbidden, ..)]` on an enclosing module or on the crate root approves ",
     "nothing inside it",
 );
 
-/// The diagnostic emitted when an exception attribute states no reason.
+/// An exception without a reason lacks its required justification.
 const MISSING_REASON_MESSAGE: &str = concat!(
     "recursion exception must state `reason = \"...\"` on its ",
     "`#[expect(recursion_forbidden, ..)]` attribute",
 );
 
-/// Whether an item claims the owner-approved recursion exception, and how well.
+/// Exception syntax distinguishes local justification from inherited lint
+/// state.
 enum ExceptionState
 {
-    /// Neither the item nor anything enclosing it expects the lint.
+    /// No relevant expectation appears on this item or an enclosing scope.
     Absent,
-    /// The item carries the expectation with a `reason`.
+    /// This item carries the expected lint and an explicit reason.
     Approved,
-    /// The item carries the expectation without a `reason`.
+    /// This item names the expected lint without its reason.
     Unreasoned,
-    /// The expectation was inherited from an enclosing module or the crate
-    /// root rather than written on the item.
+    /// An enclosing module or crate supplies the expectation instead of the
+    /// item.
     Inherited,
 }
 
-/// The diagnostic emitted at every ADT on an ownership cycle.
+/// Each cyclic type receives the ownership-recursion denial.
 const OWNING_CYCLE_MESSAGE: &str = concat!(
     "type owns its way back to itself; pointer-linked recursive data is forbidden — the drop glue ",
     "and the derived traversals both recurse over the pointee, and neither is a function the ",
     "call-plane gate can see",
 );
 
-/// The help attached to every ownership-cycle diagnostic.
+/// Ownership repair guidance replaces recursively owned children with
+/// identities.
 const OWNING_CYCLE_HELP: &str = concat!(
     "use the flat id-addressed form: a child is an index into an arena or interning table, never a ",
     "node linked through `Box`, `Rc`, `Arc`, `Vec`, or any other owning carrier. Outside a ",
@@ -417,22 +371,25 @@ const OWNING_CYCLE_HELP: &str = concat!(
     "boundaries",
 );
 
-/// Late lint pass implementing the workflow's Rust boundary gates.
+/// Per-crate collection and post-walk analysis share one boundary-policy state.
 struct WorkflowBoundaries
 {
-    /// Crate-local function metadata by definition id, filled by `check_fn`.
+    /// Function definitions collected before whole-crate cycle analysis.
     functions: HashMap<LocalDefId, FunctionNode>,
-    /// Crate-local callsites by caller definition id, filled by `check_fn`.
+    /// Caller identity indexes the local edges and argument roots collected
+    /// from bodies.
     edges: HashMap<LocalDefId, Vec<CallEdge>>,
-    /// Crate-local ADT metadata by definition id, filled by `check_item`.
+    /// Type definitions retain their diagnostic identity until ownership
+    /// analysis.
     adts: HashMap<LocalDefId, AdtNode>,
-    /// External generics the workspace configuration declares non-owning.
+    /// Justified external ownership boundaries constrain generic traversal.
     allow_list: NonOwningAllowList,
 }
 
 impl WorkflowBoundaries
 {
-    /// Build the pass around the configured non-owning allow-list.
+    /// Configuration admission precedes collection of the crate's functions and
+    /// types.
     ///
     /// # Specification
     /// trivial.
@@ -449,7 +406,8 @@ impl WorkflowBoundaries
 
 impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
 {
-    /// Deny an untransparent single-field struct, and record every ADT.
+    /// Layout checks and whole-crate type collection share the authored item
+    /// boundary.
     ///
     /// # Specification
     /// - ensures: reports a struct of exactly one field that declares no
@@ -487,7 +445,8 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
         }
     }
 
-    /// Check a signature, and record the function and its callsites.
+    /// Signature inspection retains the function and call data needed after
+    /// traversal.
     ///
     /// # Specification
     /// - ensures: checks the declaration unless the function implements a
@@ -528,7 +487,7 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
         self.edges.insert(def_id, local_call_edges(cx, body.value));
     }
 
-    /// Check a required trait method's signature.
+    /// Body-free trait methods still own their authored signature boundary.
     ///
     /// # Specification
     /// - ensures: checks the declaration of a method declared without a body; a
@@ -551,7 +510,7 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
         }
     }
 
-    /// Check a foreign function's signature.
+    /// Foreign function declarations still expose an authored signature.
     ///
     /// # Specification
     /// - ensures: checks the declaration of a foreign function, and ignores
@@ -574,7 +533,8 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
         }
     }
 
-    /// Report every whole-crate denial once the walk has finished.
+    /// Whole-crate findings are determined after all relevant declarations have
+    /// been collected.
     ///
     /// # Specification
     /// - requires: the item walk has recorded every crate-local function, call
@@ -634,9 +594,8 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
             let hir_id = cx.tcx.local_def_id_to_hir_id(def_id);
             let report_span = reportable_span(cx, def_id, node.span);
 
-            // Emitted unconditionally: with no exception attribute this is the
-            // denial, and with one it is what fulfils the expectation so rustc
-            // suppresses it instead of reporting an unfulfilled expectation.
+            // The denial also fulfills an item-local expectation. Omitting it for an
+            // excepted item would instead leave that expectation unfulfilled.
             span_lint_hir(
                 cx,
                 RECURSION_FORBIDDEN,
@@ -657,8 +616,8 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
                 },
             };
 
-            // Reported at the crate root so the item's own expectation cannot
-            // swallow the report that its exception is unjustified.
+            // Crate-root lint state prevents the item's expectation from hiding an invalid
+            // exception.
             span_lint_hir(
                 cx,
                 RECURSION_FORBIDDEN,
@@ -670,7 +629,7 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
     }
 }
 
-/// Return a span for `def_id` that a diagnostic can actually be seen at.
+/// Diagnostic anchoring must survive macro provenance filtering.
 ///
 /// # Specification
 /// - requires: `def_id` is a crate-local function, and `item_span` is its
@@ -685,12 +644,10 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
 ///
 /// # Why the fallback exists
 ///
-/// rustc discards any lint whose primary span sits in an external macro, and
-/// `SyntaxContext::in_external_macro` counts **every** attribute macro as
-/// external — local crate or not. An attribute macro that rewrites a function
-/// body therefore owns the item span, so a diagnostic reported there is dropped
-/// silently. The function's own name is a pass-through token that keeps the
-/// author's context, so a diagnostic anchored there survives `#[spec]`.
+/// Rustc suppresses diagnostics whose primary span belongs to an external
+/// macro, including attribute macros defined locally. Such a macro can own the
+/// whole-item span while preserving the authored name token. Re-anchoring to
+/// that name keeps the diagnostic visible across specification expansion.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — the UI matrix separates an ordinary recursive function
@@ -710,7 +667,8 @@ fn reportable_span(
     cx.tcx.def_ident_span(def_id).unwrap_or(item_span)
 }
 
-/// Return whether `item` already declares `#[repr(transparent)]`.
+/// An explicit transparent representation satisfies the one-field layout
+/// requirement.
 ///
 /// # Specification
 /// - ensures: answers affirmatively exactly when one of the item's own `repr`
@@ -727,7 +685,8 @@ fn has_transparent_repr(
     )
 }
 
-/// Return whether `def_id` is a method implementing a non-local trait.
+/// Foreign trait identity determines whether the trait owns the required
+/// signature shape.
 ///
 /// # Specification
 /// - ensures: answers affirmatively exactly when the function implements a
@@ -748,7 +707,8 @@ fn implements_non_local_trait(
     )
 }
 
-/// Return whether the item at `hir_id` claims the recursion exception.
+/// Item-local reasoned expectations are distinguished from missing and
+/// inherited ones.
 ///
 /// # Specification
 /// - requires: `hir_id` identifies a crate-local function item.
@@ -788,7 +748,8 @@ fn exception_state(
     ExceptionState::Approved
 }
 
-/// Return whether the lint-level attribute at `span` is one of the item's own.
+/// Attribute-span ownership determines whether exception syntax belongs to this
+/// item.
 ///
 /// # Specification
 /// - requires: `span` is the source of a resolved lint level, and `hir_id`
@@ -815,9 +776,8 @@ fn expectation_on_item(
 #[cfg(test)]
 mod tests
 {
-    /// The allow-list the `ui_config` fixture is read under: one justified
-    /// entry, which is applied, and one entry stating no justification, which
-    /// is refused.
+    /// Configuration witnesses distinguish a justified non-owning boundary from
+    /// an unjustified entry that must remain owning.
     const ALLOW_LIST: &str = r#"
 [quenchant-dylints]
 non_owning_generics = [

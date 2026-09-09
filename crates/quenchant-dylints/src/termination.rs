@@ -1,18 +1,16 @@
-//! The `# Termination` rustdoc specification that an approved recursion
-//! exception must carry.
+//! Structured evidence required beside an approved recursive exception.
 //!
-//! The section has a fixed grammar — `- reason:`, `- measure:`,
-//! `- boundedness:`, `- input recursion:`, in that order, each with a non-empty
-//! value — and one of its claims is machine-checkable: `- input recursion:
-//! none.` is refuted whenever some call inside the recursive component passes
-//! data derived from the caller's own parameters.
+//! The section requires nonempty `reason`, `measure`, `boundedness`, and
+//! `input recursion` bullets in that order. Shape makes a claim inspectable; it
+//! does not prove the measure or supply approval inherited from another item.
 //!
-//! The reader terminates the section at the next heading of any level. A reader
-//! that instead consumes a fixed number of lines silently swallows whatever
-//! follows a short section — including doc blocks injected by attribute macros,
-//! which append their own heading after author prose. Matching only `# ` leaves
-//! the same hole open one level down, where a `## ` block completes a truncated
-//! section just as effectively.
+//! The local call graph can refute `input recursion: none.` when a recursive
+//! edge carries parameter-derived data. A non-refuted statement remains scoped
+//! to the analysis's known edges and provenance information.
+//!
+//! Every heading level terminates the section. Otherwise a short authored block
+//! could be completed accidentally by unrelated or macro-injected prose that
+//! follows it. Counting a fixed number of lines has the same defect.
 
 use std::collections::HashMap;
 
@@ -77,7 +75,7 @@ use crate::semantic::TerminationLine;
 /// The heading that opens the termination specification.
 const HEADING: &str = "# Termination";
 
-/// The required bullets, in the order the grammar fixes.
+/// Ordered field prefixes define the admitted termination-section grammar.
 const REQUIRED_BULLETS: [&str; 4] = [
     "- reason:",
     "- measure:",
@@ -85,21 +83,21 @@ const REQUIRED_BULLETS: [&str; 4] = [
     "- input recursion:",
 ];
 
-/// Why an approved recursion exception fails to justify itself.
+/// Defects preventing an approved recursive exception from meeting its stated
+/// obligations.
 pub enum TerminationDefect
 {
-    /// The item carries the expectation attribute but no `# Termination`
-    /// section at all.
+    /// Exception syntax appears without the required termination section.
     SectionMissing,
-    /// The section exists but does not match the fixed bullet grammar.
+    /// The authored section fails the ordered nonempty-bullet grammar.
     GrammarViolated,
-    /// The section claims no input recursion, and the call graph disagrees.
+    /// Visible argument provenance refutes the authored no-input claim.
     InputRecursionRefuted,
 }
 
 impl TerminationDefect
 {
-    /// Return the diagnostic text for this defect.
+    /// Each defect selects a diagnostic identifying the unmet obligation.
     ///
     /// # Specification
     /// trivial.
@@ -169,7 +167,8 @@ pub fn termination_defect(
     Maybe::Absent(termination_check::Accepted::DescribedInput)
 }
 
-/// Return rustdoc lines attached to `def_id`, trimmed for structural matching.
+/// Termination interpretation deliberately discards surrounding line
+/// whitespace.
 ///
 /// # Specification
 /// - requires: `def_id` identifies a crate-local item.
@@ -192,7 +191,8 @@ fn rustdoc_lines(
         .collect()
 }
 
-/// Split one rustdoc attribute's text into trimmed lines.
+/// Attribute fragments enter the termination grammar as individually trimmed
+/// lines.
 ///
 /// # Specification
 /// trivial.
@@ -201,8 +201,7 @@ fn split_doc_lines(text: RustdocText<'_>) -> Vec<String>
     text.0.lines().map(|line| line.trim().to_owned()).collect()
 }
 
-/// Return the `# Termination` section's bullets, each folded with its
-/// continuation lines.
+/// Continuations fold within the termination section's own heading boundary.
 ///
 /// # Specification
 /// - requires: `lines` are the item's rustdoc lines, already trimmed.
@@ -245,7 +244,7 @@ fn section_bullets(lines: &[String]) -> Maybe<Vec<String>, termination_section::
     Maybe::Present(bullets)
 }
 
-/// Return whether `line` opens a rustdoc heading of any level.
+/// Every heading level can close the section being interpreted.
 ///
 /// # Specification
 /// - requires: `line` is one trimmed rustdoc line.
@@ -265,7 +264,8 @@ pub fn opens_heading(line: RustdocLine<'_>) -> OpensHeading
     OpensHeading(rest.len() < line.0.len() && rest.starts_with(' '))
 }
 
-/// Validate the fixed bullet grammar and return the `- input recursion:` value.
+/// The input-recursion value becomes available only after the whole ordered
+/// grammar matches.
 ///
 /// # Specification
 /// - requires: `bullets` is the folded bullet list of a `# Termination`
@@ -297,7 +297,7 @@ fn grammar_input_recursion(bullets: &[String]) -> Maybe<String, input_grammar::M
     Maybe::Present(value.trim().to_owned())
 }
 
-/// Return whether `line` is a required bullet with a non-empty value.
+/// A required prefix alone does not supply the field's promised explanation.
 ///
 /// # Specification
 /// - requires: `line` is one trimmed rustdoc line and `prefix` is a required
@@ -318,8 +318,8 @@ fn required_bullet_has_value(
     )
 }
 
-/// Return whether an `- input recursion:` value claims no recursion over
-/// caller-supplied data.
+/// A no-input claim activates provenance-based refutation rather than accepting
+/// descriptive recursion.
 ///
 /// # Specification
 /// - requires: `value` is the folded value of the `- input recursion:` bullet,
@@ -340,9 +340,8 @@ fn required_bullet_has_value(
 /// - witness: `termination::tests::none_claim_survives_any_punctuation`
 fn claims_no_input_recursion(value: TerminationLine<'_>) -> ClaimsNoInputRecursion
 {
-    // Splitting on `.` alone would let `none?` or `none!` read as a described
-    // recursion and skip the refutation entirely, so the word is taken on its
-    // own boundary and whatever follows is classified rather than parsed.
+    // Punctuation cannot disable refutation: `none?` and `none!` carry the same
+    // claim as `none.`. Recognize the word before classifying its continuation.
     let trimmed = value
         .0
         .trim()
@@ -357,9 +356,8 @@ fn claims_no_input_recursion(value: TerminationLine<'_>) -> ClaimsNoInputRecursi
     if !word.eq_ignore_ascii_case("none") {
         return ClaimsNoInputRecursion(false);
     }
-    // Continuation lines fold into the bullet, so the claim may be followed by
-    // prose — but only across a punctuation boundary. A word running straight on
-    // from `none` makes it the opening of a sentence, not the claim.
+    // Folded prose may follow a claim across punctuation. An uninterrupted
+    // following word instead makes `none` part of a descriptive sentence.
     let rest = trimmed.get(word_end ..).unwrap_or_default().trim_start();
     ClaimsNoInputRecursion(rest.is_empty() || !rest.starts_with(|c: char| c.is_alphanumeric()))
 }
@@ -375,7 +373,7 @@ mod tests
     use super::split_doc_lines;
     use crate::semantic::RustdocText;
 
-    /// Read a doc block the way [`super::rustdoc_lines`] reads a real one.
+    /// Fixture lines use the production reader's whitespace interpretation.
     ///
     /// # Specification
     /// trivial.

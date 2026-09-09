@@ -1,25 +1,26 @@
-//! The strongly connected component search shared by the crate's cycle gates.
+//! One iterative component partition for two different semantic graphs.
 //!
-//! Both cycle gates reduce to the same question on a different graph:
-//! [`crate::RECURSION_FORBIDDEN`] over crate-local call edges, and
-//! [`crate::RECURSIVE_OWNED_POINTER`] over crate-local ADT ownership edges.
-//! Each builds a position-indexed adjacency table over its own node type and
-//! reads the components back through the same positions, so the search itself
-//! is written once here and knows nothing about either plane.
+//! Call analysis supplies function vertices; ownership analysis supplies local
+//! ADT vertices. Both retain their own meanings and diagnostic labels outside
+//! this position-indexed traversal. A component here is graph evidence, not a
+//! claim that the two analyses detect the same runtime behavior.
+//!
+//! Explicit suspended frames preserve Tarjan's parent/child bookkeeping without
+//! recursion over a source-controlled graph depth.
 
 use crate::semantic::Vertex;
 
-/// One suspended vertex of the iterative Tarjan traversal.
+/// Explicit continuation state for one active Tarjan vertex.
 struct TarjanFrame
 {
-    /// The vertex whose successor list is being consumed.
+    /// Vertex whose unfinished traversal this frame resumes.
     node: usize,
-    /// The index of the next successor to visit.
+    /// Cursor preserves progress through that vertex's successors.
     next_edge: usize,
 }
 
-/// Return the strongly connected components of `adjacency` using Tarjan's
-/// algorithm driven by an explicit frame stack.
+/// Tarjan components are computed with heap-resident continuations instead of
+/// recursive calls.
 ///
 /// # Specification
 /// - requires: every successor in `adjacency` is a valid vertex position.
@@ -161,8 +162,7 @@ mod tests
     use super::tarjan_components;
     use crate::semantic::Vertex;
 
-    /// Sort each component and the component list, so a comparison does not
-    /// depend on the traversal's discovery order.
+    /// Canonicalized membership lets tests ignore incidental discovery order.
     ///
     /// # Specification
     /// trivial.
@@ -212,7 +212,7 @@ mod tests
     #[test]
     fn nested_cycles_separate_by_reachability()
     {
-        // 0 -> 1 -> 2 -> 1, and 2 -> 3 with 3 terminal.
+        // The 1–2 cycle reaches terminal vertex 3 without making 3 a cycle member.
         let adjacency = vec![
             vec![Vertex(1)],
             vec![Vertex(2)],
@@ -229,13 +229,11 @@ mod tests
     #[test]
     fn cross_edge_into_a_finished_component_does_not_merge_it()
     {
-        // 0 -> 1 and 0 -> 2, with 1 <-> 2. Consuming 0's first successor
-        // finishes and pops the component {1, 2}, so 0's second successor is a
-        // cross edge into a vertex that already has a component.
+        // Exploring 0's first successor completes component {1, 2}; the second
+        // successor reaches that already-finished component.
         //
-        // The `on_stack` guard is what stops that cross edge from lowering 0's
-        // lowlink. Without it 0 never becomes a component root, so it is left
-        // on the pending stack and vanishes from the result entirely.
+        // Only active-stack edges may lower a lowlink. Admitting this cross edge would
+        // leave vertex 0 on the pending stack and omit it from the component result.
         let adjacency = vec![vec![Vertex(1), Vertex(2)], vec![Vertex(2)], vec![Vertex(1)]];
         assert_eq!(
             normalized(&adjacency),
@@ -247,13 +245,10 @@ mod tests
     #[test]
     fn a_later_child_subtree_lowers_the_parent_lowlink()
     {
-        // 0 -> 1; 1 -> 2 (terminal) and 1 -> 3; 3 -> 0.
+        // Vertex 1 first reaches terminal 2, then reaches ancestor 0 through 3.
         //
-        // Vertex 1 is resumed after its first child subtree {2} completes, and
-        // only its *second* child reaches back above it. Propagating a finished
-        // frame's lowlink to its parent is what merges {0, 1, 3}: without it,
-        // vertex 1 still looks like a component root and the cycle is split
-        // into {1, 3} and {0}.
+        // The later child must still propagate its lowlink into the resumed parent.
+        // Otherwise component {0, 1, 3} incorrectly splits into {0} and {1, 3}.
         let adjacency = vec![
             vec![Vertex(1)],
             vec![Vertex(2), Vertex(3)],

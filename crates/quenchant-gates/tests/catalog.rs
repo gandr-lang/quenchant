@@ -1,13 +1,13 @@
-//! The inventory: which alias each kind of target contributes, and what an
-//! unreadable listing does.
+//! Inventory observations distinguish target-qualified aliases and operational
+//! listing failures.
 
 use quenchant_gates::GateError;
 use quenchant_gates::catalog::TestCatalog;
 use quenchant_gates::catalog::target_lookup;
 use quenchant_shape::shape::Maybe;
 
-/// A nextest listing covering a library target, a named integration target and
-/// a consolidated one, in two packages.
+/// Library, named integration, and consolidated integration targets expose
+/// ownership across two packages.
 const LISTING: &str = r#"{
   "rust-suites": {
     "a": {
@@ -34,7 +34,7 @@ const LISTING: &str = r#"{
   }
 }"#;
 
-/// Build the fixture inventory.
+/// The fixed aggregate listing supplies the catalog under observation.
 ///
 /// # Specification
 /// trivial.

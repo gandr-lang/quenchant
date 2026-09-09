@@ -1,55 +1,22 @@
-//! The mode plane: fallback arms over the checking judgement's own scrutinees.
+//! Explicit judgment scrutinees must retain explicit case analysis.
 //!
-//! A bidirectional judgement is a set of directed rules, and each rule's
-//! direction is forced by the syntactic class of the term it applies to. A rule
-//! that reads its mode off a *value* instead — a direction carried at runtime,
-//! or the expected type it is checking against — turns "no rule applies here"
-//! into "synthesise, and hope the conversion agrees". The observable signature
-//! of that defect is a single fallback arm, and every term it swallows is one
-//! the judgement had no rule for.
+//! `# Judgement` attaches a `direction` declaration to the mode type or an
+//! `expected` declaration to the function parameter carrying the checked type.
+//! Matching a declared scrutinee through a wildcard or bare binding hides the
+//! case that supplied the result; a guard does not name that case.
 //!
-//! [`MODE_DISPATCH_WILDCARD`] denies the shape rather than counting it. Inside
-//! the crate that declares the judgement, a wildcard or bare-binding arm in a
-//! match over one of the judgement's scrutinees is denied, guard or no guard:
-//! an arm that does not name the case it handles is the fallback whatever else
-//! it also tests.
+//! Expected-type tracking is parameter-specific. The core type vocabulary may
+//! be owned by another crate, and unrelated matches over that same type are not
+//! automatically judgment dispatch. Keeping the declaration on the local
+//! parameter preserves this distinction as code is moved.
 //!
-//! # The crate declares its own scrutinees
+//! A malformed, empty, or misplaced declaration must not read as an opted-in
+//! check that governs nothing. The reader therefore visits items that cannot
+//! legitimately carry a scrutinee as well as those that can, including required
+//! trait methods and foreign declarations.
 //!
-//! The gate reads a `# Judgement` rustdoc section, in the fixed grammar the
-//! module documents beside the lint declaration. Two bullets exist, and each
-//! sits on the item that owns what it declares: `- direction:` on the type
-//! definition whose values are the judgement's modes, and `- expected:` on the
-//! function whose named parameter carries the type a term is checked against.
-//!
-//! Declaring on the item rather than in a configuration file is what keeps the
-//! declaration correct as the code moves: the mark travels with the definition,
-//! and removing it is an edit to the definition that a reviewer reads.
-//!
-//! # Why the expected plane names a parameter, not a type
-//!
-//! The expected type of a checker is the *core language's* type vocabulary, and
-//! the crate that owns that vocabulary is not the crate that declares the
-//! judgement. A gate keyed on the type would therefore need a mark on a crate
-//! the judgement never edits, and would fire on every unrelated match over a
-//! core type besides. Keying on the declared parameter keeps the mark and the
-//! rule both inside the judgement's own text, and asks the question the
-//! discipline actually asks: did this arm reach its answer by inspecting what
-//! the term is being checked against?
-//!
-//! # A section that declares nothing is denied
-//!
-//! Every way of writing the section without declaring anything is a defect of
-//! its own — a bullet with no value, an `- expected:` naming no parameter of
-//! the function, a section on an item that carries no scrutinee. Each reads as
-//! an opted-in gate and gates nothing, which is the failure a silent
-//! opt-in mechanism has and a loud one does not.
-//!
-//! The reach is therefore every item, not only the two that can carry a
-//! scrutinee: an associated const, an associated type, a body-less required
-//! trait method and a foreign function each draw the misplacement denial. A
-//! declaration read nowhere would be exactly the silence this section exists to
-//! refuse, reached by the route of never looking.
+//! This rule constrains dispatch shape. It neither invents missing judgment
+//! rules nor proves the soundness or completeness of the declared system.
 
 use alloc::collections::VecDeque;
 
@@ -170,28 +137,17 @@ use crate::semantic::SectionHeading;
 declare_lint! {
     /// ### What it does
     ///
-    /// Denies a wildcard or bare-binding arm in a match whose scrutinee is the
-    /// checking judgement's direction, or a parameter declared to carry the
-    /// type a term is checked against.
+    /// Declared judgment scrutinees require named match cases: wildcard and bare-binding alternatives are denied for direction values and expected-type parameters.
     ///
     /// ### Why is this bad?
     ///
-    /// A bidirectional judgement forces each rule's direction by the syntactic
-    /// class of the term, so every arm of a match over a mode names the case it
-    /// handles. A fallback arm answers for the cases the judgement has no rule
-    /// for — it turns an absent rule into a silent synthesis, and the terms it
-    /// swallows are exactly the ones nobody wrote a rule for. Counting the arms
-    /// in prose does not survive review fatigue; denying the shape does.
+    /// Judgment rules distinguish the cases they admit. A fallback supplies an answer for unnamed cases, including ones with no authored rule. Requiring explicit alternatives keeps that decision visible in the program rather than relying on a prose case count.
     ///
-    /// A guard changes nothing: an arm that does not name its case is the
-    /// fallback whatever else it tests.
+    /// A guard does not name a case; guarded wildcard and bare-binding alternatives remain fallbacks.
     ///
     /// ### How a crate declares its judgement
     ///
-    /// The gate reads a `# Judgement` rustdoc section. `- direction:` sits on
-    /// the type definition whose values are the modes, and states what the
-    /// direction is; `- expected:` sits on a judgement face and names, in
-    /// backticks, the one parameter carrying the expected type.
+    /// A `# Judgement` section assigns roles explicitly. A type's `- direction:` bullet explains its mode values; each function `- expected:` bullet names one expected-type parameter in backticks.
     ///
     /// ```rust
     /// /// The direction of the checking judgement.
@@ -212,54 +168,23 @@ declare_lint! {
     /// }
     /// ```
     ///
-    /// A section declaring neither bullet, a bullet with no value, an
-    /// `- expected:` naming no parameter of its function, and a section on an
-    /// item that carries no scrutinee are each denied: a declaration that names
-    /// nothing gates nothing, and reads as though it did.
+    /// Empty declarations, valueless bullets, unbound expected names, and sections attached to items without a scrutinee are rejected. Authored opt-in must identify a role the gate can inspect.
     ///
     /// ### Scope
     ///
-    /// A declaration *marks* a scrutinee only on a type definition or on a
-    /// function with a body, which is where the judgement's scrutinees are; on
-    /// every other item — an associated const, an associated type, a required
-    /// trait method, a foreign function — it is read and denied as misplaced
-    /// rather than passed over, so an opted-in gate never goes quiet.
+    /// Type definitions and functions with bodies can own these roles. Other sites, including associated constants and types, required methods, and foreign functions, are inspected and diagnosed as misplaced rather than silently ignored.
     ///
-    /// The gate is **crate-local by construction**: the direction's `DefId`
-    /// must resolve local and the declaration is read off local rustdoc, so a
-    /// wildcard match on the judgement's direction written in a *consuming*
-    /// crate is not denied. That is the intended scope — the constraint is the
-    /// declaring crate's own specification, and code downstream of the judgement is
-    /// not writing the judgement.
+    /// Direction identity and its declaration are resolved within the current crate. Downstream matches on an imported direction type are outside this gate's scope; the policy governs the declaring crate's own judgment implementation.
     ///
-    /// A `match` written inside a macro expansion is not reported. The case
-    /// that motivates it is `matches!(direction, ..)`, which carries a fallback
-    /// arm the author never wrote and asks a boolean question rather than
-    /// choosing a mode; the exemption is wider than that case, and a
-    /// crate-local `macro_rules!` hiding a fallback arm rides it too. The
-    /// narrower rule would need to tell an author's own expansion from a
-    /// dependency's, and reporting into a macro body names a span the author of
-    /// the *call* cannot act on.
+    /// Expansion-produced matches are excluded. This permits `matches!` to ask a boolean question without treating its generated fallback as authored dispatch, but also permits a local macro to hide a fallback. Narrowing that exemption requires distinguishing expansion ownership and identifying a source span the caller can repair.
     ///
     /// ### Blind spots
     ///
-    /// This gate reads match arms, and `if let`, `let .. else` and `while let`
-    /// have none: their else branch is a fallback the HIR spells as a
-    /// conditional rather than as an arm, and it is not reported.
-    /// `ui/mode_dispatch.rs::if_let_fallback` is the fixture that demonstrates
-    /// the miss, and its absence from `ui/mode_dispatch.stderr` is the record.
+    /// Conditional forms such as `if let`, `let .. else`, and `while let` escape match-arm inspection. The accepted `if_let_fallback` case in `ui/mode_dispatch.rs`, with no corresponding `ui/mode_dispatch.stderr` diagnostic, records that limit.
     ///
-    /// The direction plane is a type-identity test on the *whole* scrutinee, so
-    /// a match dispatching on a pair — `match (direction, term) { .., _ => .. }`
-    /// — is not gated: the tuple's type is not the declared type, references
-    /// peeled or not. The expected plane does not reach it either, since its
-    /// search is for a declared expected parameter and never for the direction.
-    /// `ui/mode_dispatch.rs::tupled_scrutinee` is that fixture, and its silence
-    /// in the same `.stderr` is that record.
+    /// Direction recognition applies to the whole scrutinee after peeling references. Pairing a direction with a term changes that type and escapes recognition; expected-parameter tracking does not compensate for a direction-only tuple. The `tupled_scrutinee` case and its absent diagnostic in the same fixture record this boundary.
     ///
-    /// The judgement's own shape is what narrows both: the four faces are
-    /// separate functions taking separate terms, so a mode chosen anywhere is a
-    /// mode chosen over a scrutinee this gate can see.
+    /// Separate judgment entry points with direct role-bearing parameters keep dispatch within the observable fragment. Declaration metadata alone cannot extend that fragment.
     ///
     /// ### Example
     ///
@@ -270,7 +195,7 @@ declare_lint! {
     /// }
     /// ```
     ///
-    /// Use instead:
+    /// Named case analysis:
     ///
     /// ```rust
     /// match direction {
@@ -285,12 +210,12 @@ declare_lint! {
 
 impl_lint_pass!(WorkflowJudgement => [MODE_DISPATCH_WILDCARD]);
 
-/// Late lint pass denying fallback arms over the judgement's scrutinees.
+/// Compiler-side enforcement of explicit cases over declared judgment roles.
 pub struct WorkflowJudgement;
 
 impl<'tcx> LateLintPass<'tcx> for WorkflowJudgement
 {
-    /// Read a non-function item's declaration, at its own name.
+    /// Non-function declarations are checked where their item kind is known.
     ///
     /// # Specification
     /// - ensures: reports the declaration's misplacement defect for every item
@@ -303,8 +228,8 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowJudgement
         item: &'tcx Item<'tcx>,
     )
     {
-        // A function item is an item and a body both; its declaration is read
-        // once, at `check_fn`, where the parameters it names are in reach.
+        // Function declarations are deferred to `check_fn`, where parameter bindings
+        // are available, and are read only once.
         if matches!(item.kind, ItemKind::Fn { .. }) {
             return;
         }
@@ -321,7 +246,7 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowJudgement
         report_declaration_defect(cx, item.owner_id.def_id, span, site);
     }
 
-    /// Read a function's declaration, at its own name.
+    /// Function-body context makes declared expected names resolvable.
     ///
     /// # Specification
     /// - ensures: reports the declaration's defect for every function with a
@@ -345,7 +270,8 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowJudgement
         report_declaration_defect(cx, def_id, span, DeclarationSite::Function(body));
     }
 
-    /// Read an associated item's declaration, at its own name.
+    /// Implementation members are checked at the declaration that owns their
+    /// role.
     ///
     /// # Specification
     /// - ensures: reports the misplacement defect for every associated item but
@@ -357,9 +283,8 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowJudgement
         impl_item: &'tcx ImplItem<'tcx>,
     )
     {
-        // An associated function has a body, so `check_fn` reads its
-        // declaration where the parameters it names are in reach. Everything
-        // else in an impl carries no scrutinee at all.
+        // Body-bearing methods reach `check_fn`; other implementation members have no
+        // scrutinee to bind.
         if matches!(impl_item.kind, ImplItemKind::Fn(..)) {
             return;
         }
@@ -371,7 +296,7 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowJudgement
         );
     }
 
-    /// Read a trait item's declaration, at its own name.
+    /// Trait sites distinguish a provided body from a body-free declaration.
     ///
     /// # Specification
     /// - ensures: reports the misplacement defect for every trait item but a
@@ -384,10 +309,9 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowJudgement
         trait_item: &'tcx TraitItem<'tcx>,
     )
     {
-        // A provided method has a body and reaches `check_fn`. A required one
-        // has none: its parameters bind nothing a match could dispatch on, and
-        // an implementation's parameters are its own, so a declaration written
-        // here gates nothing and belongs on the implementation.
+        // Provided methods reach `check_fn`. Required methods have no body-local
+        // binding to inspect; an implementation owns different parameters and must
+        // carry its own declaration.
         if matches!(trait_item.kind, TraitItemKind::Fn(_, TraitFn::Provided(_))) {
             return;
         }
@@ -399,7 +323,7 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowJudgement
         );
     }
 
-    /// Read a foreign item's declaration, at its own name.
+    /// Foreign declarations cannot supply a body-local judgment scrutinee.
     ///
     /// # Specification
     /// - ensures: reports the misplacement defect on every foreign declaration,
@@ -419,7 +343,7 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowJudgement
         );
     }
 
-    /// Deny a fallback arm in a match over a declared scrutinee.
+    /// Recognized judgment roles make unnamed alternatives reportable.
     ///
     /// # Specification
     /// - ensures: reports every arm naming no case of an ordinary match whose
@@ -454,33 +378,33 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowJudgement
     }
 }
 
-/// The heading that opens a judgement declaration.
+/// Exact section label used to discover authored judgment roles.
 const HEADING: &str = "# Judgement";
 
-/// The bullet declaring the type whose values are the judgement's modes.
+/// Role label assigning mode meaning to a type declaration.
 const DIRECTION_BULLET: &str = "- direction:";
 
-/// The bullet naming the parameter that carries the expected type.
+/// Role label associating a function parameter with the expected type.
 const EXPECTED_BULLET: &str = "- expected:";
 
-/// The help attached to every fallback-arm diagnostic.
+/// Repair guidance requires explicit cases instead of an unnamed answer.
 const FALLBACK_HELP: &str = concat!(
     "name every case in an arm of its own; a term the judgement has no rule for is a refusal, and ",
     "a fallback arm answers for it instead",
 );
 
-/// Which of the judgement's scrutinees a match dispatches on.
+/// The recognized judgment role that makes a match subject to the rule.
 enum ScrutineeRole
 {
-    /// The scrutinee's type is the declared checking direction.
+    /// Whole-scrutinee type identity recognizes the declared direction.
     Direction,
-    /// The scrutinee mentions a parameter declared to carry the expected type.
+    /// Parameter provenance recognizes expected-type data in the scrutinee.
     ExpectedType,
 }
 
 impl ScrutineeRole
 {
-    /// Return the diagnostic text for a fallback arm over this scrutinee.
+    /// Diagnostic wording identifies the role whose cases were hidden.
     ///
     /// # Specification
     /// trivial.
@@ -499,7 +423,7 @@ impl ScrutineeRole
         })
     }
 
-    /// Return the note pointing at the scrutinee this role was decided from.
+    /// The source note identifies the scrutinee that activated the rule.
     ///
     /// # Specification
     /// trivial.
@@ -514,51 +438,53 @@ impl ScrutineeRole
     }
 }
 
-/// The kind of item a `# Judgement` section was written on.
+/// Declaration kind constrains which judgment roles can be attached.
 #[derive(Clone, Copy)]
 enum DeclarationSite<'body>
 {
-    /// A type definition, whose values can be the judgement's modes.
+    /// Values of this declaration can represent judgment direction.
     TypeDefinition,
-    /// A function, whose parameters can carry the expected type.
+    /// Body-local parameter bindings can represent expected-type inputs.
     Function(&'body Body<'body>),
-    /// Anything else, which carries no scrutinee of the judgement.
+    /// This site supplies neither a direction type nor inspectable parameters.
     Elsewhere,
 }
 
-/// What one item's `# Judgement` section declares.
+/// Authored role declarations retain their names and first grammar defect.
 struct Declaration
 {
-    /// Whether the item declares itself the judgement's checking direction.
+    /// Type-level direction opt-in remains separate from expected-name
+    /// declarations.
     direction: DirectionDeclared,
-    /// The parameter names declared to carry the expected type.
+    /// Authored expected names retain source order for binding validation.
     expected: Vec<String>,
-    /// The first way the section fails the fixed grammar, if it does.
+    /// First-observed grammar failure takes precedence over subsequent defects.
     defect: Maybe<JudgementDefect, declaration_grammar::Accepted>,
 }
 
-/// Why a `# Judgement` section declares nothing the gate can act on.
+/// Grammar, placement, or binding defects that prevent a usable judgment
+/// declaration.
 enum JudgementDefect
 {
-    /// The section carries neither of the two bullets.
+    /// Neither role-bearing bullet appears in the section.
     DeclaresNothing,
-    /// The `- direction:` bullet states no value.
+    /// Direction opt-in supplies no explanation of the mode.
     DirectionUnexplained,
-    /// An `- expected:` bullet names no single backticked parameter.
+    /// Expected-type metadata supplies no single quoted parameter name.
     ExpectedMalformed,
-    /// An `- expected:` bullet names something no parameter binds.
+    /// The declared name has no matching parameter binding.
     ExpectedUnbound(String),
-    /// `- direction:` sits on an item that is not a type definition.
+    /// A direction role is attached outside a type declaration.
     DirectionOffType,
-    /// `- expected:` sits on an item that is not a function.
+    /// Expected-parameter metadata is attached outside a function.
     ExpectedOffFunction,
-    /// The section sits on an item carrying no scrutinee at all.
+    /// The declaration site cannot carry either recognized role.
     SectionMisplaced,
 }
 
 impl JudgementDefect
 {
-    /// Return the diagnostic text for this defect.
+    /// Each declaration defect identifies a different repair obligation.
     ///
     /// # Specification
     /// trivial.
@@ -604,7 +530,7 @@ impl JudgementDefect
     }
 }
 
-/// Report the defect in one item's `# Judgement` section, if it has one.
+/// An authored section is validated against the kind of item carrying it.
 ///
 /// # Specification
 /// - requires: `def_id` identifies a crate-local item, `span` is its own name
@@ -630,7 +556,7 @@ fn report_declaration_defect(
     span_lint(cx, MODE_DISPATCH_WILDCARD, span, defect.message());
 }
 
-/// Return the defect in a declaration read at `site`, if any.
+/// Grammar validity precedes role placement and parameter-binding checks.
 ///
 /// # Specification
 /// - requires: `declaration` was read from the item `site` describes.
@@ -689,7 +615,7 @@ fn site_defect(
     }
 }
 
-/// Read the `# Judgement` section attached to `def_id`, if it carries one.
+/// Compiler-owned documentation supplies this item's local role declaration.
 ///
 /// # Specification
 /// - ensures: returns the parsed declaration exactly when the item's rustdoc
@@ -706,7 +632,8 @@ fn declaration_of(
     declaration(&lines)
 }
 
-/// Parse the `# Judgement` section out of one item's rustdoc lines.
+/// Section interpretation retains authored role names and grammar-failure
+/// precedence.
 ///
 /// # Specification
 /// - requires: `lines` are the item's rustdoc lines with their indentation.
@@ -771,7 +698,7 @@ fn declaration(lines: &[String]) -> Maybe<Declaration, crate::rustdoc::section_l
     })
 }
 
-/// Return the one backticked name a bullet value states.
+/// Exact quoted names separate parameter references from descriptive prose.
 ///
 /// # Specification
 /// - requires: `value` is a folded bullet's value, backticks and all.
@@ -812,7 +739,7 @@ fn backticked_name(value: RustdocLine<'_>) -> Maybe<RustdocLine<'_>, name_syntax
     Maybe::Present(RustdocLine::from(name))
 }
 
-/// Return the binding of the parameter `name` names, if the body has one.
+/// Exact parameter spelling resolves only to a plain body-local binding.
 ///
 /// # Specification
 /// - requires: `body` is the body of the function the declaration sits on.
@@ -844,7 +771,8 @@ fn parameter_binding(
     Maybe::Absent(parameter_lookup::Missing::Unbound)
 }
 
-/// Return which of the judgement's scrutinees a match dispatches on, if either.
+/// Direction recognition precedes expected-parameter tracking for a match
+/// scrutinee.
 ///
 /// # Specification
 /// - requires: `scrutinee` is the scrutinee expression of a match written in
@@ -879,7 +807,7 @@ fn scrutinee_role<'tcx>(
     Maybe::Absent(role_lookup::Missing::NoRecognizedRole)
 }
 
-/// Return whether a scrutinee's type declares itself the judgement's direction.
+/// Local type identity connects the scrutinee to a valid direction declaration.
 ///
 /// # Specification
 /// - ensures: answers affirmatively exactly when the scrutinee's type, its
@@ -910,7 +838,8 @@ fn scrutinee_is_direction<'tcx>(
     ))
 }
 
-/// Return whether a scrutinee mentions a declared expected parameter.
+/// Expected-role recognition follows parameter references within the
+/// expression.
 ///
 /// # Specification
 /// - ensures: answers affirmatively exactly when some path in the scrutinee,
@@ -930,7 +859,7 @@ fn scrutinee_mentions_expected<'tcx>(
     finder.found
 }
 
-/// Return whether `binding` is a parameter its function declares expected.
+/// A parameter's owning body determines whether its name was declared expected.
 ///
 /// # Specification
 /// - requires: `binding` is the HIR id a `Res::Local` resolved to.
@@ -969,7 +898,7 @@ fn declared_expected_parameter(
     }))
 }
 
-/// Return the spans of the fallback alternatives in one arm's pattern.
+/// Unnamed pattern alternatives retain their own reportable source spans.
 ///
 /// # Specification
 /// - requires: `pattern` is an arm's whole pattern.
@@ -1001,13 +930,14 @@ fn fallback_spans(pattern: &Pat<'_>) -> Vec<Span>
     spans
 }
 
-/// HIR visitor answering whether an expression mentions a declared parameter.
+/// Expression traversal searches for references to declared expected
+/// parameters.
 struct ExpectedMention<'context, 'tcx>
 {
-    /// The late lint context, used to read the declaration of the body that
-    /// owns each binding the expression resolves to.
+    /// Compiler context connects each binding to the declaration of its owning
+    /// body.
     cx: &'context LateContext<'tcx>,
-    /// Whether such a mention has been found.
+    /// A recognized parameter reference completes the existence query.
     found: ScrutineeMentionsExpected,
 }
 
@@ -1021,7 +951,7 @@ impl<'tcx> Visitor<'tcx> for ExpectedMention<'_, 'tcx>
     type MaybeTyCtxt = TyCtxt<'tcx>;
     type NestedFilter = nested_filter::OnlyBodies;
 
-    /// Hand rustc's context to the walk.
+    /// Nested-body traversal uses the same declaration-resolution context.
     ///
     /// # Specification
     /// trivial.
@@ -1030,12 +960,12 @@ impl<'tcx> Visitor<'tcx> for ExpectedMention<'_, 'tcx>
         self.cx.tcx
     }
 
-    /// Ask whether this expression is a declared parameter, then descend.
+    /// Parameter references remain detectable beneath enclosing expression
+    /// forms.
     ///
-    /// The nested filter enters bodies, so a closure written inside the
-    /// scrutinee is searched too: it captures the parameter by the parameter's
-    /// own binding, and reading the expected type through a closure is reading
-    /// it.
+    /// Body descent includes closures within the scrutinee. A captured expected
+    /// parameter retains its binding identity, so reading through a closure
+    /// remains visible to this search.
     ///
     /// # Specification
     /// - ensures: sets the found flag on the first path resolving to a declared
@@ -1079,8 +1009,8 @@ mod tests
     use super::declaration;
     use crate::semantic::RustdocLine;
 
-    /// Build a doc block the way a `///` comment reaches the pass: one leading
-    /// space, and whatever further indentation the author wrote.
+    /// Fixture fragments retain doc-comment prefix spacing and authored
+    /// indentation.
     ///
     /// # Specification
     /// trivial.
@@ -1089,9 +1019,8 @@ mod tests
         lines.iter().map(|line| format!(" {}", line.0)).collect()
     }
 
-    /// The heading line, spelled here rather than in a doc comment: this crate
-    /// runs under its own gate, and a heading written in prose would be read as
-    /// a declaration.
+    /// The heading is fixture data, kept outside rustdoc so self-hosting does
+    /// not interpret this helper as a judgment declaration.
     ///
     /// # Specification
     /// trivial.

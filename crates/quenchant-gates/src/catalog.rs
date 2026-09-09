@@ -1,23 +1,14 @@
-//! The workspace test inventory, indexed by owning package and target.
+//! Scope-preserving lookup for runnable adequacy witnesses.
 //!
-//! A witness path is resolved against the crate that wrote it, never against
-//! the workspace at large. Indexing by package is what turns "some test
-//! somewhere is called this" — which every workspace satisfies by accident —
-//! into "this crate's own suite runs it".
+//! Resolution begins in the package that authored the obligation. A library or
+//! binary contributes the harness's module path; an integration test adds its
+//! target name as a prefix. That prefix distinguishes otherwise identical test
+//! names in separate integration targets.
 //!
-//! # The alias a target contributes
-//!
-//! - A library or binary target contributes the test path as the harness
-//!   reports it, which is the module path from the crate root:
-//!   `memo::tests::an_ordered_memo_serves_what_it_was_told`.
-//! - An integration target contributes the target name in front of it:
-//!   `acceptance::memoized_checking_agrees_with_memoless_checking` for
-//!   `tests/acceptance.rs`, and `tests::store::a_written_root_opens` for a
-//!   consolidated suite whose target is named `tests`.
-//!
-//! The target prefix is not decoration. Two integration targets in one crate
-//! may both declare `fn round_trips()`, and a witness that names neither target
-//! has not said which test a reviewer should watch fail.
+//! An alias can still be ambiguous within its package, so the catalog retains
+//! the exposing target labels instead of collapsing the first matching name to
+//! success. Availability in this catalog is not evidence that the test ran or
+//! that its observations establish the authored hypothesis.
 
 use alloc::collections::BTreeMap;
 use alloc::collections::BTreeSet;
@@ -50,18 +41,18 @@ quenchant_shape::reason_enum! {
     }
 }
 
-/// Every runnable test in the workspace, by owning package and exact alias.
+/// Package-scoped witness lookup retaining every exposing target.
 #[repr(transparent)]
 #[derive(Clone, Debug, Default, Eq, PartialEq)]
 pub struct TestCatalog
 {
-    /// Package name to alias to the labels of the targets exposing it.
+    /// Package ownership precedes alias lookup; target sets retain ambiguity.
     aliases: BTreeMap<String, BTreeMap<String, BTreeSet<String>>>,
 }
 
 impl TestCatalog
 {
-    /// An inventory holding no tests.
+    /// Empty catalog before any runnable inventory has been incorporated.
     ///
     /// # Specification
     /// trivial.
@@ -74,7 +65,8 @@ impl TestCatalog
         }
     }
 
-    /// How many distinct package-and-alias pairs the inventory holds.
+    /// Catalog cardinality counts aliases within packages, not exposing
+    /// targets.
     ///
     /// # Specification
     /// - requires: nothing.
@@ -101,7 +93,8 @@ impl TestCatalog
         )
     }
 
-    /// Merge another inventory into this one.
+    /// Combining listings preserves target ambiguity instead of replacing prior
+    /// observations.
     ///
     /// # Specification
     /// - requires: `other` lists packages disjoint from, or consistent with,
@@ -132,7 +125,7 @@ impl TestCatalog
         }
     }
 
-    /// Record one alias exposed by one target of one package.
+    /// One target contributes evidence that its package exposes this alias.
     ///
     /// # Specification
     /// - ensures: the target joins the set recorded for that package and alias,
@@ -155,7 +148,7 @@ impl TestCatalog
             .insert(target.0.to_owned());
     }
 
-    /// The targets of `package` exposing `witness`, if any.
+    /// Exact lookup distinguishes an unlisted package from an unlisted alias.
     ///
     /// # Specification
     /// - ensures: returns the recorded target set exactly when `package` holds
@@ -180,7 +173,8 @@ impl TestCatalog
         }
     }
 
-    /// The packages other than `package` whose own targets expose `witness`.
+    /// Sibling ownership can explain a miss without satisfying the local
+    /// obligation.
     ///
     /// # Specification
     /// - requires: nothing.
@@ -211,7 +205,7 @@ impl TestCatalog
             .collect()
     }
 
-    /// Aliases of `package` whose final path segment matches `witness`'s.
+    /// Same-leaf aliases offer repair hints without becoming exact matches.
     ///
     /// # Specification
     /// - requires: nothing.
@@ -246,7 +240,8 @@ impl TestCatalog
             .collect()
     }
 
-    /// Build an inventory from `cargo nextest list --message-format json`.
+    /// Nextest's aggregate listing supplies package and target ownership
+    /// together.
     ///
     /// # Specification
     /// - requires: `source` is one nextest aggregate JSON document.
@@ -336,7 +331,7 @@ impl TestCatalog
     }
 }
 
-/// Whether a target kind names an integration-test target.
+/// Integration harnesses require a target prefix that other harness kinds omit.
 ///
 /// # Specification
 /// - requires: `kind` is a Cargo target kind as a listing reports it.
@@ -352,7 +347,7 @@ pub fn is_integration(kind: TargetKind<'_>) -> IntegrationTarget
     IntegrationTarget(kind.0 == "test")
 }
 
-/// Build the alias one listed test contributes.
+/// Witness spelling preserves the integration-target boundary of a listed test.
 ///
 /// # Specification
 /// - requires: `name` is the test path the harness reports.
@@ -379,7 +374,7 @@ pub fn alias_for(
     name.0.to_owned()
 }
 
-/// The final `::`-separated segment of a path.
+/// Leaf-name comparison is a repair aid, separate from exact alias resolution.
 ///
 /// # Specification
 /// - ensures: returns the text after the last `::`, and the whole path when it

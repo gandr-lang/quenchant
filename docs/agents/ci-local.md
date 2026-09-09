@@ -1,56 +1,30 @@
-# Local CI with act
+# Local CI
 
-Run `.github/workflows/ci.yml` locally through [act](https://github.com/nektos/act) and Docker. This is the iteration loop for workflow changes before hosted CI observes the repository settings and selected-Actions policy that a local runner cannot see.
+`.github/workflows/ci.yml` has separate build/test, Miri, Dylint, and policy jobs. `.github/actions/setup-rust` installs the active `rust-toolchain.toml` selection through rustup, including components and targets. Dylint consumers MUST use the matching compiler for a cached driver or library.
 
-## Inline `run:` rule
+## Reproduce the relevant job
 
-An inline `run:` step is one command. Anything with a branch, loop, or multiple pipelines lives under `scripts/ci/`; the workflow supplies inputs through `env:` and invokes the script without embedding expressions in shell source.
+Run from the workspace root:
 
-The project-owned scripts are:
+| Change                                         | Local verification                                                                       |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------- |
+| Rust implementation or public feature          | `mise run check`                                                                         |
+| Compiler plugin                                | `mise run check:dylint` and `mise run check:tests`                                       |
+| Specification wrapper or backend configuration | `mise run check:tests`, `mise run check:anodized-enforcing`, and `mise run check:no-std` |
+| Witness references or inventory                | `mise run check:witnesses` and the gate package tests                                    |
+| Pins, workflow YAML, or shell                  | `mise run check:ci-pins`, `mise run check:action-pins`, and `mise run treefmt:check`     |
+| Documentation or formatting                    | `mise run treefmt`, then `mise exec -- prek run --all-files`; execute changed examples   |
 
-- `scripts/ci/check-pins.sh` — compares the nightly, rust-clippy tag, Dylint crate versions, and installed Dylint tool versions; with consumer inputs it also compares an external consumer's Dylint library and gate-binary Git revisions.
-- `scripts/ci/check-publish.py` — reads `cargo metadata` and refuses every package that does not report the empty publish allowlist produced by `publish = false`.
-- `scripts/ci/check-public-boundary.sh` — rejects private-material shapes in tracked files and commit messages without publishing a private-name deny list.
-- `scripts/ci/check-action-pins.py` — refuses a GitHub Action reference that is not an allowed action pinned to a full commit SHA.
-- `.github/actions/setup-rust` — restores and saves rustup state, installs the pinned toolchain, and shares the Rust dependency cache across jobs.
+The root gate is the integration wall, not a substitute for understanding a failed narrow command. The Dylint test and Clippy tasks select the package working directory so its linker configuration applies. NEVER replace those tasks with a root invocation that only supplies `--manifest-path`.
 
-## Requirements
+## Configuration-sensitive evidence
 
-- Docker's daemon is running (`docker info` succeeds).
-- `act` is on `PATH`; `mise.toml` pins version `0.2.89`.
-- `mise install` has resolved the repository tools.
+The default library configuration and the enabled `std` interpretation are separate builds. CI and local tasks exercise a real target without `std`; the enforcing runs select the published backend and its host cfg, then execute a deliberately violated postcondition. A listed target cfg is insufficient evidence for a host procedural-macro artifact.
 
-## Invocation
+Miri runs the strict and `fast` library tests on valid inputs. Both development and test profiles retain assertions and overflow checks because those configurations affect the Miri path. A panic from the wrong cause is not a successful enforcement witness.
 
-The root `.actrc` pins the Linux image and disables repeated pulls. Each hosted context has one local job:
+## Updating a pin
 
-```sh
-act pull_request -j build-test
-act pull_request -j dylint
-act pull_request -j clippy
-act pull_request -j policy
-```
+Read the toolchain and dependency comments before changing a value. Compiler channel, rustc internals, Clippy tag, Dylint tools, and cached driver/library compatibility form one boundary. Updating only the manifest version or copying a driver from another toolchain does not establish it.
 
-List jobs without running them:
-
-```sh
-act -l
-```
-
-Time a job for relative before/after comparison on one host:
-
-```sh
-time act pull_request -j dylint
-```
-
-## Toolchain bump
-
-The whole workspace builds under `rust-toolchain.toml`. `mise run toolchain:bump <stable>` reads the matching rust-clippy release tag, changes the nightly and `clippy_utils` tag together, and prints the driver rebuild command. Remove `~/.dylint_drivers` and `target/dylint`, rebuild the driver, then run every repository gate.
-
-## Platform notes
-
-- act executes these Linux jobs in the image pinned by `.actrc`; Docker chooses a native image manifest where one exists.
-- act's built-in cache server supports the workflow's `actions/cache` steps without extra flags.
-- Supply a GitHub token only when the pin check would otherwise hit anonymous API limits. Pass it through the environment, never as a literal command argument.
-- A hosted `startup_failure` caused by a repository Actions allowlist is invisible to strict YAML parsing and act. A pushed pull request whose four jobs register is the only proof of that settings boundary.
-- Local wall time is useful only for relative comparisons on the same host; hosted CI timing remains the hosted-run observation.
+Workflow action references use immutable revisions. Keep the action-pin gate, Rust selection, package working directories, and feature/mode coverage aligned between the task graph and CI. The record of a verification run states the selected manifest, target, features, enforcement mode, and result; it does not promote a skipped job to evidence.

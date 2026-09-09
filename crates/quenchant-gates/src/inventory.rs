@@ -1,14 +1,19 @@
-//! Discovering the workspace, listing its tests, and running G0 over it.
+//! Build a runnable inventory under the toolchain selected by each source
+//! owner.
 //!
-//! # Why the listing is not one command
+//! A member-local toolchain file affects commands executed in that directory,
+//! not commands that merely name its package. Such members are inventoried
+//! separately and excluded from the shared listing; omitting them would hide
+//! their witness obligations.
 //!
-//! A workspace member may pin its own toolchain; a `rust-toolchain` file
-//! governs the directory a command runs in, not the package a command names,
-//! so such a member is listed from its own directory and excluded from the
-//! workspace-wide listing. No member does so today — the gate library builds
-//! under the workspace's single pinned toolchain — so the listing is the
-//! single workspace-wide run. The alternative is to drop a pinning member
-//! from the gate, which is the same as declaring its witnesses exempt.
+//! Source roots come from declared Cargo targets, not a recursive sweep of
+//! every file under a package. UI inputs and other test data are therefore not
+//! mistaken for authored package declarations. Build-script roots do not pull
+//! those data trees back into the scan.
+//!
+//! Tool availability, successful inventory output, and a finding-free
+//! resolution are distinct states. Failed or malformed tool output cannot
+//! become an empty successful catalog.
 
 use std::ffi::OsStr;
 use std::path::Path;
@@ -33,37 +38,36 @@ use crate::semantic::TargetLabel;
 use crate::semantic::TargetName;
 use crate::semantic::TestAlias;
 
-/// One workspace member the gate reads.
+/// Package ownership and source scope for one discovered workspace member.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Member
 {
-    /// The Cargo package name.
+    /// Package identity attached to findings and test listings.
     pub name: String,
-    /// The directory holding the member's manifest.
+    /// Manifest-relative operations use this member directory.
     pub directory: PathBuf,
-    /// The directories holding the member's declared target sources.
+    /// Cargo-declared target directories bound the authored-source scan.
     ///
-    /// Derived from the targets Cargo declares rather than from the package
-    /// directory, so a fixture tree that is compiled by a test harness rather
-    /// than by the package — the dylint UI corpus — is data, not source. A
-    /// build script contributes none: its source sits in the member's own
-    /// directory, and expanding it would sweep those data trees back in.
+    /// Target source directories exclude separately compiled fixture corpora
+    /// such as Dylint UI inputs. Build scripts contribute no root: their
+    /// package-level directory would admit those fixture trees again.
     pub source_roots: Vec<PathBuf>,
-    /// Whether the member pins its own toolchain.
+    /// A member-local compiler pin requires its own listing invocation.
     pub pins_toolchain: PinsToolchain,
 }
 
-/// The workspace the gate runs over.
+/// Discovered workspace scope, including deterministic member order.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Workspace
 {
-    /// The workspace root directory.
+    /// Root used when a listing can share the workspace invocation.
     pub root: PathBuf,
-    /// Every workspace member, sorted by name.
+    /// Name ordering makes member traversal deterministic.
     pub members: Vec<Member>,
 }
 
-/// Read the workspace layout from `cargo metadata`.
+/// Cargo metadata establishes package ownership before source or witness
+/// inspection.
 ///
 /// # Specification
 /// - requires: `manifest_path` names the workspace's root `Cargo.toml`.
@@ -155,8 +159,8 @@ pub fn discover(manifest_path: &Path) -> Result<Workspace, GateError>
     })
 }
 
-/// Whether one target of the `cargo metadata` array holds the package's own
-/// documented source.
+/// Target kind determines whether its directory belongs to the authored-source
+/// scan.
 ///
 /// # Specification
 /// - requires: `target` is one entry of a package's `targets` array.
@@ -181,7 +185,8 @@ fn target_holds_package_source(target: &serde_json::Value) -> HoldsPackageSource
     )
 }
 
-/// List every runnable test in the workspace.
+/// Runnable inventory combines shared-workspace and member-pinned compiler
+/// scopes.
 ///
 /// # Specification
 /// - requires: `workspace` was produced by [`discover`], and the workspace
@@ -233,7 +238,8 @@ pub fn catalog(workspace: &Workspace) -> Result<TestCatalog, GateError>
     Ok(catalog)
 }
 
-/// Run G0 over every source file of every workspace member.
+/// Validate each member's authored witness references against the runnable
+/// catalog.
 ///
 /// # Specification
 /// - requires: `catalog` lists the same workspace `workspace` describes.
@@ -268,7 +274,7 @@ pub fn run(
     Ok(findings)
 }
 
-/// Every source file of one member, deduplicated across its target roots.
+/// Overlapping target roots contribute each member source file only once.
 ///
 /// # Specification
 /// - requires: `member` was produced by [`discover`].
@@ -294,7 +300,7 @@ fn member_sources(member: &Member) -> Result<Vec<PathBuf>, GateError>
     Ok(files)
 }
 
-/// Every `.rs` file under a directory, excluding build output.
+/// Rust source traversal excludes build-output subtrees.
 ///
 /// # Specification
 /// - requires: `directory` exists.
@@ -343,7 +349,7 @@ pub fn source_files(directory: &Path) -> Result<Vec<PathBuf>, GateError>
     Ok(files)
 }
 
-/// Whether `cargo nextest` is on the path.
+/// Successful nextest discovery selects the aggregate-listing instrument.
 ///
 /// # Specification
 /// - ensures: answers affirmatively exactly when `cargo nextest --version` runs
@@ -360,7 +366,8 @@ fn nextest_available() -> NextestAvailable
     )
 }
 
-/// Build the listing command for the selected instrument.
+/// Listing arguments preserve the selected inventory instrument's output
+/// format.
 ///
 /// # Specification
 /// - ensures: returns `cargo nextest list` in JSON when nextest is available,
@@ -378,7 +385,8 @@ fn list_command(nextest: NextestAvailable) -> Command
     command
 }
 
-/// Run one listing command and merge its result into `catalog`.
+/// A scoped listing contributes aliases only after its command and format
+/// succeed.
 ///
 /// # Specification
 /// - requires: `command` was built by [`list_command`] for the same instrument
@@ -423,7 +431,8 @@ fn merge_listing(
     )
 }
 
-/// Merge the fallback listing: built test binaries, each asked for its tests.
+/// Native harness listings retain the package and target identity of built test
+/// executables.
 ///
 /// # Specification
 /// - requires: `stdout` is the JSON-lines output of `cargo test --no-run
@@ -506,7 +515,8 @@ fn merge_cargo_test_listing(
     Ok(())
 }
 
-/// The package name inside a Cargo package identifier.
+/// Cargo package identifiers carry the ownership name used by the witness
+/// catalog.
 ///
 /// # Specification
 /// - requires: `id` is a package identifier as `cargo` spells it in machine
@@ -537,7 +547,8 @@ fn package_name_of(id: PackageId<'_>) -> String
         .to_owned()
 }
 
-/// Run a command and return its standard output, or the reason it failed.
+/// Process output is available only after successful execution of the
+/// identified command.
 ///
 /// # Specification
 /// - requires: `label` spells the command line as a reader should see it, since
@@ -568,7 +579,7 @@ fn capture(
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
-/// The cargo executable to invoke.
+/// Cargo selection respects the executable supplied by the invoking toolchain.
 ///
 /// # Specification
 /// - ensures: returns the `CARGO` the current invocation was started under, and

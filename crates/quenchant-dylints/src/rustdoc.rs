@@ -1,24 +1,14 @@
-//! The indentation-preserving reader shared by this crate's rustdoc gates.
+//! Preserve the layout needed to interpret authored evidence sections.
 //!
-//! Two fixed-grammar sections are read off an item's own documentation —
-//! `# Adequacy` and `# Judgement` — and both need the same two things: the
-//! item's doc lines with their indentation intact, and one section's bullets
-//! folded with their continuation lines.
+//! Indentation distinguishes a wrapped bullet value from a following paragraph
+//! or link-reference definition. Trimming every line would merge those
+//! meanings, so the adequacy and judgment readers retain the original
+//! indentation.
 //!
-//! The `# Termination` reader trims every line instead, which is enough for a
-//! grammar whose bullets are all required and whose values are prose. These two
-//! grammars are neither: a section may be followed by an ordinary paragraph or
-//! by a markdown link-reference definition, and only indentation separates a
-//! wrapped bullet value from a new paragraph, so it is kept.
-//!
-//! # The section terminates at the next heading
-//!
-//! Rustdoc-injecting attribute macros append their own heading after author
-//! prose. A reader that ran to the end of the doc block would absorb the
-//! injected bullets and complete a truncated section with them, so every
-//! section here ends at the next heading of any level — the rule
-//! [`opens_heading`] states, and the same reader the `# Termination` gate uses
-//! for it.
+//! Any heading ends a section, including headings injected by a macro after the
+//! author's text. The termination reader shares this boundary while applying
+//! its own fixed prose grammar. No reader may complete an incomplete authored
+//! statement by borrowing the following section's bullets.
 
 use quenchant_shape::shape::Maybe;
 use rustc_hir::Attribute;
@@ -42,7 +32,8 @@ quenchant_shape::reason_enum! {
     }
 }
 
-/// Return rustdoc lines attached to `def_id`, indentation preserved.
+/// Attribute text retains the indentation needed to distinguish continuation
+/// from new prose.
 ///
 /// # Specification
 /// - requires: `def_id` identifies a crate-local item.
@@ -69,7 +60,7 @@ pub fn indented_rustdoc_lines(
         .collect()
 }
 
-/// Return one section's bullets, each folded with its continuation lines.
+/// Bullet folding preserves section ownership and continuation boundaries.
 ///
 /// # Specification
 /// - requires: `lines` are the item's rustdoc lines with their indentation, and
@@ -124,7 +115,7 @@ pub fn section_lines(
     Maybe::Present(bullets)
 }
 
-/// Return one section's own lines, indentation preserved and unfolded.
+/// Section extent is preserved before any bullet-specific interpretation.
 ///
 /// # Specification
 /// - requires: `lines` are the item's rustdoc lines with their indentation, and
@@ -167,7 +158,7 @@ pub fn section_body(
     Maybe::Present(body)
 }
 
-/// Return whether a rustdoc line is an indented continuation of the line above.
+/// Indentation beyond the doc-comment prefix distinguishes a continuation.
 ///
 /// # Specification
 /// - requires: `line` is one rustdoc line with its indentation, as it arrives

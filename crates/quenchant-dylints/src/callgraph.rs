@@ -1,22 +1,20 @@
-//! The crate-local call graph and the input-provenance analysis built on it.
+//! Local call cycles and the argument provenance relevant to termination
+//! claims.
 //!
-//! [`crate::RECURSION_FORBIDDEN`] is a call-plane gate: it needs the crate's
-//! own call edges, the strongly connected components over them, and — for the
-//! `- input recursion: none.` claim — whether any edge inside a component
-//! carries data derived from the caller's own parameters.
+//! A recursive component identifies functions that can call their way back to
+//! themselves through resolved crate-local edges. The provenance pass asks
+//! whether an edge within that component carries data derived from the caller's
+//! parameters; it can refute a claim of no input recursion.
 //!
-//! The visitors opt into `nested_filter::OnlyBodies` so a call written inside a
-//! closure counts as a call by the function that builds the closure. That is an
-//! over-approximation — the closure may never be invoked — and it is the safe
-//! direction for a ban with an explicit escape hatch.
+//! Closure bodies count against their enclosing function even when the closure
+//! might never execute. That conservative reach is deliberate for a policy with
+//! explicit, item-scoped exceptions.
 //!
-//! Known blind spots of this plane, recorded rather than solved here:
-//! derived-trait recursion routes through non-local `std` generics and produces
-//! no crate-local edge, compiler-generated drop glue has no HIR function at
-//! all, and a callee reached through a function *pointer* has had its
-//! definition id erased by the coercion — a function *item* held in a binding
-//! still carries its `FnDef` type and is resolved. The type-plane gate is the
-//! complementary closure.
+//! A bound function item retains its definition identity; coercion to a
+//! function pointer can erase it. Derived behavior routed through foreign
+//! generics and compiler-generated drop glue also need not produce a local HIR
+//! call edge. Ownership analysis addresses recursive layouts, but the two
+//! analyses do not jointly prove every runtime termination claim.
 
 use std::collections::HashMap;
 use std::collections::HashSet;
@@ -80,30 +78,31 @@ use crate::semantic::HasInputDerivedRecursiveCall;
 use crate::semantic::ProvenanceChanged;
 use crate::semantic::Vertex;
 
-/// Crate-local function metadata needed for crate-post recursion diagnostics.
+/// Function identity and provenance roots retained until whole-crate cycle
+/// analysis.
 pub struct FunctionNode
 {
-    /// The function's whole-item span, used as the diagnostic target.
+    /// Source address retained for post-walk diagnostics.
     pub span: Span,
-    /// The function's stable rustc def-path string, used for deterministic
-    /// component and diagnostic ordering.
+    /// Stable definition spelling determines component and diagnostic order.
     pub path: String,
-    /// The HIR id of the function body expression root.
+    /// Expression root from which this function's provenance is traced.
     pub body_hir_id: HirId,
-    /// HIR ids of the function's parameter pattern bindings.
+    /// Parameter-pattern bindings seed the input-derived set.
     pub input_bindings: Vec<HirId>,
 }
 
-/// One crate-local callsite, preserving the callee and argument HIR roots.
+/// Local call identity remains paired with the arguments whose provenance
+/// matters.
 pub struct CallEdge
 {
-    /// The callee's crate-local definition id.
+    /// Local destination used by cycle membership.
     pub callee: LocalDefId,
-    /// HIR ids of the argument expressions, receiver first for method calls.
+    /// Argument roots preserve receiver-as-first-argument ordering for methods.
     pub args: Vec<HirId>,
 }
 
-/// Collect crate-local free-function and method callsites under `expr`.
+/// Resolvable local calls become graph edges with their argument roots intact.
 ///
 /// # Specification
 /// - requires: `expr` is the body root of the function currently being visited,
@@ -126,12 +125,13 @@ pub fn local_call_edges<'tcx>(
     collector.calls
 }
 
-/// HIR visitor that records direct local function/method callsites.
+/// Expression traversal records local call identities before descending
+/// further.
 struct LocalCallCollector<'cx, 'tcx>
 {
-    /// The late lint context used for path and method resolution.
+    /// Compiler context supplies path and method identity.
     cx: &'cx LateContext<'tcx>,
-    /// The callsites recorded so far, in visit order.
+    /// Encounter order is preserved in the collected callsites.
     calls: Vec<CallEdge>,
 }
 
@@ -145,7 +145,7 @@ impl<'tcx> Visitor<'tcx> for LocalCallCollector<'_, 'tcx>
     type MaybeTyCtxt = TyCtxt<'tcx>;
     type NestedFilter = nested_filter::OnlyBodies;
 
-    /// Hand rustc's context to the walk.
+    /// Nested-body traversal shares the collector's compiler context.
     ///
     /// # Specification
     /// trivial.
@@ -154,7 +154,8 @@ impl<'tcx> Visitor<'tcx> for LocalCallCollector<'_, 'tcx>
         self.cx.tcx
     }
 
-    /// Record a callsite and descend into the expression's children.
+    /// Call arguments retain their HIR roots while child expressions remain
+    /// visitable.
     ///
     /// # Specification
     /// - ensures: records one edge per resolved crate-local call or method
@@ -204,7 +205,8 @@ impl<'tcx> Visitor<'tcx> for LocalCallCollector<'_, 'tcx>
     }
 }
 
-/// Resolve a call's callee expression to a crate-local function definition.
+/// A local edge requires function identity that has survived the callee's
+/// representation.
 ///
 /// # Specification
 /// - requires: `callee` is the callee position of a `Call` expression in a body
@@ -252,9 +254,7 @@ fn call_target(
     }
 }
 
-/// Return every crate-local recursive strongly connected component, each sorted
-/// by stable rustc path, the components themselves ordered by their first
-/// member's path.
+/// Recursive components and their members have stable definition-path ordering.
 ///
 /// # Specification
 /// - requires: `functions` holds every crate-local function the pass visited,
@@ -337,7 +337,8 @@ pub fn recursive_sccs(
     recursive
 }
 
-/// Return crate-local function ids sorted by rustc's stable path string.
+/// Stable definition paths remove traversal-order dependence from diagnostic
+/// ordering.
 ///
 /// # Specification
 /// - ensures: returns every key of the table, ordered by the stable path string
@@ -350,7 +351,7 @@ fn sorted_function_ids(functions: &HashMap<LocalDefId, FunctionNode>) -> Vec<Loc
     ids
 }
 
-/// Return whether any call edge inside `scc` passes caller-input-derived data.
+/// Input-derived arguments on a cycle edge refute a no-input-recursion claim.
 ///
 /// # Specification
 /// - requires: `scc` is one component returned by [`recursive_sccs`].
@@ -396,8 +397,8 @@ pub fn scc_has_input_derived_recursive_call(
     HasInputDerivedRecursiveCall(false)
 }
 
-/// Return the final flow-insensitive set of locals derived from the function's
-/// own parameters.
+/// Parameter provenance closes over the body's binding and assignment
+/// relationships.
 ///
 /// # Specification
 /// - requires: `node` describes a crate-local function whose body root still
@@ -438,14 +439,14 @@ fn input_derived_bindings(
     derived
 }
 
-/// HIR visitor that grows the input-provenance set to a fixed point.
+/// Monotone provenance growth determines whether another pass is required.
 struct ProvenancePropagation<'derived, 'cx, 'tcx>
 {
-    /// The late lint context used for local resolution.
+    /// Compiler resolution identifies referenced local bindings.
     cx: &'cx LateContext<'tcx>,
-    /// The input-provenance set being grown to a fixed point.
+    /// The shared set grows toward the body's provenance fixed point.
     derived: &'derived mut HashSet<HirId>,
-    /// Whether the current pass added any binding to `derived`.
+    /// A newly derived binding requires another propagation pass.
     changed: bool,
 }
 
@@ -459,7 +460,7 @@ impl<'tcx> Visitor<'tcx> for ProvenancePropagation<'_, '_, 'tcx>
     type MaybeTyCtxt = TyCtxt<'tcx>;
     type NestedFilter = nested_filter::OnlyBodies;
 
-    /// Hand rustc's context to the walk.
+    /// Nested-body traversal uses the same binding-resolution context.
     ///
     /// # Specification
     /// trivial.
@@ -468,7 +469,8 @@ impl<'tcx> Visitor<'tcx> for ProvenancePropagation<'_, '_, 'tcx>
         self.cx.tcx
     }
 
-    /// Propagate provenance across a `let` statement's initializer.
+    /// Initializer provenance transfers to every binding introduced by the
+    /// pattern.
     ///
     /// # Specification
     /// - ensures: marks the statement's own bindings input-derived when its
@@ -494,7 +496,8 @@ impl<'tcx> Visitor<'tcx> for ProvenancePropagation<'_, '_, 'tcx>
         walk_local(self, local);
     }
 
-    /// Propagate provenance across binding, scrutinee, and assignment forms.
+    /// Binding, scrutinee, and assignment relationships propagate input
+    /// dependence.
     ///
     /// # Specification
     /// - ensures: marks the bindings of a `let` expression, of every match arm
@@ -543,7 +546,7 @@ impl<'tcx> Visitor<'tcx> for ProvenancePropagation<'_, '_, 'tcx>
     }
 }
 
-/// Return all parameter pattern bindings in `body`.
+/// Destructured parameters contribute every binding that can seed provenance.
 ///
 /// # Specification
 /// - ensures: returns every binding the body's parameter patterns introduce, in
@@ -559,7 +562,7 @@ pub fn parameter_binding_ids(body: &Body<'_>) -> Vec<HirId>
     bindings
 }
 
-/// Mark every binding introduced by `pat` as input-derived.
+/// Provenance attaches to all bindings introduced by a derived pattern.
 ///
 /// # Specification
 /// - ensures: adds every binding the pattern introduces to the set, and answers
@@ -579,7 +582,7 @@ fn mark_pattern_bindings(
     ProvenanceChanged(changed)
 }
 
-/// Collect every binding introduced by `pat`.
+/// Pattern traversal preserves binding identities through destructuring.
 ///
 /// # Specification
 /// - ensures: appends every binding the pattern introduces, in visit order,
@@ -594,11 +597,11 @@ fn collect_pattern_bindings(
     collector.visit_pat(pat);
 }
 
-/// Pattern visitor that records local bindings.
+/// Pattern descent collects binding identities independently of their nesting.
 #[repr(transparent)]
 struct PatternBindingCollector<'bindings>
 {
-    /// The binding HIR ids recorded so far, in visit order.
+    /// The caller's collection retains pattern-visit order.
     bindings: &'bindings mut Vec<HirId>,
 }
 
@@ -609,7 +612,8 @@ struct PatternBindingCollector<'bindings>
 )]
 impl<'tcx> Visitor<'tcx> for PatternBindingCollector<'_>
 {
-    /// Record a binding and descend into the pattern's children.
+    /// A binding contributes its identity without hiding nested pattern
+    /// bindings.
     ///
     /// # Specification
     /// - ensures: appends the pattern's own binding id when it has one and the
@@ -636,7 +640,7 @@ impl<'tcx> Visitor<'tcx> for PatternBindingCollector<'_>
     }
 }
 
-/// Return whether `expr` contains any reference to an input-derived local.
+/// A reference to any derived local makes the expression input-dependent.
 ///
 /// # Specification
 /// - ensures: answers affirmatively exactly when some path in the expression
@@ -657,14 +661,14 @@ fn expr_contains_derived_binding<'tcx>(
     ContainsDerivedBinding(visitor.found)
 }
 
-/// Expression visitor that finds references to already-derived locals.
+/// Expression descent searches for membership in the current provenance set.
 struct DerivedBindingFinder<'derived, 'cx, 'tcx>
 {
-    /// The late lint context used for local resolution.
+    /// Compiler resolution maps local references to binding identities.
     cx: &'cx LateContext<'tcx>,
-    /// The current input-provenance set.
+    /// Current fixed-point approximation used by the membership query.
     derived: &'derived HashSet<HirId>,
-    /// Whether a reference to a derived local has been found.
+    /// A found reference makes further descent unnecessary.
     found: bool,
 }
 
@@ -678,7 +682,7 @@ impl<'tcx> Visitor<'tcx> for DerivedBindingFinder<'_, '_, 'tcx>
     type MaybeTyCtxt = TyCtxt<'tcx>;
     type NestedFilter = nested_filter::OnlyBodies;
 
-    /// Hand rustc's context to the walk.
+    /// Nested expressions retain the finder's compiler context.
     ///
     /// # Specification
     /// trivial.
@@ -687,7 +691,7 @@ impl<'tcx> Visitor<'tcx> for DerivedBindingFinder<'_, '_, 'tcx>
         self.cx.tcx
     }
 
-    /// Stop at the first derived local, otherwise descend.
+    /// The first derived reference completes this existence query.
     ///
     /// # Specification
     /// - ensures: sets the found flag on the first path resolving to a derived
@@ -719,7 +723,8 @@ impl<'tcx> Visitor<'tcx> for DerivedBindingFinder<'_, '_, 'tcx>
     }
 }
 
-/// Mark every local reference in `expr`; used conservatively for assignments.
+/// Assignment analysis conservatively treats every referenced local as a
+/// possible target.
 ///
 /// # Specification
 /// - ensures: adds every local the expression references to the set, and
@@ -745,12 +750,13 @@ fn mark_local_references<'tcx>(
     ProvenanceChanged(changed)
 }
 
-/// Expression visitor that records every referenced local binding.
+/// Local-reference traversal preserves binding identity rather than source
+/// spelling.
 struct LocalReferenceCollector<'cx, 'tcx>
 {
-    /// The late lint context used for local resolution.
+    /// Compiler resolution distinguishes bindings with the same spelling.
     cx: &'cx LateContext<'tcx>,
-    /// The referenced local binding HIR ids recorded so far, in visit order.
+    /// Referenced bindings remain ordered by first encounter.
     locals: Vec<HirId>,
 }
 
@@ -764,7 +770,7 @@ impl<'tcx> Visitor<'tcx> for LocalReferenceCollector<'_, 'tcx>
     type MaybeTyCtxt = TyCtxt<'tcx>;
     type NestedFilter = nested_filter::OnlyBodies;
 
-    /// Hand rustc's context to the walk.
+    /// Nested expressions share the reference collector's compiler context.
     ///
     /// # Specification
     /// trivial.
@@ -773,7 +779,8 @@ impl<'tcx> Visitor<'tcx> for LocalReferenceCollector<'_, 'tcx>
         self.cx.tcx
     }
 
-    /// Record a referenced local and descend into the expression's children.
+    /// Recording a local reference still permits discovery of references
+    /// beneath it.
     ///
     /// # Specification
     /// - ensures: appends every local a path in the expression resolves to,
@@ -801,7 +808,7 @@ impl<'tcx> Visitor<'tcx> for LocalReferenceCollector<'_, 'tcx>
     }
 }
 
-/// Return an expression by HIR id when the id still names an expression node.
+/// HIR identity is usable for provenance only while it denotes an expression.
 ///
 /// # Specification
 /// - ensures: returns the expression exactly when the id still names an

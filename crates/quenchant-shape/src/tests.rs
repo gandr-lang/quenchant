@@ -7,20 +7,21 @@ use super::Maybe;
 use super::absence_query;
 
 reason_enum! {
-    /// Absence during this lookup's two stages.
+    /// Lookup stages distinguish a completed miss from deferred search.
     pub mod lookup {
-        /// Why this lookup did not provide a value.
+        /// Evidence retained when the lookup supplies no payload.
         #[derive(Debug, Eq, PartialEq)]
         pub enum Unavailable {
-            /// The key was searched for and not found.
+            /// Completed search establishes that the key is absent.
             Missing,
-            /// The stage that searches this key has not run.
+            /// Search remains pending, so absence of the key is not established.
             Unsearched,
         }
     }
 }
 
-/// Construct absence through this site's closed generic reason bound.
+/// A sealed site bound admits generic construction without opening its reason
+/// set.
 ///
 /// # Specification
 /// - requires: `Reason` implements this lookup site's sealed reason trait, so
@@ -38,31 +39,32 @@ where
     Maybe::Absent(reason)
 }
 
-/// A move-only input: combinators must not require Clone or Copy.
+/// Ownership-sensitive input exposes accidental Clone or Copy requirements.
 #[derive(Debug, Eq, PartialEq)]
 enum Ticket
 {
-    /// First route.
+    /// Payload selecting the north route.
     North,
-    /// Second route.
+    /// Payload selecting the south route.
     South,
 }
 
-/// A move-only closure capture with a different output type.
+/// A distinct move-only output exposes accidental constraints on mapper
+/// results.
 #[derive(Debug, Eq, PartialEq)]
 enum Receipt
 {
-    /// The next stage accepted the ticket.
+    /// The ticket reached the accepting stage.
     Accepted,
 }
 
-/// Callback state without an untyped boolean or arithmetic counter.
+/// A closed observation of callback execution.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Visit
 {
-    /// The callback has not run.
+    /// No callback invocation has been observed.
     Untouched,
-    /// The callback ran.
+    /// Callback invocation has been observed.
     Visited,
 }
 
@@ -137,19 +139,20 @@ fn reason_query_preserves_the_original_value()
     );
 }
 
-/// Failure at the boundary that requires a completed lookup.
+/// Required-lookup policy promotes each absence reason to its own failure.
 #[derive(Debug, Eq, PartialEq)]
 enum LookupFailure
 {
-    /// A required key is missing.
+    /// A completed lookup did not find the required key.
     MissingKey,
-    /// A required search has not run.
+    /// Required lookup work has not been performed.
     SearchRequired,
 }
 
 impl core::fmt::Display for LookupFailure
 {
-    /// Write the fixed message this failure variant names.
+    /// Failure wording preserves the distinction between a miss and unfinished
+    /// work.
     ///
     /// # Specification
     /// - ensures: writes one fixed message per variant, selected by the variant
@@ -215,7 +218,7 @@ fn failure_promotion_is_explicit_and_reason_sensitive()
 }
 
 nominal_type! {
-    /// Permission combined by union rather than primitive addition.
+    /// Union gives this permission type an operator meaning distinct from numeric addition.
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
     struct Permission(bool);
 }
@@ -251,13 +254,13 @@ fn nominal_wrapper_preserves_transparent_layout()
     );
 }
 
-/// Reject a false postcondition only when the proc-macro dependency enforces
-/// it.
+/// A false predicate fails only in the selected enforcing interpretation.
 #[cfg(all(feature = "anodized", anodized_panic))]
 #[test]
 fn specification_enforcement_rejects_false_postcondition()
 {
-    /// Exercise postcondition enforcement without any body-originated panic.
+    /// Normal body completion leaves any observed panic attributable to
+    /// instrumentation.
     ///
     /// # Specification
     /// - ensures: false, deliberately violated to witness enforcement.

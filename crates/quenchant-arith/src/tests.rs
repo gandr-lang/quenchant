@@ -29,7 +29,7 @@ use super::wrapping_mul;
 use super::wrapping_rem;
 use super::wrapping_sub;
 
-/// Cross each boundary-biased input pair against the primitive specification.
+/// Boundary-biased operand pairs compare each family with its primitive model.
 macro_rules! family_grid {
     (
         $inputs:ident,
@@ -57,7 +57,7 @@ macro_rules! family_grid {
                 let rhs = Int::from(right);
                 assert_eq!($checked(lhs, rhs), expected);
                 if !zero_divisor {
-                    // reason: the reference domains are explicitly modular and clamped.
+                    // These model calls intentionally inhabit modular and clamped domains.
                     assert_eq!($wrapping(lhs, rhs), Int::from(left.$wrapping(right)));
                     assert_eq!(
                         $saturating(lhs, rhs),
@@ -151,7 +151,7 @@ macro_rules! width_specification {
                 saturating_div
             );
             }
-            // Remainders fit mathematically; modular remainder is also the clamp reference.
+            // A defined remainder needs no clamping; the modular model also covers MIN/-1.
             #[expect(clippy::arithmetic_side_effects, reason = "The reference grid excludes zero divisors before calling the primitive models.")]
             {
             family_grid!(
@@ -188,7 +188,7 @@ macro_rules! width_specification {
                 Err(ArithmeticError::ZeroDivisor(Operation::Rem))
             );
 
-            // These panic boundaries must hold under both debug and release profiles.
+            // Optimization profile must not change a strict operation's panic boundary.
             assert!(std::panic::catch_unwind(|| strict_add(max, one)).is_err());
             assert!(std::panic::catch_unwind(|| strict_sub(min, one)).is_err());
             assert!(std::panic::catch_unwind(|| strict_mul(max, two)).is_err());
@@ -205,7 +205,7 @@ macro_rules! width_specification {
     };
 }
 
-/// Add signed-only MIN/-1 and negative truncation witnesses.
+/// Signed cases distinguish MIN/-1 overflow from truncation toward zero.
 macro_rules! signed_specification {
     ($name:ident, $representation:ty) => {
         #[test]
@@ -227,7 +227,7 @@ macro_rules! signed_specification {
                 checked_rem(min, minus_one),
                 Err(ArithmeticError::Overflow(Operation::Rem))
             );
-            // reason: these assertions distinguish the modular and clamped domains.
+            // The two domains intentionally give different answers at quotient overflow.
             assert_eq!(wrapping_div(min, minus_one), min);
             assert_eq!(wrapping_rem(min, minus_one), zero);
             assert_eq!(saturating_div(min, minus_one), Int::<$representation>::MAX);
@@ -288,13 +288,14 @@ fn diagnostics_distinguish_operations_and_failure_causes()
     }
 }
 
-/// Reject a false postcondition only when the proc-macro dependency enforces
-/// it.
+/// Enforcement, rather than feature selection alone, determines whether a false
+/// predicate panics.
 #[cfg(all(feature = "anodized", anodized_panic))]
 #[test]
 fn specification_enforcement_rejects_false_postcondition()
 {
-    /// Exercise postcondition enforcement without any body-originated panic.
+    /// A normally returning body isolates failure in the generated
+    /// postcondition.
     ///
     /// # Specification
     /// - ensures: false, deliberately violated to witness enforcement.

@@ -1,45 +1,29 @@
-//! The type plane: crate-local ADTs that own their way back to themselves.
+//! Recursive ownership over local type definitions, not pointer-name
+//! heuristics.
 //!
-//! [`crate::RECURSIVE_OWNED_POINTER`] asks one question of every locally
-//! defined ADT — *does a field's type reach the defining type again, through
-//! owned positions only?* — and denies every ADT for which the answer is yes.
-//! The question is asked of the field's **type**, not of its spelling: a `Box`
-//! whose pointee returns only through an arena index closes no cycle, and a
-//! `Vec<Self>` closes one without naming a pointer at all.
+//! A definition is rejected when an owned field path returns to that
+//! definition. `Vec<Self>` can close such a path without spelling a pointer; a
+//! boxed object that returns only through an arena index does not. Rust's
+//! finite-size rule already forces an indirection somewhere in a genuine
+//! ownership cycle.
 //!
-//! The graph is therefore an ownership-reachability graph over ADT
-//! *definitions*, and the denial set is its recursive strongly connected
-//! components. Nothing in it mentions `Box`, `Rc`, or `Arc` by name: Rust
-//! rejects an ADT of infinite size, so every cycle in this graph already passes
-//! through an indirection, and which indirection it was is a fact about the
-//! diagnostic rather than about the verdict.
+//! Owned positions are those whose contents are dropped with the enclosing
+//! value. The walk follows arrays, slices, pattern types, tuples, and owned ADT
+//! parameters. It stops at references, raw pointers, function values, closures,
+//! trait objects, and unnormalized projections. `PhantomData`, weak references,
+//! and explicitly justified foreign types supply named non-owning boundaries.
 //!
-//! # Owned positions
+//! Local parameter ownership is a least fixed point over fields. This keeps a
+//! typed arena identifier from becoming an owning edge merely because its
+//! phantom parameter names the enclosing type.
 //!
-//! A position is owned when dropping the whole value drops what sits there.
+//! Foreign representations cannot be inspected as if their raw storage pointers
+//! described their ownership semantics: doing so would hide ownership in
+//! containers such as `Vec`. Unknown foreign parameters are conservatively
+//! owning; the justified allowlist is the channel for correcting that model.
 //!
-//! - Owning, descend: array and slice elements, pattern types, tuple
-//!   components, and the type arguments of an ADT at an owned parameter.
-//! - Non-owning, stop: references and raw pointers, function pointers and
-//!   function items, closures, trait objects, and unnormalized projections.
-//! - Non-owning by name: `PhantomData`, `std::rc::Weak`, `std::sync::Weak`, and
-//!   every entry of the configured allow-list.
-//!
-//! An index newtype needs no rule: it holds an integer and reaches nothing.
-//!
-//! # Owned parameters
-//!
-//! `Wrapper<Node>` owns a `Node` when `Wrapper`'s parameter occupies an owned
-//! field position, and owns nothing when the parameter only ever appears in a
-//! `PhantomData` — the shape of every typed arena index. Which of the two holds
-//! is computed for crate-local ADTs as a least fixed point over their own
-//! fields, so a typed `Id<Node>` inside `Node` is not a cycle.
-//!
-//! An ADT defined outside the crate has no such analysis available, and reading
-//! its fields would be worse than not reading them: `Vec`'s own fields bottom
-//! out in a raw pointer, so a walk through them would accept every `Vec<Self>`
-//! in the workspace. Every parameter of an external ADT is therefore treated as
-//! owned, and the allow-list is the evidence channel that overrides it.
+//! Diagnostics name members of recursive strongly connected components. A type
+//! that contains a different cyclic type is not automatically in that cycle.
 
 use alloc::collections::VecDeque;
 use std::collections::HashMap;
@@ -62,45 +46,46 @@ use crate::semantic::TypePath;
 use crate::semantic::Vertex;
 use crate::signature::normalize_middle_ty;
 
-/// Crate-local ADT metadata needed for crate-post ownership diagnostics.
+/// Type identity and diagnostic ownership retained for whole-crate cycle
+/// analysis.
 pub struct AdtNode
 {
-    /// The HIR id of the ADT item, so a lint level written on the item applies.
+    /// Item identity preserves its local lint-level policy.
     pub hir_id: HirId,
-    /// The span the diagnostic points at — the type's own name.
+    /// The authored type name anchors the diagnostic.
     pub span: Span,
-    /// The ADT's stable rustc def-path string, used for deterministic ordering
-    /// and for naming the cycle in the diagnostic.
+    /// Stable type spelling determines cycle rendering and diagnostic order.
     pub path: String,
 }
 
-/// One denied ADT together with the rendered cycle that denies it.
+/// A denied type remains paired with the ownership path explaining its cycle.
 pub struct OwningCycle
 {
-    /// The ADT the diagnostic is emitted at.
+    /// Local type at which this cycle is reported.
     pub adt: LocalDefId,
-    /// The cycle path, rendered as `Owner::field → .. → Owner`.
+    /// Field-qualified ownership hops close back on the starting type.
     pub cycle: String,
 }
 
-/// External generic types declared to form no owning edges.
+/// Justified external-generic boundaries remove otherwise conservative
+/// ownership edges.
 ///
-/// The list is read from the workspace's `dylint.toml`; see the crate
-/// `README.md` for the schema. An entry states a def path and the evidence for
-/// it, and an entry stating no evidence is refused rather than applied, so a
-/// malformed allow-list denies rather than admits.
+/// Workspace `dylint.toml` entries pair definition paths with evidence; the
+/// crate README defines the schema. Entries lacking justification remain owning
+/// and produce configuration diagnostics.
 #[derive(Clone, Default)]
 pub struct NonOwningAllowList
 {
-    /// Def-path strings of external generics that own none of their arguments.
+    /// External definitions whose arguments are justified as non-owning.
     paths: Vec<String>,
-    /// Diagnostics for entries the configuration states incompletely.
+    /// Incomplete entries remain visible as configuration defects.
     defects: Vec<String>,
 }
 
 impl NonOwningAllowList
 {
-    /// Return whether the allow-list admits `path`.
+    /// Only an admitted exact definition path removes the conservative owning
+    /// interpretation.
     ///
     /// # Specification
     /// - ensures: answers affirmatively exactly when a justified entry names
@@ -114,7 +99,7 @@ impl NonOwningAllowList
         NonOwningAdt(self.paths.iter().any(|entry| entry == path.0))
     }
 
-    /// Return the diagnostics for entries that state no justification.
+    /// Rejected configuration entries retain the reason admission failed.
     ///
     /// # Specification
     /// trivial.
@@ -124,16 +109,17 @@ impl NonOwningAllowList
     }
 }
 
-/// The `dylint.toml` key under which the allow-list is read.
+/// Configuration key selecting the external ownership-boundary declarations.
 const ALLOW_LIST_KEY: &str = "non_owning_generics";
 
-/// The diagnostic for an allow-list entry that states no justification.
+/// Incomplete ownership declarations receive the required evidence shape.
 const UNJUSTIFIED_ENTRY: &str = concat!(
     "each `non_owning_generics` entry must state `path` and a non-empty `justification`; the ",
     "entry is refused, so the type stays conservatively owning",
 );
 
-/// Read the non-owning allow-list from the workspace's `dylint.toml`.
+/// Configuration evidence determines which external ownership boundaries are
+/// admitted.
 ///
 /// # Specification
 /// - requires: `dylint_linting::init_config` has already run, which
@@ -183,8 +169,7 @@ pub fn non_owning_allow_list() -> NonOwningAllowList
     list
 }
 
-/// Return every crate-local ADT that owns its way back to itself, ordered by
-/// stable rustc path.
+/// Owning cycles produce deterministic type-local denials.
 ///
 /// # Specification
 /// - requires: `adts` holds every crate-local ADT the pass visited.
@@ -288,7 +273,7 @@ pub fn owning_cycles(
     denials
 }
 
-/// Return crate-local ADT ids sorted by rustc's stable path string.
+/// Stable definition paths determine type traversal order.
 ///
 /// # Specification
 /// - ensures: returns every key of the table, ordered by the stable path string
@@ -301,11 +286,10 @@ fn sorted_adt_ids(adts: &HashMap<LocalDefId, AdtNode>) -> Vec<LocalDefId>
     ids
 }
 
-/// Return each field of `def_id` as a label and its identity-instantiated type.
+/// Field identity remains paired with its identity-instantiated compiler type.
 ///
-/// The label names the field the way the source writes it: `variant::field` in
-/// an enum, `field` in a struct or union, with a tuple field's position as its
-/// name.
+/// Labels preserve source ownership: enum fields include the variant, struct
+/// and union fields use their name, and tuple fields use their position.
 ///
 /// # Specification
 /// - requires: `def_id` identifies a crate-local ADT.
@@ -328,17 +312,17 @@ fn owned_field_types<'tcx>(
             else {
                 field.name.to_string()
             };
-            // The field type arrives unnormalized under the pinned nightly's
-            // in-progress normalization API; `reach` normalizes every type it
-            // pops, so the obligation is discharged there rather than here.
+            // The pinned compiler exposes this field type before normalization. `reach`
+            // normalizes every popped type, so classification still uses the normalized
+            // view.
             fields.push((label, field.ty(cx.tcx, args).skip_norm_wip()));
         }
     }
     fields
 }
 
-/// Compute, for every crate-local ADT, which of its generic parameters occupy
-/// an owned field position.
+/// Owned generic positions are inferred by a monotone fixed point over local
+/// fields.
 ///
 /// # Specification
 /// - requires: `nodes` lists every crate-local ADT.
@@ -367,11 +351,9 @@ fn owned_parameters(
         let count = cx.tcx.generics_of(def_id.to_def_id()).count();
         owned.insert(def_id.to_def_id(), vec![OwnedParameter(false); count]);
     }
-    // economy: each round re-walks every field of every crate-local ADT rather
-    // than only the ADTs whose dependencies changed. Rounds are bounded by the
-    // number of flags that can still flip and settle at two on realistic input;
-    // a dependency-driven worklist is the upgrade if a crate ever makes this
-    // show up in a profile.
+    // economy: each round revisits every local field. Remaining false flags bound
+    // the number of rounds; a dependency-driven worklist is the upgrade if repeated
+    // scans dominate a profile.
     loop {
         let mut marks: Vec<(DefId, Vec<ParameterIndex>)> = Vec::with_capacity(nodes.len());
         {
@@ -410,30 +392,32 @@ fn owned_parameters(
     owned
 }
 
-/// What one ownership walk reached: crate-local ADTs, and generic parameters.
+/// Ownership reachability retains local type destinations and generic positions
+/// separately.
 #[derive(Default)]
 struct Reached
 {
-    /// Crate-local ADTs reached at an owned position, in visit order.
+    /// Local type destinations preserve encounter order.
     adts: Vec<LocalDefId>,
-    /// Generic parameters of the walked ADT reached at an owned position.
+    /// Generic positions reached through ownership in the walked declaration.
     parameters: Vec<ParameterIndex>,
 }
 
-/// The ownership-reachability walk over `rustc_middle` types.
+/// Normalized compiler types determine ownership reachability.
 struct OwnershipWalk<'walk, 'tcx>
 {
-    /// The late lint context used for normalization and definition lookups.
+    /// Compiler context supplies normalization and definition identity.
     cx: &'walk LateContext<'tcx>,
-    /// External generics declared to own none of their arguments.
+    /// Justified external boundaries stop ownership propagation through
+    /// arguments.
     allow_list: &'walk NonOwningAllowList,
-    /// The owned-parameter flags of crate-local ADTs computed so far.
+    /// Current fixed-point approximation of local generic ownership.
     owned_parameters: &'walk HashMap<DefId, Vec<OwnedParameter>>,
 }
 
 impl<'tcx> OwnershipWalk<'_, 'tcx>
 {
-    /// Return everything `root` reaches through owned positions only.
+    /// Only owned positions contribute type or parameter reachability.
     ///
     /// # Specification
     /// - requires: `root` is a field type instantiated with its ADT's identity
@@ -497,7 +481,8 @@ impl<'tcx> OwnershipWalk<'_, 'tcx>
         reached
     }
 
-    /// Return whether an ADT forms no owning edge through any argument.
+    /// A recognized non-owning ADT stops traversal through all of its
+    /// arguments.
     ///
     /// # Specification
     /// - ensures: answers affirmatively for `PhantomData`, for either `Weak`,
@@ -523,18 +508,18 @@ impl<'tcx> OwnershipWalk<'_, 'tcx>
         if def_id.is_local() || self.allow_list.paths.is_empty() {
             return NonOwningAdt(false);
         }
-        // economy: the allow-list is matched by rendering the def path, one
-        // `String` per external ADT the walk reaches, and only when the list is
-        // non-empty. A `DefId` set resolved once per crate is the upgrade if a
-        // long allow-list ever shows up in a profile.
+        // economy: a nonempty allow-list requires one rendered definition path per
+        // reached external ADT. Resolving the list to definition ids once per crate
+        // would remove that allocation if long lists become costly.
         self.allow_list
             .admits(TypePath::from(self.cx.tcx.def_path_str(def_id).as_str()))
     }
 
-    /// Return whether the parameter at `index` of `def_id` is owned.
+    /// Generic-position ownership uses local evidence and conservative external
+    /// assumptions.
     ///
-    /// A crate-local ADT answers from its computed flags; an ADT outside the
-    /// crate has no flags and every one of its parameters is taken as owned.
+    /// Local definitions supply computed flags. External definitions have no
+    /// such field analysis, so every argument position is treated as owning.
     ///
     /// # Specification
     /// - ensures: answers from the computed flags for a crate-local ADT, and
@@ -555,7 +540,7 @@ impl<'tcx> OwnershipWalk<'_, 'tcx>
     }
 }
 
-/// Render the shortest cycle through `start` inside its component.
+/// A shortest in-component cycle supplies a bounded diagnostic explanation.
 ///
 /// # Specification
 /// - requires: `start` lies on a cycle of `adjacency`, and `members` is the
@@ -655,7 +640,7 @@ mod tests
     use crate::semantic::FieldLabel;
     use crate::semantic::Vertex;
 
-    /// Build the label table from `(source, target, field)` triples.
+    /// Fixture edges retain the field labels used by cycle rendering.
     ///
     /// # Specification
     /// trivial.
@@ -667,7 +652,8 @@ mod tests
             .collect()
     }
 
-    /// Return the component of `adjacency` containing `vertex`.
+    /// Component membership isolates the cycle containing the selected fixture
+    /// vertex.
     ///
     /// # Specification
     /// trivial.
@@ -687,9 +673,8 @@ mod tests
     #[test]
     fn a_container_of_cycle_members_is_not_in_the_cycle()
     {
-        // 0 is a table holding 1, and 1 <-> 2 is the cycle. The table reaches
-        // the cycle but the cycle does not reach the table, so the table is a
-        // component of its own — the arena is the target state, not a row.
+        // Vertex 0 holds a row in the 1–2 cycle but has no return edge. The arena
+        // remains outside the recursive component even though it reaches a cyclic row.
         let adjacency = vec![vec![Vertex(1)], vec![Vertex(2)], vec![Vertex(1)]];
         let mut components = tarjan_components(&adjacency);
         for component in &mut components {

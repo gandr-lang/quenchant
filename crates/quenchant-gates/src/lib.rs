@@ -1,39 +1,24 @@
-//! Non-lint gates for Rust workspaces.
+//! Evidence boundaries that require a consumer invocation or workspace
+//! inventory.
 //!
-//! A dylint pass sees one crate's HIR. Some invariants are not visible there at
-//! all: they live in the build graph, in the test inventory, or in the shape of
-//! the workspace. Those gates live here, and they run as ordinary binaries the
-//! wall invokes.
+//! A compiler lint sees a crate's HIR, not the whole build graph or the
+//! runnable test inventory. These gates obtain those views explicitly and
+//! preserve the consumer manifest, package, target, and operational failure
+//! that qualify a result.
 //!
-//! # The gates
-//!
-//! [`anodized`] reports the consumer invocation's specification-enforcement
-//! state. G0 (the `witnesses` subcommand of the binary) closes the other half
-//! of the `# Adequacy` grammar: every `-
-//! witness:` path in the workspace must resolve to **exactly one runnable test
-//! in the item's own crate's targets**. Absent, renamed, ambiguous and
-//! wrong-target paths fail.
-//!
-//! A witness bullet that names nothing runnable is documentation wearing a
-//! test's clothes: it passes review, survives refactors that rename the test it
-//! meant, and reports adequacy that was never measured.
-//!
-//! The test inventory comes from `cargo nextest list --message-format json`
-//! when nextest is on the path, and otherwise from `cargo test --no-run
-//! --message-format json` followed by `--list` on each built test binary. Both
-//! routes preserve the owning package and target of every test, which is what
-//! makes a wrong-target path distinguishable from a correct one.
+//! Invocation-state reporting does not certify a host macro artifact. Witness
+//! resolution establishes a runnable name in its owning scope, not execution,
+//! distinguishing power, or completeness of the specification it accompanies.
+//! Nextest and native-harness inventory routes preserve the same package/target
+//! identity so similarly named tests cannot silently satisfy each other's
+//! obligations.
 
 extern crate alloc;
 
 pub mod anodized;
-
 pub mod catalog;
-
 pub mod inventory;
-
 pub mod semantic;
-
 pub mod witnesses;
 
 use core::fmt;
@@ -48,27 +33,32 @@ use crate::semantic::LineNumber;
 use crate::semantic::PackageName;
 use crate::semantic::WitnessPath;
 
-/// One gate violation, addressed to the source line that must change.
+/// A policy finding whose source address and owning scope remain available for
+/// repair.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct Finding
 {
-    /// The stable classification of the violation.
+    /// Machine-readable classification, independent of the explanatory wording.
     pub kind: String,
-    /// The Cargo package owning the file the violation was found in.
+    /// Owning Cargo package; a same-named test elsewhere is not a substitute.
     pub package: String,
-    /// The file the violation was found in.
+    /// Source address supplied by the catalog, not the tool's installation
+    /// path.
     pub path: PathBuf,
-    /// The one-based line of the offending rustdoc bullet.
+    /// One-based source position, not a byte offset or doc-block ordinal.
     pub line: LineNumber,
-    /// The witness path as written.
+    /// Authored spelling retained for repair rather than rewritten to a near
+    /// match.
     pub witness: String,
-    /// What is wrong, and what would resolve it.
+    /// Reader-directed detail; the stable class and source address remain
+    /// separate.
     pub detail: String,
 }
 
 impl Finding
 {
-    /// Build one finding.
+    /// Finding construction retains the authored obligation's complete repair
+    /// address.
     ///
     /// # Specification
     /// trivial.
@@ -96,7 +86,7 @@ impl Finding
 
 impl fmt::Display for Finding
 {
-    /// Write the finding as one reader-addressable line.
+    /// A diagnostic line preserves package ownership and source location.
     ///
     /// # Specification
     /// - ensures: writes path, line, kind, package, witness and detail in that
@@ -122,43 +112,44 @@ impl fmt::Display for Finding
     }
 }
 
-/// Why a gate run could not reach a verdict.
+/// An operational failure that prevented the selected gate from reaching a
+/// verdict.
 ///
-/// An operational error is never a finding: a gate that cannot read the
-/// workspace has measured nothing, and reporting that as "no violations" is the
-/// failure mode this crate exists to prevent.
+/// An unreadable workspace or failed inventory query has supplied no successful
+/// observation. This channel remains distinct from a reached policy finding,
+/// even though the command driver treats either as an unsuccessful run.
 #[derive(Clone, Debug, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub enum GateError
 {
-    /// A file or directory could not be read.
+    /// Source access failed before the file or directory could be inspected.
     Io
     {
-        /// The path that could not be read.
+        /// Source address whose contents were unavailable.
         path: PathBuf,
-        /// The underlying diagnostic.
+        /// Diagnostic supplied by the failed access operation.
         message: String,
     },
-    /// A Rust source file could not be parsed.
+    /// Source text could not be interpreted as a Rust file.
     Parse
     {
-        /// The file that failed to parse.
+        /// Source address of the rejected Rust text.
         path: PathBuf,
-        /// The underlying diagnostic.
+        /// Parser evidence explaining the rejection.
         message: String,
     },
-    /// A tool invocation failed, or produced output the gate cannot read.
+    /// An external instrument failed to supply usable output.
     Tool
     {
-        /// The command line the gate ran.
+        /// Invocation identity, including the scope selected by its arguments.
         command: String,
-        /// The underlying diagnostic.
+        /// Process or output-format evidence explaining the failure.
         message: String,
     },
 }
 
 impl GateError
 {
-    /// Build an I/O error naming the path that failed.
+    /// I/O failure retains the source address needed for repair.
     ///
     /// # Specification
     /// trivial.
@@ -175,7 +166,7 @@ impl GateError
         }
     }
 
-    /// Build a parse error naming the file that failed.
+    /// Parse failure retains the rejected file's identity.
     ///
     /// # Specification
     /// trivial.
@@ -192,7 +183,7 @@ impl GateError
         }
     }
 
-    /// Build a tool error naming the command that failed.
+    /// Tool failure retains the invocation that could not supply evidence.
     ///
     /// # Specification
     /// trivial.
@@ -212,7 +203,7 @@ impl GateError
 
 impl fmt::Display for GateError
 {
-    /// Write the error's cause, naming the path or command that failed.
+    /// Operational diagnostics preserve the failing address or invocation.
     ///
     /// # Specification
     /// - ensures: writes one sentence naming the failed read, parse or

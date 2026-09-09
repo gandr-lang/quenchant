@@ -1,12 +1,12 @@
-//! Nominal wrappers for the values this crate's own signatures carry.
+//! Distinguish source addresses, package identities, witness names, and
+//! verdicts.
 //!
-//! The gate crate holds itself to the project's `primitive_signature` gate: no
-//! function defined here accepts or returns a bare primitive. Every predicate
-//! answer, every count and every borrowed text fragment crosses a module
-//! boundary inside one of the transparent wrappers defined below.
+//! These transparent carriers keep primitive representations from becoming
+//! interchangeable at gate interfaces. A representation-preserving conversion
+//! does not validate a path or establish a finding; the producing stage
+//! supplies that meaning and the evidence boundary it carries.
 
-/// Define a transparent copyable semantic wrapper with bidirectional `From`
-/// conversions.
+/// Copyable domain tags preserve representation through standard conversions.
 macro_rules! semantic_copy {
     ($(#[$meta:meta])* struct $name:ident($inner:ty);) => {
         $(#[$meta])*
@@ -15,7 +15,7 @@ macro_rules! semantic_copy {
         pub struct $name(pub $inner);
 
         impl From<$inner> for $name {
-            /// Wrap the inner value in the semantic type.
+            /// Tag the value without adding validation or changing its representation.
             ///
             /// # Specification
             /// trivial.
@@ -26,7 +26,7 @@ macro_rules! semantic_copy {
         }
 
         impl From<$name> for $inner {
-            /// Unwrap the semantic type to the value it carries.
+            /// Return the represented value through the standard conversion boundary.
             ///
             /// # Specification
             /// trivial.
@@ -38,7 +38,7 @@ macro_rules! semantic_copy {
     };
 }
 
-/// Define a transparent borrowed-text semantic wrapper with `From` conversions.
+/// Borrowed domain text keeps its source lifetime across standard conversions.
 macro_rules! semantic_borrowed_str {
     ($(#[$meta:meta])* struct $name:ident;) => {
         $(#[$meta])*
@@ -47,7 +47,7 @@ macro_rules! semantic_borrowed_str {
         pub struct $name<'text>(pub &'text str);
 
         impl<'text> From<&'text str> for $name<'text> {
-            /// Wrap the borrowed text in the semantic type.
+            /// Tag a text borrow without parsing or allocating.
             ///
             /// # Specification
             /// trivial.
@@ -58,7 +58,7 @@ macro_rules! semantic_borrowed_str {
         }
 
         impl<'text> From<&'text String> for $name<'text> {
-            /// Wrap an owned string's text in the semantic type.
+            /// The string remains owned by its caller while its text gains a domain tag.
             ///
             /// # Specification
             /// trivial.
@@ -69,7 +69,7 @@ macro_rules! semantic_borrowed_str {
         }
 
         impl<'text> From<$name<'text>> for &'text str {
-            /// Unwrap the semantic type to the text it borrows.
+            /// Remove the domain tag while retaining the original text borrow.
             ///
             /// # Specification
             /// trivial.
@@ -82,96 +82,93 @@ macro_rules! semantic_borrowed_str {
 }
 
 semantic_copy!(
-    /// A one-based source line number.
+    /// Source coordinates count lines from one.
     struct LineNumber(usize);
 );
 semantic_copy!(
-    /// Whether a rustdoc line opens a heading of any level.
+    /// Heading recognition marks the boundary of a documentation section.
     struct OpensHeading(bool);
 );
 semantic_copy!(
-    /// Whether an `# Adequacy` block claims the required-trait-method
-    /// declaration-only exemption.
+    /// An adequacy declaration claims the body-free required-method exemption.
     struct DeclarationOnly(bool);
 );
 semantic_copy!(
-    /// Whether a listed test target is an integration-test target rather than a
-    /// library or binary one.
+    /// Integration targets require target-prefixed witness aliases.
     struct IntegrationTarget(bool);
 );
 semantic_copy!(
-    /// Whether a workspace member pins its own toolchain and must therefore be
-    /// listed from its own directory.
+    /// A member-local compiler selection requires listing from that member's
+    /// directory.
     struct PinsToolchain(bool);
 );
 semantic_copy!(
-    /// Whether `cargo nextest` is available to list the workspace's tests.
+    /// Availability determines whether nextest can supply an aggregate
+    /// inventory.
     struct NextestAvailable(bool);
 );
 semantic_copy!(
-    /// Whether a gate run produced at least one finding.
+    /// A nonempty finding set makes the policy run unsuccessful.
     struct GateFailed(bool);
 );
 semantic_copy!(
-    /// A number of test aliases held by a catalog.
+    /// Catalog cardinality counts package-scoped aliases.
     struct AliasCount(usize);
 );
 semantic_copy!(
-    /// Whether one target declared by Cargo holds the package's own
-    /// documented source, or is a build script that only lives in the
-    /// member's directory.
+    /// Source-target classification excludes package-level build-script roots.
     struct HoldsPackageSource(bool);
 );
 
 semantic_borrowed_str!(
-    /// Complete Rust source text of one file.
+    /// One file's complete text supplied to Rust parsing.
     struct SourceText;
 );
 semantic_borrowed_str!(
-    /// One trimmed rustdoc line.
+    /// One documentation line subject to the reader's whitespace rules.
     struct DocLine;
 );
 semantic_borrowed_str!(
-    /// A Cargo package name.
+    /// Package ownership name used by Cargo and witness resolution.
     struct PackageName;
 );
 semantic_borrowed_str!(
-    /// A Cargo package identifier, as `cargo` spells it in machine output.
+    /// Machine-output package identity before extracting its ownership name.
     struct PackageId;
 );
 semantic_borrowed_str!(
-    /// An exact witness path as written in a `- witness:` bullet.
+    /// Authored witness spelling used for exact lookup.
     struct WitnessPath;
 );
 semantic_borrowed_str!(
-    /// A test alias as the test inventory reports it.
+    /// Runnable name contributed by the selected inventory instrument.
     struct TestAlias;
 );
 semantic_borrowed_str!(
-    /// The label of one test target, `package` or `package::target`.
+    /// Exposing-target identity spelled as a package or package/target pair.
     struct TargetLabel;
 );
 semantic_borrowed_str!(
-    /// The Cargo name of one test target.
+    /// Target name supplied by Cargo for harness ownership.
     struct TargetName;
 );
 semantic_borrowed_str!(
-    /// The Cargo kind of one target: `lib`, `bin`, `test`, `bench`.
+    /// Cargo target category used to select witness-prefix behavior.
     struct TargetKind;
 );
 semantic_borrowed_str!(
-    /// The classification of one gate finding.
+    /// Stable diagnostic classification independent of repair prose.
     struct FindingKind;
 );
 semantic_borrowed_str!(
-    /// The prose detail of one gate finding.
+    /// Reader-directed repair information attached to a finding.
     struct FindingDetail;
 );
 semantic_borrowed_str!(
-    /// The command line a failed tool invocation was launched with.
+    /// Failed process identity with its selected invocation arguments.
     struct CommandLine;
 );
 semantic_borrowed_str!(
-    /// A diagnostic message from a failed tool invocation or parse.
+    /// Evidence text retained from an unsuccessful operation.
     struct ErrorMessage;
 );

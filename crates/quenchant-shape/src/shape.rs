@@ -1,11 +1,15 @@
-//! Non-failure absence preserves its concrete reason until a handler decides
-//! otherwise.
+//! Domain boundaries preserve meaning that a payload representation cannot
+//! state.
 //!
-//! [`Maybe`] is a distinct enum. It has no Try implementation, default reason,
-//! or implicit conversion to Option or Result. The exported scaffolds produce
-//! closed reason sites and private-field transparent types, without allocating.
+//! Reason sites distinguish non-failure absence from an error channel. Nominal
+//! declarations control representation exposure; delegated operators keep that
+//! boundary while leaving the chosen operation's semantics with its owner.
+//!
+//! [`Maybe`] keeps absence outside implicit failure propagation. No default
+//! reason is invented. Reason-site sealing and private transparent fields
+//! constrain structure; their domain meanings remain authored obligations.
 
-/// Declare one reason enum and a sealed reason trait scoped to its site.
+/// An absence site owns a closed reason vocabulary and its generic bound.
 ///
 /// # Specification
 /// - requires: the module names one absence site and every variant names a
@@ -18,9 +22,9 @@
 ///   establish the semantic meaning of an enum variant.
 /// - panics: none; this macro declares types only.
 ///
-/// The container does not impose a shared catch-all Reason trait. A caller's
-/// boundary names the concrete enum, or bounds its local generic helper by the
-/// site's sealed trait. No external implementation can widen that site.
+/// Each boundary selects its concrete reason enum. Generic code can use the
+/// site's sealed trait without admitting an external reason implementation; the
+/// container supplies no universal reason vocabulary.
 ///
 /// ```rust
 /// quenchant_shape::reason_enum! {
@@ -66,13 +70,13 @@ macro_rules! reason_enum {
     ) => {
         $(#[$module_attribute])*
         $module_visibility mod $module {
-            /// Seal the reason set to the enum declared at this site.
+            /// Prevent downstream code from extending this site's reason vocabulary.
             mod sealed {
-                /// Marker implemented only by this site's reason enum.
+                /// Membership evidence reserved for the declared enum.
                 pub trait Sealed {}
             }
 
-            /// A reason belonging to this closed absence site.
+            /// The site's closed bound for generic absence-handling code.
             pub trait Reason: sealed::Sealed {}
 
             $(#[$enum_attribute])*
@@ -84,7 +88,8 @@ macro_rules! reason_enum {
     };
 }
 
-/// Declare a concrete transparent newtype with a private representation.
+/// Domain identity has transparent layout while construction remains locally
+/// owned.
 ///
 /// # Specification
 /// - requires: the caller owns the wrapper and supplies meaningful
@@ -96,8 +101,9 @@ macro_rules! reason_enum {
 ///   value predicates. This macro generates no functions to annotate.
 /// - panics: none; this macro declares a type only.
 ///
-/// Constructors and validation stay with the caller. A primitive is unpacked
-/// inside a standard trait implementation rather than a new public accessor.
+/// The owning module supplies invariant-preserving constructors and validation.
+/// Standard trait implementations contain primitive access at the
+/// representation border.
 ///
 /// ```rust
 /// quenchant_shape::nominal_type! {
@@ -134,7 +140,8 @@ macro_rules! nominal_type {
     };
 }
 
-/// Delegate a chosen operator at a transparent wrapper's standard-trait border.
+/// Operator syntax crosses a transparent representation only through its owning
+/// trait implementation.
 ///
 /// # Specification
 /// - requires: invocation in the wrapper's owning module; a one-field tuple
@@ -150,9 +157,9 @@ macro_rules! nominal_type {
 /// - panics: exactly when the chosen operation panics.
 /// - intension: adds no allocation, cloning, or unsafe block.
 ///
-/// For arithmetic, choose a permanently strict function when implementing a
-/// safe operator trait; an unsafe fast entry point cannot be called here.
-/// Assignment operations receive the left inner value by mutable reference.
+/// A safe arithmetic operator requires a permanently strict delegate. Unsafe
+/// fast entry points do not satisfy that boundary. Assignment delegates borrow
+/// the left representation mutably.
 ///
 /// ```rust
 /// quenchant_shape::nominal_type! {
@@ -175,7 +182,8 @@ macro_rules! delegate_ops {
         {
             type Output = Self;
 
-            /// Combine two wrappers through the selected binary operation.
+            /// The binary delegate determines meaning within the wrapper's nominal
+            /// boundary.
             ///
             /// # Specification
             /// - requires: the selected operation is a safe two-argument path over the
@@ -202,7 +210,8 @@ macro_rules! delegate_ops {
         {
             type Output = Self;
 
-            /// Transform one wrapper through the selected unary operation.
+            /// The unary delegate determines meaning within the wrapper's nominal
+            /// boundary.
             ///
             /// # Specification
             /// - requires: the selected operation is a safe one-argument path over the
@@ -223,7 +232,7 @@ macro_rules! delegate_ops {
     (assign $wrapper:ty, $trait:ident:: $method:ident => $operation:path) => {
         impl ::core::ops::$trait for $wrapper
         {
-            /// Update this wrapper in place through the selected operation.
+            /// Assignment lends the representation to the selected in-place operation.
             ///
             /// # Specification
             /// - requires: the selected operation is a safe path taking the
@@ -247,28 +256,27 @@ macro_rules! delegate_ops {
 }
 
 reason_enum! {
-    /// The absence-reason query has its own closed reason site.
+    /// Querying absence introduces a separate site from the original value's absence.
     pub mod absence_query {
-        /// Why a query cannot return an absence reason.
+        /// Evidence that a reason query encountered a present payload.
         #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
         pub enum ValuePresent {
-            /// The original Maybe contains a value, not an absence reason.
+            /// A value occupies the original container, so no absence reason exists there.
             Present,
         }
     }
 }
 
-/// A value or a concrete, non-failure absence reason.
+/// Preserve either an owned value or this site's non-failure absence evidence.
 ///
 /// # Specification
-/// - requires: Reason is a closed enum naming this absence site, never an
-///   erased or catch-all error type.
-/// - ensures: the absent arm retains that reason as data.
-/// - provides: no implicit conversion to a weaker channel and no default
-///   reason.
-/// - provides: the enum's payload types retain the reason; a value predicate
-///   cannot establish that a caller-defined type denotes one closed absence
-///   site. No catch-all bound or weaker predicate replaces that obligation.
+/// - requires: the caller's reason vocabulary denotes one closed absence site,
+///   not an erased or catch-all failure channel.
+/// - ensures: absence retains its exact reason as data.
+/// - provides: no implicit failure propagation and no invented default reason.
+/// - provides: the type preserves its payload but cannot prove the domain
+///   meaning of an arbitrary caller-supplied `Reason`; that obligation remains
+///   explicit rather than replaced by a weaker value predicate.
 ///
 /// ```compile_fail
 /// use quenchant_shape::shape::Maybe;
@@ -290,27 +298,26 @@ reason_enum! {
 #[must_use]
 pub enum Maybe<Value, Reason>
 {
-    /// The value exists.
+    /// An available payload; no absence evidence is manufactured alongside it.
     Present(Value),
-    /// The value does not exist for this concrete non-failure reason.
+    /// An unavailable value with an explicit reason that is not itself failure.
     Absent(Reason),
 }
 
 impl<Value, Reason> Maybe<Value, Reason>
 {
-    /// Transform a present value without changing absence.
+    /// Transform availability without replaying a move-only mapper.
     ///
     /// # Specification
-    /// - ensures: the output is Present exactly when the input is Present.
-    /// - ensures: invokes the mapper once on Present; preserves the exact
-    ///   reason on Absent without invoking it.
-    /// - provides: the predicate checks variant preservation. Exact move-only
-    ///   payload equality and `FnOnce` call history have no generic
-    ///   observation; replaying the mapper would consume it twice or duplicate
-    ///   its effects.
-    /// - panics: only if the invoked mapper panics.
-    /// - intension: moves the value or reason; adds no allocation or Clone
-    ///   bound.
+    /// - ensures: output and input agree on whether a value is present.
+    /// - ensures: a present value reaches the mapper exactly once; an absence
+    ///   bypasses it and retains the original reason.
+    /// - provides: the executable predicate observes only the variant relation.
+    ///   These generic bounds expose no payload equality or callback history;
+    ///   replaying `FnOnce` would change the computation being checked.
+    /// - panics: propagates a panic from the invoked mapper.
+    /// - intension: the ordinary wrapper adds no allocation or `Clone` bound;
+    ///   callback work and selected instrumentation are separate costs.
     ///
     /// # Adequacy
     /// - hypothesis: L3 present/absent transition witnesses distinguish
@@ -334,18 +341,20 @@ impl<Value, Reason> Maybe<Value, Reason>
         }
     }
 
-    /// Chain another computation in the same concrete absence domain.
+    /// Compose within the same reason domain while preserving an existing
+    /// absence.
     ///
     /// # Specification
-    /// - ensures: an absent input produces an absent output.
-    /// - ensures: invokes the continuation once on Present and returns its
-    ///   value or reason unchanged; preserves an existing absence without
-    ///   invoking it.
-    /// - provides: the predicate checks the existing-absence transition. Exact
-    ///   move-only payload equality and `FnOnce` call history have no generic
-    ///   observation; replaying the continuation would change its semantics.
-    /// - panics: only if the invoked continuation panics.
-    /// - intension: moves data and adds no allocation or Clone bound.
+    /// - ensures: an absent input remains absent with the same reason and never
+    ///   invokes the continuation.
+    /// - ensures: a present input invokes the continuation once and retains
+    ///   whichever value or reason it produces.
+    /// - provides: the predicate observes preservation of existing absence.
+    ///   Exact payload and callback-history claims remain obligations even
+    ///   though this generic interface exposes no equality or replay oracle.
+    /// - panics: propagates a panic from the invoked continuation.
+    /// - intension: the ordinary wrapper moves data without allocating or
+    ///   requiring `Clone`; callback and instrumentation costs remain separate.
     ///
     /// # Adequacy
     /// - hypothesis: L3 chaining witnesses distinguish existing absence,
@@ -369,16 +378,17 @@ impl<Value, Reason> Maybe<Value, Reason>
         }
     }
 
-    /// Borrow an absence reason without erasing why no reason is returned.
+    /// Borrow absence evidence without treating an available value as a missing
+    /// answer.
     ///
     /// # Specification
-    /// - ensures: an absent input returns its borrowed reason; a present input
-    ///   returns the query site's `ValuePresent` reason.
-    /// - provides: a const query without `#[spec]`. The pinned Anodized macro
-    ///   calls non-const `eval_once` even for an empty specification, producing
-    ///   E0015 in a const function; the const API is preserved.
+    /// - ensures: an absent input exposes its borrowed reason; a present input
+    ///   returns the query site's `ValuePresent::Present` reason instead.
+    /// - provides: a const query without executable instrumentation. The
+    ///   selected backend's runtime closure machinery is not a const
+    ///   interpretation, so the authored statement preserves the const API.
     /// - panics: none.
-    /// - intension: borrows without cloning or allocating.
+    /// - intension: the query neither clones nor allocates.
     ///
     /// # Adequacy
     /// - hypothesis: L3 both variants distinguish a borrowed reason from a
@@ -393,25 +403,26 @@ impl<Value, Reason> Maybe<Value, Reason>
         }
     }
 
-    /// Promote absence to failure at an explicit boundary handler.
+    /// Make a caller-chosen promotion from absence evidence to a failure
+    /// channel.
     ///
     /// # Specification
-    /// - requires: this boundary treats absence as a real failure and the
-    ///   mapper names that failure.
-    /// - ensures: the output is Ok exactly when the input is Present.
-    /// - ensures: Present becomes Ok without invoking the mapper; Absent
-    ///   invokes it once and returns Err.
-    /// - provides: the predicate checks success versus failure. The boundary's
-    ///   failure policy is semantic; exact move-only payload equality and
-    ///   `FnOnce` call history cannot be checked without changing this API.
-    /// - fails: only the concrete error supplied by the mapper.
-    /// - panics: only if the invoked mapper panics.
-    /// - intension: moves data and adds no allocation.
+    /// - requires: this boundary treats absence as failure and the mapper names
+    ///   that failure without erasing the site's meaning.
+    /// - ensures: success corresponds exactly to a present input; that path
+    ///   retains the value and does not invoke the mapper.
+    /// - ensures: an absence invokes the mapper once and retains its error.
+    /// - provides: the predicate observes success versus failure, not the
+    ///   adequacy of the caller's policy or exact move-only payload equality.
+    /// - fails: reports only the concrete error returned by the mapper.
+    /// - panics: propagates a panic from the invoked mapper.
+    /// - intension: the ordinary wrapper adds no allocation; mapper and
+    ///   instrumentation work are outside that bound.
     ///
     /// # Errors
-    /// Returns the mapper's concrete Error for the absent arm. The error type
-    /// must implement `core::error::Error`; absence itself does not implement
-    /// it.
+    /// The error is the mapper's result for the original absence reason.
+    /// `core::error::Error` is required at this explicit boundary; `Maybe`
+    /// itself does not acquire an implicit error interpretation.
     ///
     /// # Adequacy
     /// - hypothesis: L3 only the absent arm invokes the failure mapper;

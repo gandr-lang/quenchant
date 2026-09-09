@@ -1,19 +1,17 @@
-//! The gate driver.
+//! Consumer-scoped invocation and witness verification.
 //!
 //! ```text
 //! quenchant-gates <anodized | witnesses> --manifest-path <Cargo.toml>
 //! ```
 //!
-//! Both gates require the consumer workspace manifest explicitly, so an
-//! installed binary never inspects its own source checkout or the caller's
-//! working directory by accident. `anodized` reports the resolved invocation
-//! cfgs; `--require-enforcing` requires panic checks. `witnesses` resolves each
-//! consumer's runnable test inventory.
+//! An explicit consumer manifest selects both gates' scope, including for an
+//! installed binary launched elsewhere. `anodized` classifies invocation cfgs
+//! and can require panic-enabled checking; `witnesses` resolves the consumer's
+//! runnable inventory.
 //!
-//! Exits non-zero when a gate finds a violation, and non-zero with a distinct
-//! message when it cannot reach a verdict at all. The two must not arrive by
-//! the same channel: a listing that never ran has measured nothing, and
-//! reporting that as a pass is the failure this gate exists to prevent.
+//! Policy violations and operational failures both produce unsuccessful exits
+//! with distinct diagnostics. Failure to obtain an inventory remains an
+//! operational failure rather than evidence that its obligations passed.
 
 use std::path::Path;
 use std::path::PathBuf;
@@ -26,10 +24,10 @@ use quenchant_gates::anodized::Verdict;
 use quenchant_gates::anodized::invocation_state;
 use quenchant_gates::inventory;
 
-/// The usage text printed for an unrecognized invocation.
+/// Invalid argument shapes receive the complete supported command syntax.
 const USAGE: &str = "usage: quenchant-gates <anodized | witnesses> --manifest-path <Cargo.toml> [--require-enforcing]";
 
-/// Run the gate the invocation names.
+/// Argument interpretation selects one consumer-scoped gate.
 ///
 /// # Specification
 /// - requires: the arguments name one gate, `--manifest-path`, and the
@@ -91,7 +89,7 @@ fn main() -> ExitCode
     }
 }
 
-/// Report the specification state and enforce this lane's requirement.
+/// The requested policy determines acceptance of the reported invocation state.
 ///
 /// # Specification
 /// - requires: `manifest_path` names the consumer manifest.
@@ -128,7 +126,7 @@ fn anodized_gate(
     }
 }
 
-/// Run G0 over the workspace and return its exit code.
+/// Witness findings determine the consumer run's process outcome.
 ///
 /// # Specification
 /// - requires: `manifest_path` names the manifest of the workspace to gate.
@@ -167,7 +165,7 @@ fn run_witnesses(manifest_path: &Path) -> ExitCode
     ExitCode::FAILURE
 }
 
-/// Run G0 over the workspace and return every finding.
+/// Workspace discovery and runnable inventory precede witness resolution.
 ///
 /// # Specification
 /// - requires: `manifest_path` names the manifest of the workspace to gate.

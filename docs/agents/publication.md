@@ -1,26 +1,21 @@
 # Publication
 
-Every authored exchange on this repository's tracker is a reviewed artifact: issue and pull-request bodies, comments, review submissions, inline review comments, and replies. The register and the writing style are `docs/agents/baseline.md`.
+Public-facing files and messages MUST be independently usable. Keep workstation details, private coordination material, private source links, session residue, and dispatch routing out of them. A private source may inform an explanation; the public explanation carries its needed reasoning and public citations rather than depending on access to that source.
 
-## Artifact shape
+`check:public-boundary` checks tracked content and repository metadata for known leaks. It is a floor, not an exhaustive proof that a document is safe to publish. Trace examples, generated outputs, and new references through the same boundary.
 
-- MUST lead with the outcome, verdict, request, or blocker, then its consequence, the decisive evidence, and the next action. Full context is what a reader needs in order to understand and act, NEVER the work history.
-- MUST state each fact once. A summary names results and links to the detail; it NEVER replays an inventory another surface already carries.
-- MUST report findings and observed results, NEVER the reading, checking, drafting, or deliberation behind them. Method, chronology, and rationale stay where a reader needs them to interpret evidence, reproduce a result, or decide, and nowhere else.
-- MUST keep every consequential condition, uncertainty, number, exact string, piece of evidence, and unresolved item. Shortening by omission or by cryptic phrasing is not compression.
+## Provenance
 
-## Review
+Commit validation is defined by `commitlint.config.mjs`: an accepted type and scope, a nonempty purpose, and the required provenance trailers. No project hook supplies the trailer block automatically. The author types the externally supplied role, opaque session token, and owner co-author fields; credentials and plaintext session identities never enter the message.
 
-The rules above bind a reviewer's own submission, inline comments, and replies exactly as they bind the body under review.
+Repository discussions use the corresponding role/token frontmatter. NEVER add a second identity trailer or place routing aliases in the artifact. Commit prose explains the change and its constraint; it is not a session transcript.
 
-A review that rejects an exchange MUST cite the exact span and state the correction:
+## Package preparation
 
-| Defect              | The citation shows                                                |
-| ------------------- | ----------------------------------------------------------------- |
-| duplicated meaning  | both spans, establishing the same claim at the same scope         |
-| narration           | the recounted procedure, carrying no evidential or decision value |
-| poor prioritization | the buried action, verdict, or blocker, and where it belongs      |
+The manifest gate checks the exact package eligibility boundary and keeps the fixture macro package unpublished. A package's eligibility does not establish that it can resolve unpublished siblings, that it has been uploaded, or that every compiler-internal dependency is registry-ready.
 
-A demonstrated defect blocks landing. A wording or redundancy preference with no demonstrated defect is a note, NEVER a rejection. Required evidence and context are not padding, and no word count, generic verbosity verdict, or substitute rewrite stands in for a cited span.
+Cargo can prepare the interdependent library/macro family together. Its temporary packaging registry permits dependency-source checks and verification without a real upload. When reporting a dry run, distinguish packaging, verification, sibling-resolution limitations, and the explicit aborted upload. `--no-verify` supplies packaging evidence only.
 
-Gate results and policy claims are evidence: a review MUST verify them against what the change actually ran, and a green pass named without its command is not a result.
+One license covers every package, and its text sits at the repository root as the single copy; a packaged crate carries the identifier its manifest inherits. Literal source titles, external API identifiers, historical filenames, and legal license wording retain their exact spelling; they are not alternative project terminology.
+
+Actual package publication and repository visibility changes remain manual owner decisions. The CI and local gate graph contain no upload step.

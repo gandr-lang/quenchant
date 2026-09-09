@@ -1,17 +1,19 @@
-//! Runtime checks complement the compile-only specification UI matrix.
+//! Executed postcondition failures distinguish enforcement from compile-only
+//! acceptance.
 
 use core::future::Future as _;
 
-/// A nominal successful output.
+/// Nominal output keeps the witness inside the signature policy.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct Count(u32);
 
-/// The original body's failure, distinct from a failed specification.
+/// Body-level refusal remains distinct from an instrumentation failure.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct Refused;
 
-/// Return through `?` before the ordinary tail expression.
+/// Question-mark propagation still reaches the function's postcondition
+/// boundary.
 ///
 /// # Specification
 /// - ensures: the output succeeds; deliberately falsified by a refused input.
@@ -28,7 +30,7 @@ fn question(value: Result<Count, Refused>) -> Result<Count, Refused>
     Ok(value)
 }
 
-/// Return explicitly before the ordinary tail expression.
+/// Explicit early return still reaches the function's postcondition boundary.
 ///
 /// # Specification
 /// - ensures: the output succeeds; deliberately falsified by a refused input.
@@ -47,7 +49,7 @@ fn explicit(value: Result<Count, Refused>) -> Result<Count, Refused>
     Ok(value)
 }
 
-/// An async body's early exit also returns to its postconditions.
+/// Async early completion remains observable by the enclosing postcondition.
 ///
 /// # Specification
 /// - ensures: the output succeeds; deliberately falsified by a refused input.
@@ -63,7 +65,8 @@ async fn asynchronous(value: Result<Count, Refused>) -> Result<Count, Refused>
     Ok(value)
 }
 
-/// Assert the mode's exact failure, never accepting an unrelated panic.
+/// The failure observer distinguishes instrumentation from unrelated body
+/// panics.
 ///
 /// # Specification
 /// - ensures: enforcing invocations reject exactly the deliberate postcondition
