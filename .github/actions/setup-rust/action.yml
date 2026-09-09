@@ -39,11 +39,13 @@ runs:
       # Plain rustup with no argument reads the pin file, components and
       # profile included: the one toolchain every Rust job shares, and a
       # fast no-op when the cache restore above already holds it.
-      run: |
-        rustup toolchain install
-        rustup show active-toolchain
+      run: rustup toolchain install
       # Composite actions have no default shell: `run` steps must name
       # their `shell:` explicitly or GitHub rejects the action at setup.
+      shell: bash
+    - name: "report active toolchain"
+      if: ${{ inputs.install-toolchain == 'true' }}
+      run: rustup show active-toolchain
       shell: bash
     - name: "save rustup toolchain"
       if: ${{ inputs.install-toolchain == 'true' && inputs.cache-save == 'true' && steps.rustup-restore.outputs.cache-hit != 'true' }}

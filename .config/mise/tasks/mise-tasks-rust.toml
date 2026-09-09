@@ -19,17 +19,17 @@ run = [
 # reached by the workspace pass, so the wall covers the tree exactly once.
 ["check:clippy"]
 description = "Enforce the complete lint wall in both arithmetic modes"
+depends = ["dylint:clippy"]
 run = [
   "cargo clippy --workspace --all-targets --locked --exclude quenchant-dylints -- --deny warnings",
   "cargo clippy --workspace --all-targets --locked --exclude quenchant-dylints --features quenchant-arith/fast -- --deny warnings",
   "cargo clippy --workspace --all-targets --locked --exclude quenchant-dylints --features quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized -- --deny warnings",
-  """
-(
-  cd crates/quenchant-dylints
-  cargo clippy --all-targets -- --deny warnings
-)
-""",
 ]
+
+["dylint:clippy"]
+description = "Lint the compiler plugin from its linker-configured directory"
+dir = "crates/quenchant-dylints"
+run = "cargo clippy --all-targets -- --deny warnings"
 
 # Panic mode is chosen while the proc-macro dependency compiles, so each
 # enforcing twin sets RUSTFLAGS for the whole graph rather than one crate alone.
@@ -37,28 +37,35 @@ run = [
 # `ci` nextest profile, which is where its compiletest fixtures resolve.
 ["check:tests"]
 description = "Exercise every specification with and without enforcement"
+depends = ["tests:enforcing", "dylint:tests"]
 run = [
   "cargo nextest run --workspace --exclude quenchant-dylints --locked",
   "cargo nextest run --workspace --exclude quenchant-dylints --locked --release",
   "cargo nextest run --workspace --exclude quenchant-dylints --locked --features quenchant-arith/fast",
   "cargo nextest run --workspace --exclude quenchant-dylints --locked --features quenchant-arith/fast --release",
-  "RUSTFLAGS='--cfg anodized_panic' cargo nextest run --workspace --exclude quenchant-dylints --locked --features quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized",
-  "RUSTFLAGS='--cfg anodized_panic' cargo nextest run --workspace --exclude quenchant-dylints --locked --release --features quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized",
-  "RUSTFLAGS='--cfg anodized_panic' cargo nextest run --workspace --exclude quenchant-dylints --locked --features quenchant-arith/fast,quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized",
   "cargo test --doc --locked -p quenchant -p quenchant-arith -p quenchant-shape -p quenchant-anodized -p quenchant-spec-macros -p quenchant-fixture-macros",
   "cargo test --doc --locked -p quenchant-arith --features quenchant-arith/fast",
-  """
-(
-  cd crates/quenchant-dylints
-  cargo nextest run --profile ci
-)
-""",
 ]
+
+["tests:enforcing"]
+description = "Exercise library specifications under enforcing cfgs"
+env.RUSTFLAGS = "--cfg anodized_panic"
+run = [
+  "cargo nextest run --workspace --exclude quenchant-dylints --locked --features quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized",
+  "cargo nextest run --workspace --exclude quenchant-dylints --locked --release --features quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized",
+  "cargo nextest run --workspace --exclude quenchant-dylints --locked --features quenchant-arith/fast,quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized",
+]
+
+["dylint:tests"]
+description = "Exercise the compiler plugin from its linker-configured directory"
+dir = "crates/quenchant-dylints"
+run = "cargo nextest run --profile ci"
 
 ["check:miri"]
 description = "Interpret the valid-input fast precondition witnesses"
 # Miri interprets unoptimized MIR; the test profile's optimization is ignored.
-run = "CARGO_PROFILE_TEST_OPT_LEVEL=0 cargo miri test --locked -p quenchant-arith --features quenchant-arith/fast"
+env.CARGO_PROFILE_TEST_OPT_LEVEL = "0"
+run = "cargo miri test --locked -p quenchant-arith --features quenchant-arith/fast"
 
 # A successful campaign must kill at least one viable mutant. A zero-byte
 # caught inventory is a failed measurement, not a clean campaign.

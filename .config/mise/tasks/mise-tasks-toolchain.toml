@@ -7,21 +7,4 @@ description = "Point the pinned toolchain and clippy_utils tag at a stable relea
 usage = """
 arg "<version>" help="stable release to pin, e.g. 1.98.0"
 """
-run = """
-#!/usr/bin/env sh
-set -eu
-
-version="${usage_version?usage: toolchain:bump <version>, e.g. mise run toolchain:bump 1.98.0}"
-channel=$(gh api --jq .content "repos/rust-lang/rust-clippy/contents/rust-toolchain.toml?ref=rust-${version}" | base64 -d | sed -n '/^channel = / { s/^channel = "//; s/"[[:space:]]*$//; p; }')
-case ${channel} in
-  "nightly-"*) : ;;
-  *) echo "toolchain:bump: rust-clippy's rust-${version} toolchain file carries no usable channel line" >&2; exit 1 ;;
-esac
-
-perl -pi -e 's/^channel = .*/channel = "'"$channel"'"/' rust-toolchain.toml
-perl -pi -e 's/^tag = .*/tag = "rust-'"$version"'"/' Cargo.toml
-
-echo "pinned channel ${channel} and clippy_utils tag rust-${version}"
-echo "rebuild the driver, then re-run the gate set over the workspace:"
-echo "  rm -rf ~/.dylint_drivers target/dylint && cargo dylint --lib quenchant_dylints --no-deps -- --workspace --all-targets"
-"""
+run = 'cargo run --quiet --locked -p quenchant-gates -- toolchain-bump --version "$usage_version"'
