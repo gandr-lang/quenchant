@@ -1,0 +1,253 @@
+[graph]
+targets = [
+  "x86_64-unknown-linux-gnu",
+  "aarch64-unknown-linux-gnu",
+  "x86_64-unknown-linux-musl",
+  "aarch64-apple-darwin",
+  "x86_64-apple-darwin",
+  "x86_64-pc-windows-msvc",
+  "thumbv7em-none-eabi",
+]
+
+[advisories]
+yanked = "deny"
+unsound = "all"
+unused-ignored-advisory = "deny"
+ignore = [
+  { id = "RUSTSEC-2024-0436", reason = "Dylint 6.0.4 still requires paste and has no safe replacement release" },
+]
+
+[bans]
+multiple-versions = "deny"
+multiple-versions-include-dev = true
+wildcards = "deny"
+workspace-default-features = "deny"
+deny = [
+  { crate = "cmake", reason = "No workspace package builds C or C++ sources" },
+  { crate = "git2", wrappers = ["dylint_internal"], reason = "Only Dylint toolchain discovery may use libgit2" },
+  { crate = "libgit2-sys", wrappers = ["git2"], reason = "Only the admitted git2 wrapper may link libgit2" },
+  { crate = "libssh2-sys", reason = "The workspace has no SSH runtime" },
+  { crate = "native-tls", reason = "The workspace has no TLS runtime" },
+  { crate = "openssl", reason = "The workspace has no TLS runtime" },
+  { crate = "openssl-sys", reason = "The workspace has no TLS runtime" },
+  { crate = "windows", reason = "Use windows-sys for direct Windows bindings" },
+]
+skip = [
+  { crate = "syn@2.0.119", reason = "Anodized 0.6 and Dylint tests have not moved to syn 3" },
+  { crate = "thiserror@1.0.69", reason = "Dylint's rustfix stack has not moved to thiserror 2" },
+  { crate = "thiserror-impl@1.0.69", reason = "Paired with Dylint's retained thiserror 1" },
+  { crate = "windows-sys@0.59.0", reason = "Dylint's compiletest stack has not moved to windows-sys 0.61" },
+]
+
+[[bans.features]]
+crate = "regex"
+deny = ["logging", "pattern", "perf-dfa-full", "unstable", "use_std"]
+reason = "Keep matching bounded to the selected stable engine surface"
+
+[[bans.features]]
+crate = "serde_json"
+deny = ["arbitrary_precision", "float_roundtrip", "preserve_order", "raw_value"]
+reason = "Keep gate JSON semantics independent of alternate number and map models"
+
+[[bans.features]]
+crate = "syn:>=3,<4"
+allow = ["clone-impls", "default", "derive", "full", "parsing", "printing", "proc-macro"]
+exact = true
+reason = "Match the parser surface selected by workspace manifests"
+
+[[bans.features]]
+crate = "toml_edit:>=0.25,<0.26"
+allow = ["default", "display", "parse"]
+exact = true
+reason = "Keep compiler-pin edits format preserving without serde or unbounded parsing"
+
+[[bans.features]]
+crate = "yaml-rust2"
+allow = []
+exact = true
+reason = "Action-pin parsing needs no optional encoding or debug surface"
+
+[[bans.features]]
+crate = "quenchant@0.0.1"
+allow = ["anodized", "default", "gates"]
+exact = true
+reason = "The all-features gate exercises the complete umbrella surface"
+
+[[bans.features]]
+crate = "quenchant-anodized@0.0.1"
+allow = ["anodized", "default"]
+exact = true
+reason = "The all-features gate exercises both specification modes"
+
+[[bans.features]]
+crate = "quenchant-arith@0.0.1"
+allow = ["anodized", "default", "fast"]
+exact = true
+reason = "The all-features gate exercises both arithmetic modes and specifications"
+
+[[bans.features]]
+crate = "quenchant-dylints@0.0.1"
+allow = ["anodized", "default"]
+exact = true
+reason = "The all-features gate exercises Dylint's enforcing fixtures"
+
+[[bans.features]]
+crate = "quenchant-shape@0.0.1"
+allow = ["anodized", "default"]
+exact = true
+reason = "The all-features gate exercises both shape specification modes"
+
+[[bans.features]]
+crate = "quenchant-spec-macros@0.0.1"
+allow = ["anodized", "default"]
+exact = true
+reason = "The all-features gate exercises the enforcing macro expansion"
+
+[bans.workspace-dependencies]
+include-path-dependencies = true
+
+[bans.std-replacements]
+scope = "all"
+rust-version = "1.97"
+# once_cell remains in Dylint's transitive graph until those upstreams use std.
+ignore = ["once_cell@1.21.4"]
+
+[bans.build]
+allow-build-scripts = [
+  # Dylint uses anyhow's compiler-version compatibility probe.
+  "anyhow@1.0.104",
+  # Cargo metadata uses camino's compiler-version compatibility probe.
+  "camino@1.2.5",
+  # Dylint's UI harness configures compiletest through this build script.
+  "compiletest_rs@0.11.2",
+  # Dylint configures its driver through this build script.
+  "dylint@6.0.4",
+  # Dylint configures its tool paths through this build script.
+  "dylint_internal@6.0.4",
+  # Dylint configures its lint library through this build script.
+  "dylint_linting@6.0.4",
+  # tempfile reaches getrandom's target capability probe.
+  "getrandom@0.4.3",
+  # Platform dependencies require libc's target capability probe.
+  "libc@0.2.189",
+  # Dylint's Git backend builds its vendored fallback through this script.
+  "libgit2-sys@0.18.8+1.9.7",
+  # libgit2-sys builds its zlib fallback through this script.
+  "libz-sys@1.1.29",
+  # Dylint uses paste's compiler capability probe.
+  "paste@1.0.15",
+  # Procedural macros require proc-macro2's compiler capability probe.
+  "proc-macro2@1.0.107",
+  # Procedural macros require quote's compiler capability probe.
+  "quote@1.0.47",
+  # Clippy requires rustc_apfloat's compiler compatibility probe.
+  "rustc_apfloat@0.2.3+llvm-462a31f5a5ab",
+  # tempfile requires rustix's target capability probe.
+  "rustix@1.1.4",
+  # Dylint requires rustversion's compiler capability probe.
+  "rustversion@1.0.23",
+  # Cargo metadata requires serde's compiler capability probe.
+  "serde@1.0.229",
+  # Cargo metadata requires serde_core's compiler capability probe.
+  "serde_core@1.0.229",
+  # Gate reports require serde_json's compiler capability probe.
+  "serde_json@1.0.151",
+  # Dylint's rustfix stack requires thiserror 1's compiler probe.
+  "thiserror@1.0.69",
+  # Cargo metadata requires thiserror 2's compiler probe.
+  "thiserror@2.0.20",
+  # Dylint's UI harness requires winapi's target selection.
+  "winapi@0.3.9",
+  # Dylint's UI harness resolves GNU Windows bindings.
+  "windows_x86_64_gnu@0.52.6",
+  # Dylint's UI harness resolves MSVC Windows bindings.
+  "windows_x86_64_msvc@0.52.6",
+  # serde_json requires zmij's compiler capability probe.
+  "zmij@1.0.23",
+]
+interpreted = "deny"
+enable-builtin-globs = true
+include-dependencies = true
+include-workspace = true
+include-archives = true
+
+[[bans.build.bypass]]
+crate = "git2@0.21.0"
+# Registry checksum pins this maintainer release script, which no build invokes.
+allow = [{ path = "ci/publish.sh" }]
+
+[[bans.build.bypass]]
+crate = "tracing@0.1.44"
+# Registry checksum pins this test fixture, which no build invokes.
+allow = [{ path = "test-macros/bin/macro-results.sh" }]
+
+[[bans.build.bypass]]
+crate = "unicode-width@0.2.2"
+# Registry checksum pins this Unicode generator, which no build invokes.
+allow = [{ path = "scripts/unicode.py" }]
+
+[[bans.build.bypass]]
+crate = "vcpkg@0.2.15"
+# Registry checksum pins these maintainer and test scripts, which no build invokes.
+allow = [
+  { path = "setup_vcp.sh" },
+  { path = "tests/run.sh" },
+  { path = "tests/vcpkgrs_target.sh" },
+]
+
+[[bans.build.bypass]]
+crate = "xattr@1.6.1"
+# Registry checksum pins this CI helper, which no build invokes.
+allow = [{ path = ".github/workflows/run-on-host.sh" }]
+
+[[bans.build.bypass]]
+crate = "libc@0.2.189"
+# Registry checksum pins this maintainer utility, which no build invokes.
+allow = [{ path = "etc/libc-util.py" }]
+
+[[bans.build.bypass]]
+crate = "libgit2-sys@0.18.8+1.9.7"
+# Registry checksum pins these vendored maintainer tools, which no build invokes.
+allow = [
+  { path = "libgit2/.devcontainer/setup.sh" },
+  { path = "libgit2/script/api-docs/api-generator.js" },
+  { path = "libgit2/script/api-docs/docs-generator.js" },
+  { path = "libgit2/script/api-docs/generate" },
+  { path = "libgit2/script/api-docs/search-generator.js" },
+  { path = "libgit2/script/backport.sh" },
+  { path = "libgit2/script/leaks.sh" },
+  { path = "libgit2/script/release.py" },
+  { path = "libgit2/script/valgrind.sh" },
+]
+
+[[bans.build.bypass]]
+crate = "windows_x86_64_gnu@0.52.6"
+# Registry checksum pins this target archive required for GNU Windows builds.
+allow = [{ path = "lib/libwindows.0.52.0.a" }]
+
+[[bans.build.bypass]]
+crate = "windows_x86_64_msvc@0.52.6"
+# Registry checksum pins this target archive required for MSVC Windows builds.
+allow = [{ path = "lib/windows.0.52.0.lib" }]
+
+[licenses]
+include-dev = true
+confidence-threshold = 1.0
+unused-allowed-license = "deny"
+unused-license-exception = "deny"
+allow = [
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "MIT",
+  "Unicode-3.0",
+]
+# foldhash is Zlib-only and supplies hashbrown's internal default hasher.
+exceptions = [{ crate = "foldhash@0.2.0", allow = ["Zlib"] }]
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+required-git-spec = "tag"
+allow-git = ["https://github.com/rust-lang/rust-clippy"]
+unused-allowed-source = "deny"
+unused-allowed-org = "deny"
