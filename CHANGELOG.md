@@ -2,6 +2,12 @@
 
 All notable changes to quenchant are documented here.
 
+## Unreleased
+
+### Unreleased Documentation
+
+- *(repo)* Adopt shared changelog guidance
+
 ## 0.0.0 - 2026-09-10
 
 The `quenchant` umbrella retains the specification facade and adds `quenchant::arith`, `quenchant::shape`, crate-root shape macros, and optional `quenchant::gates`; one dependency covers the publishable family.
