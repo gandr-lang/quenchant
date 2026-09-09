@@ -6,16 +6,16 @@
 
 Run from the workspace root:
 
-| Change                                         | Local verification                                                                       |
-| ---------------------------------------------- | ---------------------------------------------------------------------------------------- |
-| Rust implementation or public feature          | `mise run check`                                                                         |
-| Compiler plugin                                | `mise run check:dylint` and `mise run check:tests`                                       |
-| Specification wrapper or backend configuration | `mise run check:tests`, `mise run check:anodized-enforcing`, and `mise run check:no-std` |
-| Witness references or inventory                | `mise run check:witnesses` and the gate package tests                                    |
-| Pins, workflow YAML, or shell                  | `mise run check:ci-pins`, `mise run check:action-pins`, and `mise run treefmt:check`     |
-| Documentation or formatting                    | `mise run treefmt`, then `mise exec -- prek run --all-files`; execute changed examples   |
+| Change                                         | Local verification                                                                                                     |
+| ---------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- |
+| Rust implementation or public feature          | `mise run check`                                                                                                       |
+| Compiler plugin                                | `mise run check:dylint` and `mise run check:tests`                                                                     |
+| Specification wrapper or backend configuration | `mise run check:tests`, `mise run check:anodized-enforcing`, and `mise run check:no-std`                               |
+| Witness references or inventory                | `mise run check:witnesses` and the gate package tests                                                                  |
+| Pins, workflow YAML, or repository policy      | `mise run check:ci-pins`, `mise run check:action-pins`, `mise run check:public-boundary`, and `mise run treefmt:check` |
+| Documentation or formatting                    | `mise run treefmt`, then `mise exec -- prek run --all-files`; execute changed examples                                 |
 
-The root gate is the integration wall, not a substitute for understanding a failed narrow command. The Dylint test and Clippy tasks select the package working directory so its linker configuration applies. NEVER replace those tasks with a root invocation that only supplies `--manifest-path`.
+The root gate is the integration wall, not a substitute for understanding a failed narrow command. `dylint:tests`, `dylint:clippy`, and `anodized:specifications` select the package working directory so its linker configuration applies; the corresponding `check:*` tasks depend on them. NEVER replace those tasks with a root invocation that only supplies `--manifest-path`. `tests:enforcing` and `check:doc` declare compiler environments through native task fields, not shell bodies.
 
 ## Configuration-sensitive evidence
 

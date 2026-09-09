@@ -1,6 +1,6 @@
 # quenchant-gates
 
-Source-level and invocation-level verification that does not belong inside a compiler lint. The executable reports Anodized compiler cfg state and resolves adequacy-witness references against the actual consumer workspace.
+Source-level, invocation-level, and repository verification outside compiler lints. The executable reports Anodized cfg state, resolves consumer adequacy witnesses, and refuses repository boundary, pin, action, and publication violations.
 
 ## Install
 
@@ -21,7 +21,7 @@ mise exec -- cargo run -p quenchant-gates --locked -- anodized --manifest-path C
 mise exec -- cargo run -p quenchant-gates --locked -- witnesses --manifest-path Cargo.toml
 ```
 
-The manifest is mandatory. An installed tool must inspect the consumer the invocation names, not the tool's original checkout or an accidentally selected directory.
+The consumer manifest is mandatory for `anodized` and `witnesses`. An installed tool must inspect the consumer the invocation names, not the tool's original checkout or an accidentally selected directory.
 
 ## Invocation-state evidence
 
@@ -36,6 +36,24 @@ The facade's optional consumer feature and the backend's cfgs are separate choic
 The `witnesses` command discovers package ownership and source roots, obtains a runnable test inventory, and resolves each declared witness within its owning package. Missing, ambiguous, cross-package, and wrong-target references produce addressed findings. A failed inventory query or unparseable source is an operational error, never an empty successful result.
 
 A resolved name proves that the named test is available under the inventoried configuration. It does not prove that the test ran in another configuration, that its oracle is adequate, or that it establishes the item's complete specification. The authored hypothesis must name the inputs, observations, fault classes, and remaining scope.
+
+## Repository checks
+
+These commands accept `--root <repository>`; omission selects the working directory. Run through `mise exec -- cargo run --quiet --locked -p quenchant-gates -- <command>` so Cargo and its instruments use the pinned toolchain.
+
+| Command             | Refusal boundary                                                                                                                                                                         |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `public-boundary`   | Tracked control directories, private material in tracked text and commit messages, private contributor email. Opaque commit provenance remains permitted; tracked session tokens do not. |
+| `pins`              | Missing or drifted compiler/Dylint pins; malformed stable tags; unequal or incomplete consumer revisions.                                                                                |
+| `action-pins`       | External YAML action references outside the allowlist or without a full lowercase 40-hex revision. Local actions remain permitted.                                                       |
+| `publish-allowlist` | Missing, unclassified, or incorrectly publishable packages against the single declared package boundary.                                                                                 |
+| `conflict-markers`  | Exact seven-character Git conflict markers in tracked text.                                                                                                                              |
+
+`pins` reads the exact rust-clippy release through `gh api`. `--upstream-toolchain <file>` explicitly substitutes offline evidence. `WORKSPACE_MANIFEST`, `TOOL_CONFIG`, and `TOOLCHAIN_FILE` retain pin-input overrides. Optional `--consumer-manifest <file>` and `--consumer-config <file>` must appear together. Relative inputs resolve under `--root`.
+
+`toolchain-bump --version <stable>` reads upstream evidence before updating only `clippy_utils.tag` and the compiler channel, preserving other TOML fields and comments. `mise run toolchain:bump <stable>` launches it. Rebuild the Dylint driver and rerun the gate set after a compiler move.
+
+Each check carries a `# Specification`, closed refusal reasons in `Maybe`, and addressed operational errors. Deliberately invalid repository fixtures exercise the CLI as well as the pure comparisons. Git-backed checks inspect tracked working-tree text, not untracked files or historical file contents.
 
 ## Results
 

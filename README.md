@@ -8,16 +8,16 @@ Written for code that is generated as much as written. A synthesizing agent repr
 
 ## Crate map
 
-| Package                                                               | Consumer surface                             | Role                                                                                           |
-| --------------------------------------------------------------------- | -------------------------------------------- | ---------------------------------------------------------------------------------------------- |
-| [quenchant](crates/quenchant/README.md)                               | `quenchant::arith`, `quenchant::shape`       | Umbrella package re-exporting the publishable libraries under one namespace                    |
-| [quenchant-arith](crates/quenchant-arith/README.md)                   | `quenchant_arith::arith`                     | Nominal integers with explicit strict, checked, wrapping, saturating, and unchecked arithmetic |
-| [quenchant-shape](crates/quenchant-shape/README.md)                   | `quenchant_shape::shape` and exported macros | Reason-preserving absence, closed reason sites, and transparent domain types                   |
-| [quenchant-anodized](crates/quenchant-anodized/README.md)             | Dependency named `quenchant`                 | Public `#[quenchant::spec(...)]` facade and optional published instrumentation                 |
-| [quenchant-spec-macros](crates/quenchant-spec-macros/README.md)       | Used through the facade                      | Dependency-free token forwarding and disabled-mode marker removal                              |
-| [quenchant-dylints](crates/quenchant-dylints/README.md)               | Dylint compiler plugin                       | Signature, layout, recursion, ownership, specification, and evidence-shape checks              |
-| [quenchant-gates](crates/quenchant-gates/README.md)                   | `quenchant-gates` executable                 | Invocation-state reporting and runnable adequacy-witness resolution                            |
-| [quenchant-fixture-macros](crates/quenchant-fixture-macros/README.md) | Test-only procedural attributes              | Real foreign expansions for the compiler-plugin fixtures; never published                      |
+| Package                                                               | Consumer surface                             | Role                                                                                            |
+| --------------------------------------------------------------------- | -------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| [quenchant](crates/quenchant/README.md)                               | `quenchant::arith`, `quenchant::shape`       | Umbrella package re-exporting the publishable libraries under one namespace                     |
+| [quenchant-arith](crates/quenchant-arith/README.md)                   | `quenchant_arith::arith`                     | Nominal integers with explicit strict, checked, wrapping, saturating, and unchecked arithmetic  |
+| [quenchant-shape](crates/quenchant-shape/README.md)                   | `quenchant_shape::shape` and exported macros | Reason-preserving absence, closed reason sites, and transparent domain types                    |
+| [quenchant-anodized](crates/quenchant-anodized/README.md)             | Dependency named `quenchant`                 | Public `#[quenchant::spec(...)]` facade and optional published instrumentation                  |
+| [quenchant-spec-macros](crates/quenchant-spec-macros/README.md)       | Used through the facade                      | Dependency-free token forwarding and disabled-mode marker removal                               |
+| [quenchant-dylints](crates/quenchant-dylints/README.md)               | Dylint compiler plugin                       | Signature, layout, recursion, ownership, specification, and evidence-shape checks               |
+| [quenchant-gates](crates/quenchant-gates/README.md)                   | `quenchant-gates` executable                 | Invocation-state and witness checks; repository boundary, pin, action, and publication refusals |
+| [quenchant-fixture-macros](crates/quenchant-fixture-macros/README.md) | Test-only procedural attributes              | Real foreign expansions for the compiler-plugin fixtures; never published                       |
 
 The arithmetic and shape libraries default to `no_std`. Procedural macros run on the build host; their use does not itself require a standard library on the target. No Anodized runtime or logic implementation is vendored here.
 

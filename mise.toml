@@ -28,15 +28,13 @@ binstall_quickinstall = true
 package_manager = "aube"
 
 [env]
-# Resolves rustup from PATH, else from its fixed install dir ($CARGO_HOME/bin,
-# default ~/.cargo/bin), so activation never depends on the launching shell's
-# PATH. Fails loudly when rustup is absent from both: a nonexistent-path
-# fallback would let a Homebrew cargo keep resolving while RUSTUP_TOOLCHAIN
-# silently binds nothing. The resolved dir must also carry the executable
-# cargo/rustc proxy pair: a dir that resolves rustup but lacks the proxies
-# (a partial install, a stale PATH entry) would keep cargo/rustc resolving
-# to distribution copies while the pin points at nothing.
-_.path = ["{{ exec(command='r=$(command -v rustup) || r=\"${CARGO_HOME:-$HOME/.cargo}/bin/rustup\"; [ -x \"$r\" ] || { echo \"rustup required: the pinned toolchains resolve through it\" >&2; exit 1; }; d=$(dirname \"$r\"); if [ ! -x \"$d/cargo\" ] || [ ! -x \"$d/rustc\" ]; then echo \"the rustup dir $d lacks the executable cargo/rustc proxies: the pinned toolchains resolve through the proxy pair\" >&2; exit 1; fi; printf \"%s\" \"$d\"') }}"]
+# Rustup resolves the repository pin from its standard CARGO_HOME installation.
+# The selected toolchain supplies Cargo/rustc; proxies remain available for
+# Rustup-driven auxiliaries. An absent installation or pin fails activation.
+_.path = [
+  "{{ exec(command=(get_env(name='CARGO_HOME', default=env.HOME ~ '/.cargo') ~ '/bin/rustup' | quote) ~ ' which cargo') | dirname }}",
+  "{{ get_env(name='CARGO_HOME', default=env.HOME ~ '/.cargo') }}/bin",
+]
 
 [task_config]
 includes = [".config/mise/tasks"]
@@ -53,8 +51,7 @@ includes = [".config/mise/tasks"]
 # resolution misses, and that hazard recurs with every upstream default
 # change.
 [tools]
-# The linker is the companion the driver invokes; the driver's own pin is a
-# table below because `scripts/ci/check-pins.sh` reads it as one.
+# The linker and driver pins are read structurally by quenchant-gates.
 # Mutation campaigns are local, explicit experiments, not merge gates.
 "cargo:cargo-mutants" = "27.1.0"
 "cargo:dylint-link" = "6.0.4"
@@ -63,7 +60,6 @@ includes = [".config/mise/tasks"]
 "github:nextest-rs/nextest" = "cargo-nextest-0.9.143"
 "github:numtide/treefmt" = "2.5.0"
 "github:j178/prek" = "v0.5.0"
-"github:koalaman/shellcheck" = "0.11.0"
 "github:rvben/rumdl" = "0.2.62"
 "github:tombi-toml/tombi" = "1.5.0"
 "npm:@commitlint/cli" = "21.2.2"
