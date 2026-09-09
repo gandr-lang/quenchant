@@ -1,0 +1,64 @@
+error: `# Adequacy` section must open with exactly one `- hypothesis:` bullet naming an adequacy ladder rung (`L0` types, `L1` evidence, `L2` agreement, `L3` pointwise)
+  --> $DIR/adequacy.rs:44:4
+   |
+LL | fn missing_hypothesis()
+   |    ^^^^^^^^^^^^^^^^^^
+   |
+   = note: `#[deny(adequacy_block_grammar)]` on by default
+
+error: `- hypothesis:` must name at least one adequacy ladder rung — `L0` types, `L1` evidence, `L2` agreement, `L3` pointwise — because the rung is what states where the decision surface is carried
+  --> $DIR/adequacy.rs:53:4
+   |
+LL | fn hypothesis_without_a_rung()
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: `# Adequacy` section must name at least one `- witness: `path`` bullet, or — on a req$DIRred trait method only — carry `- declaration-only:` with a reason
+  --> $DIR/adequacy.rs:61:4
+   |
+LL | fn missing_witness()
+   |    ^^^^^^^^^^^^^^^
+
+error: `# Adequacy` section must state exactly one `- hypothesis:`; one item has one test plan
+  --> $DIR/adequacy.rs:71:4
+   |
+LL | fn duplicate_hypothesis()
+   |    ^^^^^^^^^^^^^^^^^^^^
+
+error: `- hypothesis:` must precede every `- witness:` and `- declaration-only:` bullet: the plan is stated before the evidence that discharges it
+  --> $DIR/adequacy.rs:80:4
+   |
+LL | fn hypothesis_after_the_evidence()
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: `- witness:` must name exactly one test path in backticks, as `- witness: `module::tests::name``; the witness-resolution gate resolves the path verbatim
+  --> $DIR/adequacy.rs:89:4
+   |
+LL | fn malformed_witness()
+   |    ^^^^^^^^^^^^^^^^^
+
+error: `- declaration-only:` is available only to a req$DIRred trait method, which has no body to witness; every other item names the tests that kill its mutants
+  --> $DIR/adequacy.rs:98:4
+   |
+LL | fn exemption_on_a_body()
+   |    ^^^^^^^^^^^^^^^^^^^
+
+error: `- declaration-only:` must state why the declaration carries no witness of its own
+  --> $DIR/adequacy.rs:118:8
+   |
+LL |     fn unreasoned_declaration(&self);
+   |        ^^^^^^^^^^^^^^^^^^^^^^
+
+error: `- declaration-only:` claims there is nothing to witness, so it cannot be combined with `- witness:` bullets
+  --> $DIR/adequacy.rs:126:8
+   |
+LL |     fn exemption_and_witness(&self);
+   |        ^^^^^^^^^^^^^^^^^^^^^
+
+error: `- declaration-only:` is available only to a req$DIRred trait method, which has no body to witness; every other item names the tests that kill its mutants
+  --> $DIR/adequacy.rs:133:8
+   |
+LL |     fn provided_method(&self)
+   |        ^^^^^^^^^^^^^^^
+
+error: aborting due to 10 previous errors
+

@@ -1,0 +1,64 @@
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/trait_and_foreign.rs:13:20
+   |
+LL |     fn must(value: bool) -> char;
+   |                    ^^^^
+   |
+   = note: `#[deny(primitive_signature)]` on by default
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/trait_and_foreign.rs:13:29
+   |
+LL |     fn must(value: bool) -> char;
+   |                             ^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/trait_and_foreign.rs:17:16
+   |
+LL |         count: i32,
+   |                ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/trait_and_foreign.rs:18:10
+   |
+LL |     ) -> u64
+   |          ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/trait_and_foreign.rs:28:15
+   |
+LL |         flag: bool,
+   |               ^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/trait_and_foreign.rs:29:10
+   |
+LL |     ) -> u8
+   |          ^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/trait_and_foreign.rs:37:20
+   |
+LL |     fn must(value: bool) -> char
+   |                    ^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/trait_and_foreign.rs:37:29
+   |
+LL |     fn must(value: bool) -> char
+   |                             ^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/trait_and_foreign.rs:52:22
+   |
+LL |     fn foreign(flag: bool) -> u8;
+   |                      ^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/trait_and_foreign.rs:52:31
+   |
+LL |     fn foreign(flag: bool) -> u8;
+   |                               ^^
+
+error: aborting due to 10 previous errors
+

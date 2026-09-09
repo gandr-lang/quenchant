@@ -1,0 +1,19 @@
+error: this function carries no `# Specification` rustdoc block; the specification is authored before the body it governs, so an absent block records that nothing was decided about what the body owes
+  --> $DIR/specification_presence.rs:27:4
+   |
+LL | fn specified_without_a_block(count: Count) -> Count {
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: write the block as clauses in the fixed order — `- requires:`, `- ensures:`, `- provides:`, `- fails:`, `- panics:`, `- intension:` — or, where the item has nothing to state, as the canonical body `trivial.` with the terminal period, which the rule also accepts without it, and in either case no bullet marker and no clause beside it
+   = note: `#[deny(specification_present)]` on by default
+
+error: this function carries no `# Specification` rustdoc block; the specification is authored before the body it governs, so an absent block records that nothing was decided about what the body owes
+  --> $DIR/specification_presence.rs:33:4
+   |
+LL | fn qualified_without_a_block(count: Count) -> Count {
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: write the block as clauses in the fixed order — `- requires:`, `- ensures:`, `- provides:`, `- fails:`, `- panics:`, `- intension:` — or, where the item has nothing to state, as the canonical body `trivial.` with the terminal period, which the rule also accepts without it, and in either case no bullet marker and no clause beside it
+
+error: aborting due to 2 previous errors
+

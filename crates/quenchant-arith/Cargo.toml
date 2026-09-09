@@ -1,0 +1,26 @@
+#:tombi toml-version = "v1.0.0"
+
+[package]
+name = "quenchant-arith"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Profile-independent integer arithmetic at nominal type boundaries"
+readme = "README.md"
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords = ["arithmetic", "no-std", "overflow"]
+categories = ["mathematics", "no-std"]
+publish.workspace = true
+
+[dependencies]
+quenchant.workspace = true
+
+[features]
+default = []
+anodized = ["quenchant/anodized"]
+fast = []
+
+[lints]
+workspace = true

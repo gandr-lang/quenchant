@@ -1,0 +1,10 @@
+# Unanchored: Cargo's own build directory sits at the workspace root, and a
+# package whose tests write derived units does so under its own package
+# directory, so both are ignored wherever they appear.
+target/
+/mutants.out/
+/mutants.out.old/
+/.rumdl_cache/
+/.weave/
+/.codegraph/
+/.DS_Store

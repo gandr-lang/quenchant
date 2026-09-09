@@ -1,0 +1,10 @@
+error: `# Termination` section must contain exactly the bullets `- reason:`, `- measure:`, `- boundedness:`, `- input recursion:`, in that order, each with a value
+  --> $DIR/termination_interplay.rs:41:4
+   |
+LL | fn truncated(fuel: Fuel) -> Count {
+   |    ^^^^^^^^^
+   |
+   = note: `#[deny(recursion_forbidden)]` on by default
+
+error: aborting due to 1 previous error
+

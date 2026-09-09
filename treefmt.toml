@@ -1,0 +1,87 @@
+#:tombi toml-version = "v1.1.0"
+#:schema https://www.schemastore.org/treefmt.json
+
+# Build output is gitignored, but the explicit exclude keeps `treefmt` from
+# traversing it in environments where the git-walker's `.git` pointer is
+# dangling and the implicit skip does not apply.
+excludes = [
+  "target/**",
+  # Compiletest fixtures: every `.rs` here is paired with a `.stderr` that pins
+  # diagnostic line and column numbers, so reformatting the source invalidates
+  # the expectation it is checked against. `cargo fmt` already skips them —
+  # they are not cargo targets — and treefmt matches that.
+  "crates/quenchant-dylints/ui/**",
+  "crates/quenchant-dylints/ui_config/**",
+  "crates/quenchant-dylints/ui_specifications/**",
+  # Mutation-campaign output; gitignored, and excluded for the same reason.
+  "mutants.out/**",
+  # The markdown tool's own cache, written at the root of every tree it runs in.
+  ".rumdl_cache/**",
+  # Verbatim-mandated content: license text and every resolver's lockfile. A
+  # formatter that rewrites a lockfile fights the resolver that owns it, and the
+  # two rewrite each other on every run. `mise.lock` is here because `mise.toml`
+  # sets `lockfile = true`, so the tree tracks one.
+  "**/LICENSE.*.txt",
+  "**/LICENSE-*",
+  "Cargo.lock",
+  "mise.lock",
+  # The shared baseline is byte-identical across repos and pinned by content
+  # hash: a formatter that rewrites one byte here breaks the pin.
+  "docs/agents/baseline.md",
+  # Shared guidance is adopted byte for byte; formatting belongs to its source.
+  "docs/agents/rust.md",
+  "docs/agents/testing-contracts.md",
+  "docs/agents/source-workflow.md",
+]
+
+[formatter.rustfmt]
+command = "rustfmt"
+options = ["--edition", "2024"]
+includes = ["*.rs"]
+
+# The mutating formatter takes the lower priority so `fmt` completes before
+# `check` when both cover the same markdown set.
+[formatter."rumdl-format"]
+priority = 0
+command = "rumdl"
+options = ["fmt"]
+includes = ["*.md"]
+
+[formatter."rumdl-verify"]
+priority = 1
+command = "rumdl"
+options = ["check"]
+includes = ["*.md"]
+
+[formatter."tombi-format"]
+priority = 0
+command = "tombi"
+options = ["format"]
+includes = ["*.toml"]
+
+[formatter."tombi-lint"]
+priority = 1
+command = "tombi"
+options = ["lint", "--error-on-warnings"]
+includes = ["*.toml"]
+
+[formatter.oxfmt]
+command = "oxfmt"
+options = ["--config", ".oxfmtrc.json"]
+includes = ["*.json", "*.jsonc", "*.yaml", "*.yml", "*.mjs"]
+
+[formatter.typos]
+command = "typos"
+options = ["--write-changes", "--force-exclude"]
+includes = ["*"]
+
+# Check-only: doc-sprawl size budgets.
+[formatter.sizelint]
+command = "sizelint"
+options = ["check"]
+includes = ["*"]
+
+# Check-only: shell lint at default severity (style included); a per-line directive with its reason is the only sanctioned suppression.
+[formatter.shellcheck]
+command = "shellcheck"
+includes = ["*.sh"]

@@ -1,0 +1,67 @@
+#:tombi toml-version = "v1.1.0"
+#:schema https://www.schemastore.org/prek.json
+
+fail_fast = false
+default_install_hook_types = ["pre-commit", "commit-msg"]
+
+[[repos]]
+repo = "local"
+
+# The hook floor is these six and no more: configuration validation, conflict
+# markers, the public boundary, the shared-baseline pin, formatting before
+# every commit, and commitlint on the message. A gate that is not one of these
+# runs through `mise run check` rather than on every commit.
+
+[[repos.hooks]]
+id = "prek-validate-config"
+name = "prek validate-config"
+language = "system"
+entry = "mise exec -- prek validate-config prek.toml"
+files.glob = ["prek.toml", "mise.toml", "mise.lock"]
+pass_filenames = false
+stages = ["pre-commit"]
+
+[[repos.hooks]]
+id = "conflict-markers"
+name = "conflict-marker check"
+language = "system"
+entry = "mise run check:conflict-markers"
+pass_filenames = false
+always_run = true
+stages = ["pre-commit"]
+
+[[repos.hooks]]
+id = "public-boundary"
+name = "public-boundary check"
+language = "system"
+entry = "mise run check:public-boundary"
+pass_filenames = false
+always_run = true
+stages = ["pre-commit"]
+
+[[repos.hooks]]
+id = "baseline-hash"
+name = "baseline hash check"
+language = "system"
+entry = "mise run check:baseline-hash"
+pass_filenames = false
+always_run = true
+stages = ["pre-commit"]
+
+[[repos.hooks]]
+id = "treefmt-check"
+name = "treefmt --fail-on-change"
+language = "system"
+entry = "mise run treefmt:check"
+pass_filenames = false
+always_run = true
+stages = ["pre-commit"]
+
+[[repos.hooks]]
+id = "commitlint"
+name = "commitlint"
+entry = "mise x -- commitlint --edit"
+language = "system"
+stages = ["commit-msg"]
+always_run = true
+pass_filenames = true
