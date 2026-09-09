@@ -701,14 +701,17 @@ dependencies = [
 
 [[package]]
 name = "quenchant"
-version = "0.0.0-rc.0"
+version = "0.0.0"
 dependencies = [
  "quenchant-anodized",
+ "quenchant-arith",
+ "quenchant-gates",
+ "quenchant-shape",
 ]
 
 [[package]]
 name = "quenchant-anodized"
-version = "0.0.0-rc.0"
+version = "0.0.0"
 dependencies = [
  "anodized-macros",
  "quenchant-spec-macros",
@@ -716,14 +719,14 @@ dependencies = [
 
 [[package]]
 name = "quenchant-arith"
-version = "0.0.0-rc.0"
+version = "0.0.0"
 dependencies = [
  "quenchant-anodized",
 ]
 
 [[package]]
 name = "quenchant-dylints"
-version = "0.0.0-rc.0"
+version = "0.0.0"
 dependencies = [
  "clippy_utils",
  "dylint_linting",
@@ -735,14 +738,14 @@ dependencies = [
 
 [[package]]
 name = "quenchant-fixture-macros"
-version = "0.0.0-rc.0"
+version = "0.0.0"
 dependencies = [
  "proc-macro2",
 ]
 
 [[package]]
 name = "quenchant-gates"
-version = "0.0.0-rc.0"
+version = "0.0.0"
 dependencies = [
  "proc-macro2",
  "quenchant-shape",
@@ -755,7 +758,7 @@ dependencies = [
 
 [[package]]
 name = "quenchant-shape"
-version = "0.0.0-rc.0"
+version = "0.0.0"
 dependencies = [
  "proc-macro2",
  "quenchant-anodized",
@@ -765,7 +768,7 @@ dependencies = [
 
 [[package]]
 name = "quenchant-spec-macros"
-version = "0.0.0-rc.0"
+version = "0.0.0"
 dependencies = [
  "anodized-macros",
 ]

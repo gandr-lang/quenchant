@@ -8,7 +8,7 @@ repository.workspace = true
 license.workspace = true
 keywords = ["adequacy", "gate", "rust", "specifications", "workflow"]
 categories = ["development-tools"]
-publish.workspace = true
+publish = false
 # One consolidated integration target, so every witness path in this crate
 # names the suite it belongs to.
 autotests = false

@@ -28,7 +28,7 @@ const BOUNDARY: &[(&str, Eligibility)] = &[
     ("quenchant-arith", Eligibility::CratesIo),
     ("quenchant-dylints", Eligibility::Disabled),
     ("quenchant-fixture-macros", Eligibility::Disabled),
-    ("quenchant-gates", Eligibility::CratesIo),
+    ("quenchant-gates", Eligibility::Disabled),
     ("quenchant-shape", Eligibility::CratesIo),
     ("quenchant-spec-macros", Eligibility::CratesIo),
 ];
@@ -190,7 +190,7 @@ mod tests
             {"name": "quenchant-arith", "publish": ["crates-io"]},
             {"name": "quenchant-dylints", "publish": []},
             {"name": "quenchant-fixture-macros", "publish": []},
-            {"name": "quenchant-gates", "publish": ["crates-io"]},
+            {"name": "quenchant-gates", "publish": []},
             {"name": "quenchant-shape", "publish": ["crates-io"]},
             {"name": "quenchant-spec-macros", "publish": ["crates-io"]}
         ]})
