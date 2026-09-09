@@ -42,13 +42,21 @@ command = "rustfmt"
 options = ["--edition", "2024"]
 includes = ["*.rs"]
 
-# Generate through git-cliff, install changed bytes in place, then run the
-# Markdown formatter. Excluding CHANGELOG.md from commit path analysis also
-# prevents a changelog-only refresh from becoming its own release note.
+# Generate through git-cliff, normalize its candidate with the Markdown
+# formatter, install changed bytes in place, then verify the root file.
+# Excluding CHANGELOG.md from commit path analysis also prevents a
+# changelog-only refresh from becoming its own release note.
 [formatter."changelog-generate"]
-priority = -2
+priority = -3
 command = "git-cliff"
 options = ["--output", ".git-cliff-output", "--exclude-path"]
+includes = ["CHANGELOG.md"]
+no-positional-arg-support = true
+
+[formatter."changelog-normalize"]
+priority = -2
+command = "rumdl"
+options = ["fmt", ".git-cliff-output", "--exclude"]
 includes = ["CHANGELOG.md"]
 no-positional-arg-support = true
 

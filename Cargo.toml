@@ -14,7 +14,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.0.0-rc.0"
+version = "0.0.0"
 edition = "2024"
 rust-version = "1.97"
 homepage = "https://github.com/gandr-lang/quenchant"
@@ -73,7 +73,7 @@ features = ["span-locations"]
 [workspace.dependencies.quenchant]
 package = "quenchant-anodized"
 path = "crates/quenchant-anodized"
-version = "=0.0.0-rc.0"
+version = "=0.0.0"
 
 # The specification facade under its own name. The umbrella package cannot take
 # it through the `quenchant` alias above, because that is the umbrella's own
@@ -82,15 +82,31 @@ version = "=0.0.0-rc.0"
 # - quenchant
 [workspace.dependencies.quenchant-anodized]
 path = "crates/quenchant-anodized"
-version = "=0.0.0-rc.0"
+version = "=0.0.0"
+
+# Nominal integer arithmetic, re-exported as `quenchant::arith`.
+# consumers:
+# - quenchant
+[workspace.dependencies.quenchant-arith]
+path = "crates/quenchant-arith"
+version = "=0.0.0"
+
+# Invocation-state and adequacy-witness reporting, re-exported as
+# `quenchant::gates` behind the umbrella's optional feature of that name.
+# consumers:
+# - quenchant (optional)
+[workspace.dependencies.quenchant-gates]
+path = "crates/quenchant-gates"
+version = "=0.0.0"
 
 # Domain shapes shared by the policy packages.
 # consumers:
+# - quenchant
 # - quenchant-dylints
 # - quenchant-gates
 [workspace.dependencies.quenchant-shape]
 path = "crates/quenchant-shape"
-version = "=0.0.0-rc.0"
+version = "=0.0.0"
 default-features = false
 
 # Token-only conditional specification expansion.
@@ -98,7 +114,7 @@ default-features = false
 # - quenchant-anodized
 [workspace.dependencies.quenchant-spec-macros]
 path = "crates/quenchant-spec-macros"
-version = "=0.0.0-rc.0"
+version = "=0.0.0"
 
 # Quasi-quotation for relocating source tokens into a derived proof unit.
 # consumers:
