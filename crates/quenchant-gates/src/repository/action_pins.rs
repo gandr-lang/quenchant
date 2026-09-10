@@ -15,7 +15,11 @@ const ALLOWED: &[&str] = &[
     "actions/cache/restore",
     "actions/cache/save",
     "actions/checkout",
+    "actions/download-artifact",
     "actions/upload-artifact",
+    "docker/build-push-action",
+    "docker/login-action",
+    "docker/setup-buildx-action",
     "jdx/mise-action",
     "taiki-e/install-action",
 ];

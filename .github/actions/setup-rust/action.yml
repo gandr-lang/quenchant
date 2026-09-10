@@ -5,7 +5,7 @@ description: >
   Rust dependency cache. The job's checkout step runs first; this
   action is everything after it.
 inputs:
-  # Save both caches in this job: the one writer per cache lane.
+  # Only main warms caches that later pull requests can restore.
   cache-save:
     description: "Save the rustup toolchain and the dependency cache in this job"
     default: "false"
@@ -48,7 +48,7 @@ runs:
       run: rustup show active-toolchain
       shell: bash
     - name: "save rustup toolchain"
-      if: ${{ inputs.install-toolchain == 'true' && inputs.cache-save == 'true' && steps.rustup-restore.outputs.cache-hit != 'true' }}
+      if: ${{ inputs.install-toolchain == 'true' && inputs.cache-save == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.rustup-restore.outputs.cache-hit != 'true' }}
       uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
       with:
         path: ~/.rustup/toolchains/*
@@ -67,7 +67,7 @@ runs:
         # the save is skipped as up-to-date, and every run recompiles
         # from scratch. Bumping the prefix rotates the lane at once.
         # The prefix names this repository's cache lane and content shape.
-        prefix-key: quenchant-v1-rust-deps
+        prefix-key: quenchant-v2-rust-deps
         # One dependency cache across every Rust job; the gate lane's
         # block shares this key, so the cache holds the whole
         # workspace's artifacts under the single toolchain.
@@ -75,4 +75,4 @@ runs:
         cache-all-crates: false
         cache-workspace-crates: ${{ inputs.cache-workspace-crates }}
         cache-on-failure: false
-        save-if: ${{ inputs.cache-save == 'true' }}
+        save-if: ${{ inputs.cache-save == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}

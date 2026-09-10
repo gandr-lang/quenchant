@@ -1,0 +1,115 @@
+# The Linux CI image carries the pinned toolchain, the CI subset of mise
+# tools, and the matching Dylint driver. Pin files are copied, never retyped.
+# The base digest is a rebuild trigger, not a tag input: rotating it republishes
+# the same pin-file tag, so the workflow switch needs no independent update.
+ARG UBUNTU_BASE=docker.io/library/ubuntu:24.04@sha256:33ceb71981b602c1a7443a53469e4dba065f7503eab3078a2d7a57a2ab987517
+FROM ${UBUNTU_BASE}
+
+SHELL ["/bin/bash", "-o", "pipefail", "-c"]
+ENV DEBIAN_FRONTEND=noninteractive
+
+# rustup needs curl and certificates; Rust linking needs build-essential.
+# git2's openssl-sys needs pkg-config and libssl-dev; Cargo Git sources need git.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl git build-essential pkg-config libssl-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+# Build tools as UID 1000. Job steps run as root to write runner-owned mounts.
+RUN userdel --remove ubuntu && useradd --create-home --home-dir /opt/ci --uid 1000 ci
+USER 1000
+
+ENV RUSTUP_HOME=/opt/ci/.rustup \
+    CARGO_HOME=/opt/ci/.cargo \
+    PATH=/opt/ci/.local/bin:/opt/ci/.cargo/bin:$PATH
+
+# This must match ci.yml: local-only tools never enter the image or CI installs.
+ENV MISE_DISABLE_TOOLS=cargo:cargo-mutants,github:nektos/act,github:j178/prek,npm:@commitlint/cli \
+    MISE_CARGO_BINSTALL_QUICKINSTALL=true \
+    MISE_CARGO_BINSTALL_NATIVE=true
+
+# mise may rewrite its lockfile while installing, so the build user owns pins.
+COPY --chown=1000:1000 rust-toolchain.toml mise.toml mise.lock .github/workflows/ci.yml /opt/pins/
+WORKDIR /opt/pins
+
+# The pin supplies channel, profile, components and cross-compilation targets.
+RUN set -eux; \
+    curl -fsSL https://sh.rustup.rs -o /tmp/rustup-init.sh; \
+    sh /tmp/rustup-init.sh -y --no-modify-path --default-toolchain none; \
+    rm /tmp/rustup-init.sh; \
+    rustup toolchain install; \
+    rustup default "$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)"
+
+# ci.yml selects mise's version. A BuildKit secret authenticates release
+# attestations without persisting a credential in any layer.
+RUN --mount=type=secret,id=github_token,uid=1000,required=false set -eux; \
+    if [ -s /run/secrets/github_token ]; then GITHUB_TOKEN="$(cat /run/secrets/github_token)"; export GITHUB_TOKEN; fi; \
+    expected="$(sed -n 's/^  MISE_DISABLE_TOOLS: "\(.*\)"$/\1/p' /opt/pins/ci.yml)"; \
+    [ "$MISE_DISABLE_TOOLS" = "$expected" ] || { echo "MISE_DISABLE_TOOLS drifts from ci.yml: image='$MISE_DISABLE_TOOLS' ci='$expected'" >&2; exit 1; }; \
+    MISE_VERSION="$(grep -A2 'uses: jdx/mise-action' /opt/pins/ci.yml | sed -n 's/^ *version: *//p' | head -n1 | tr -d '"')"; \
+    [ -n "$MISE_VERSION" ]; \
+    case "$(uname -m)" in \
+        x86_64) ARCH=x64 ;; \
+        aarch64) ARCH=arm64 ;; \
+        *) echo "unsupported architecture $(uname -m)" >&2; exit 1 ;; \
+    esac; \
+    mkdir -p /opt/ci/.local/bin; \
+    curl -fsSL "https://github.com/jdx/mise/releases/download/v${MISE_VERSION}/mise-v${MISE_VERSION}-linux-${ARCH}" -o /opt/ci/.local/bin/mise; \
+    chmod +x /opt/ci/.local/bin/mise; \
+    mise install
+
+# Cargo resolves its subcommands by name; expose pinned binaries without shims.
+RUN set -eux; \
+    for tool in cargo-dylint dylint-link cargo-nextest; do \
+        ln -sf "$(mise which "$tool")" "/opt/ci/.cargo/bin/$tool"; \
+    done
+
+# act invokes JavaScript actions through PATH rather than the hosted runner's
+# bundled Node. Expose the already-pinned mise installation for that path.
+RUN ln -sf "$(mise which node)" /opt/ci/.local/bin/node
+
+WORKDIR /opt/ci/warmup/app
+
+# A bare `cargo dylint list` does not build the driver. Loading a throwaway
+# cdylib against a stub crate forces the same rustc_private build as CI.
+# The two exported symbols implement Dylint's library ABI, not project policy.
+RUN set -eux; \
+    TC="$(rustup show active-toolchain | awk '{print $1}')"; \
+    mkdir -p /opt/ci/warmup/gates/src /opt/ci/warmup/app/src; \
+    printf '[package]\nname = "dylint-warmup-gates"\nversion = "0.1.0"\nedition = "2021"\n\n[lib]\ncrate-type = ["cdylib"]\n' > /opt/ci/warmup/gates/Cargo.toml; \
+    printf '%s\n' \
+        '#![feature(rustc_private)]' \
+        '' \
+        '// rustc_driver supplies the rlib-format link for rustc_private crates.' \
+        'extern crate rustc_driver;' \
+        'extern crate rustc_lint;' \
+        'extern crate rustc_session;' \
+        '' \
+        'use std::ffi::CString;' \
+        'use std::os::raw::c_char;' \
+        '' \
+        'use rustc_lint::LintStore;' \
+        'use rustc_session::Session;' \
+        '' \
+        '#[no_mangle]' \
+        'pub extern "C" fn dylint_version() -> *mut c_char {' \
+        '    CString::new("0.1.0").unwrap().into_raw()' \
+        '}' \
+        '' \
+        '#[no_mangle]' \
+        'pub extern "C" fn register_lints(_sess: &Session, _store: &mut LintStore) {}' \
+        > /opt/ci/warmup/gates/src/lib.rs; \
+    printf '[package]\nname = "dylint-warmup-app"\nversion = "0.1.0"\nedition = "2021"\n' > /opt/ci/warmup/app/Cargo.toml; \
+    printf 'fn main() {}\n' > /opt/ci/warmup/app/src/main.rs; \
+    cargo build --manifest-path /opt/ci/warmup/gates/Cargo.toml --release; \
+    mv "/opt/ci/warmup/gates/target/release/libdylint_warmup_gates.so" "/opt/ci/warmup/gates/target/release/libdylint_warmup_gates@${TC}.so"; \
+    DYLINT_LIBRARY_PATH=/opt/ci/warmup/gates/target/release cargo dylint --lib dylint_warmup_gates --no-deps; \
+    ls -l "/opt/ci/.dylint_drivers/${TC}/dylint-driver"; \
+    rm -rf /opt/ci/warmup
+
+# The runner overrides HOME. Explicit homes retain the image's populated
+# tools, while root can write the workspace and runner file-command mounts.
+ENV MISE_DATA_DIR=/opt/ci/.local/share/mise \
+    MISE_CACHE_DIR=/opt/ci/.cache/mise \
+    DYLINT_DRIVER_PATH=/opt/ci/.dylint_drivers
+USER root
+WORKDIR /opt/ci
