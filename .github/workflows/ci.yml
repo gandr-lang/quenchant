@@ -40,6 +40,10 @@ jobs:
     if: false
     needs: &rust-needs [changes, ci-image-ref]
     runs-on: &linux ubuntu-latest
+    # Job containers pull repository-linked GHCR images with GITHUB_TOKEN.
+    permissions: &image-read-permissions
+      contents: read
+      packages: read
     steps:
       # Checkout stays shallow except where changelog and publication need history.
       - &git-checkout
@@ -165,6 +169,7 @@ jobs:
     needs: *rust-needs
     if: &heavy-lane ${{ needs.changes.outputs.rust == 'true' && (github.event_name == 'merge_group' || github.event_name == 'push') }}
     runs-on: *linux
+    permissions: *image-read-permissions
     # The relayed tag hashes the three pin files; the base is digest-pinned.
     container: &ci-image ${{ needs.ci-image-ref.outputs.ref }} # zizmor: ignore[unpinned-images]
     env:
@@ -213,6 +218,7 @@ jobs:
     needs: *rust-needs
     if: *heavy-lane
     runs-on: *linux
+    permissions: *image-read-permissions
     container: *ci-image # zizmor: ignore[unpinned-images]
     env:
       CI_CACHE_SAVE: "true"
@@ -254,6 +260,7 @@ jobs:
     needs: *rust-needs
     if: &rust-lane ${{ needs.changes.outputs.rust == 'true' }}
     runs-on: *linux
+    permissions: *image-read-permissions
     container: *ci-image # zizmor: ignore[unpinned-images]
     steps:
       - *git-checkout
@@ -271,6 +278,7 @@ jobs:
     needs: *rust-needs
     if: *rust-lane
     runs-on: *linux
+    permissions: *image-read-permissions
     container: *ci-image # zizmor: ignore[unpinned-images]
     steps:
       - *git-checkout
@@ -289,6 +297,7 @@ jobs:
     name: check policy and formatting
     needs: ci-image-ref
     runs-on: *linux
+    permissions: *image-read-permissions
     container: *ci-image # zizmor: ignore[unpinned-images]
     env:
       CI_FETCH_DEPTH: "0"
