@@ -1,0 +1,41 @@
+[package]
+name = "quenchant-dylints"
+version.workspace = true
+edition.workspace = true
+description = "Dylint gates for nominal types, totality, and item specifications"
+readme = "README.md"
+repository.workspace = true
+license.workspace = true
+keywords = ["dylint", "lint", "specification"]
+categories = ["development-tools"]
+publish.workspace = true
+
+[package.metadata.rust-analyzer]
+rustc_private = true
+
+[lib]
+crate-type = ["cdylib"]
+
+# `rustc_private` driver code builds only under the workspace's pinned
+# toolchain (the root `rust-toolchain.toml`), and the cdylib must be linked by
+# `dylint-link` (see the crate-local `.cargo/config.toml`, which cargo reads
+# because `dylint_testing` runs its builds with this package directory as the
+# working directory).
+[dependencies]
+clippy_utils.workspace = true
+dylint_linting.workspace = true
+quenchant-shape.workspace = true
+
+# The harness uses the facade in its selected mode. UI fixtures commission
+# their enabled facade and foreign macro artifacts through an explicit build.
+[dev-dependencies]
+dylint_testing.workspace = true
+quenchant.workspace = true
+serde_json.workspace = true
+
+[features]
+default = []
+anodized = ["quenchant/anodized"]
+
+[lints]
+workspace = true

@@ -1,0 +1,24 @@
+[package]
+name = "quenchant-anodized"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Specification attributes with optional published instrumentation"
+readme = "README.md"
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords = ["no-std", "specification", "verification"]
+categories = ["development-tools", "no-std"]
+publish.workspace = true
+
+[dependencies]
+anodized-macros = { workspace = true, optional = true }
+quenchant-spec-macros.workspace = true
+
+[features]
+default = []
+anodized = ["dep:anodized-macros"]
+
+[lints]
+workspace = true

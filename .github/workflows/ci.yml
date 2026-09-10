@@ -1,0 +1,329 @@
+# <critical>
+# MUST preserve anchor-first CI: maximal sharing, no copied orchestration.
+# New functionality MUST reuse template anchors or add anchors for likely reuse.
+# MUST parameterize differences; performance exceptions require measured evidence.
+# Share exceptional logic through actions; preserve parallelism, caches, and gates.
+# </critical>
+name: CI
+
+on:
+  pull_request: {}
+  # Only main can warm caches that subsequent pull requests can restore.
+  push:
+    branches: [main]
+  merge_group: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  # Never cancel the main cache warmer when another commit lands.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+  CARGO_NEXTEST_VERSION: "0.9.143"
+  DYLINT_VERSION: "6.0.4"
+  MISE_CARGO_BINSTALL_QUICKINSTALL: "true"
+  MISE_CARGO_BINSTALL_NATIVE: "true"
+  # These tools have no CI consumer. The Dockerfile checks this same list.
+  MISE_DISABLE_TOOLS: "cargo:cargo-mutants,github:nektos/act,github:j178/prek,npm:@commitlint/cli"
+  # Empty until ci-image publishes the pin-file tag. The repository variable
+  # activates that tag without a workflow edit; act accepts the same variable.
+  QUENCHANT_CI_IMAGE: ${{ vars.QUENCHANT_CI_IMAGE }}
+
+jobs:
+  # Definitions only: aliases run in each consuming job's context.
+  template:
+    if: false
+    needs: &rust-needs [changes, ci-image-ref]
+    runs-on: &linux ubuntu-latest
+    steps:
+      # Checkout stays shallow except where changelog and publication need history.
+      - &git-checkout
+        name: git checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: ${{ env.CI_FETCH_DEPTH || '1' }}
+      - &setup-rust
+        name: setup rust
+        uses: ./.github/actions/setup-rust # zizmor: ignore[self-repository]
+        with:
+          install-toolchain: &without-image ${{ needs.ci-image-ref.outputs.ref == '' }}
+          cache-save: ${{ env.CI_CACHE_SAVE == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          cache-workspace-crates: true
+      - &install-tools
+        name: install job tools
+        if: ${{ env.CI_INSTALL_TOOLS != 'false' }}
+        uses: taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf # v2.87.2
+        # Tool sets resolve here: job-level env cannot reference workflow env.
+        env:
+          CI_TOOLS_NEXTEST: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
+          CI_TOOLS_DYLINT: cargo-dylint@${{ env.DYLINT_VERSION }},dylint-link@${{ env.DYLINT_VERSION }},cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
+          CI_TOOLS_ZIZMOR: zizmor
+        with:
+          tool: ${{ env[env.CI_TOOLS] }}
+      # Install the whole CI subset in the cached setup step: later mise
+      # auto-installs otherwise escape that cache.
+      - &install-policy-tools
+        name: install mise-managed policy tools
+        if: *without-image
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.8.15
+
+      # Exact policy hits only: stale path-crate mtimes can load wrong policy.
+      # Save in the job body, before rust-cache's post-job pruning.
+      - &restore-dylint-drivers
+        name: restore Dylint drivers
+        id: dylint-drivers-restore
+        if: *without-image
+        uses: &cache-restore actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: &dylint-drivers ~/.dylint_drivers
+          key: dylint-drivers-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml') }}-${{ env.DYLINT_VERSION }}
+      - &restore-dylint-library
+        name: restore Dylint library
+        id: dylint-library-restore
+        uses: *cache-restore
+        with:
+          path: &dylint-library target/dylint
+          key: dylint-library-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml') }}-${{ env.DYLINT_VERSION }}-${{ hashFiles('crates/quenchant-dylints/**', 'Cargo.toml', 'Cargo.lock') }}
+      - &save-dylint-library
+        name: save Dylint library
+        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.dylint-library-restore.outputs.cache-hit != 'true' }}
+        uses: &cache-save actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: *dylint-library
+          key: ${{ steps.dylint-library-restore.outputs.cache-primary-key }}
+      - &save-dylint-drivers
+        name: save Dylint drivers
+        if: ${{ needs.ci-image-ref.outputs.ref == '' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.dylint-drivers-restore.outputs.cache-hit != 'true' }}
+        uses: *cache-save
+        with:
+          path: *dylint-drivers
+          key: ${{ steps.dylint-drivers-restore.outputs.cache-primary-key }}
+      - &upload-test-report
+        name: upload test report
+        if: always()
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: ${{ env.CI_REPORT_NAME }}
+          path: ${{ env.CI_REPORT_PATH }}
+          if-no-files-found: ignore
+
+  # Always trigger the workflow: a skipped workflow supplies no required
+  # check, whereas a skipped job succeeds. Formatting sees docs-only changes.
+  changes:
+    name: detect changed-file categories
+    runs-on: *linux
+    outputs:
+      # Missing bases and failed fetches/diffs force Rust checks, never skip
+      # them. The queue always checks its complete merge result.
+      rust: ${{ github.event_name == 'merge_group' || steps.fetch.outcome != 'success' || steps.filter.outcome != 'success' || steps.filter.outputs.rust == 'true' }}
+    env:
+      CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+    steps:
+      - *git-checkout
+      - id: fetch
+        name: fetch the comparison tree
+        if: ${{ github.event_name != 'merge_group' }}
+        continue-on-error: true
+        run: git fetch --depth=1 origin "$CI_BASE_SHA"
+      - id: filter
+        name: filter changed paths
+        if: ${{ github.event_name != 'merge_group' && steps.fetch.outcome == 'success' }}
+        continue-on-error: true
+        # One pipeline, no shell control flow or third-party filter action.
+        # NUL framing preserves filenames; no-renames retains source deletions.
+        # pipefail makes a failed diff distinguishable from an empty diff.
+        shell: bash
+        run: >-
+          git diff --no-renames --name-only -z "$CI_BASE_SHA" HEAD |
+          jq -rRs '"rust=" + (split("\u0000") | any(length > 0 and ((endswith(".md") or startswith("docs/") or startswith("LICENSE") or . == ".gitignore") | not)) | tostring)'
+          >> "$GITHUB_OUTPUT"
+
+  # container cannot read env directly; needs carries the workflow switch.
+  ci-image-ref:
+    name: resolve the CI image reference
+    runs-on: *linux
+    outputs:
+      ref: ${{ steps.resolve.outputs.ref }}
+    steps:
+      - id: resolve
+        name: resolve the image reference
+        run: echo "ref=${QUENCHANT_CI_IMAGE:+ghcr.io/gandr-lang/quenchant-ci:${QUENCHANT_CI_IMAGE}}" >> "$GITHUB_OUTPUT"
+
+  # Heavy jobs gate the merge result and warm main's caches. Pull requests
+  # retain the Clippy, invocation-policy, formatting and workflow-lint lanes.
+  cargo-build-crates:
+    name: build and test the workspace
+    needs: *rust-needs
+    if: &heavy-lane ${{ needs.changes.outputs.rust == 'true' && (github.event_name == 'merge_group' || github.event_name == 'push') }}
+    runs-on: *linux
+    # The relayed tag hashes the three pin files; the base is digest-pinned.
+    container: &ci-image ${{ needs.ci-image-ref.outputs.ref }} # zizmor: ignore[unpinned-images]
+    env:
+      CI_CACHE_SAVE: "true"
+      CI_INSTALL_TOOLS: *without-image
+      CI_TOOLS: CI_TOOLS_NEXTEST
+      CI_REPORT_NAME: junit-workspace
+      CI_REPORT_PATH: target/nextest/ci/junit.xml
+    steps:
+      - *git-checkout
+      - *setup-rust
+      - *install-tools
+      - name: build workspace targets
+        run: cargo build --workspace --all-targets
+      - name: build workspace targets in fast arithmetic mode
+        run: cargo build --workspace --all-targets --features quenchant-arith/fast
+      - name: check libraries without a standard library
+        run: cargo build --locked -p quenchant-arith -p quenchant-shape --no-default-features --target thumbv7em-none-eabi
+      - name: check fast libraries without a standard library
+        run: cargo build --locked -p quenchant-arith -p quenchant-shape --no-default-features --features quenchant-arith/fast --target thumbv7em-none-eabi
+      - name: test the workspace
+        run: cargo nextest run --profile ci --workspace --exclude quenchant-dylints
+      - name: test the workspace in release
+        run: cargo nextest run --profile ci --workspace --exclude quenchant-dylints --release
+      - name: test the workspace in fast arithmetic mode
+        run: cargo nextest run --profile ci --workspace --exclude quenchant-dylints --features quenchant-arith/fast
+      - name: test the workspace with enforcement
+        env: &enforcing-specifications
+          RUSTFLAGS: --cfg anodized_panic
+        run: >-
+          cargo nextest run --profile ci --workspace --exclude quenchant-dylints
+          --features quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized
+      - name: test documentation examples
+        run: cargo test --doc -p quenchant-arith -p quenchant-shape -p quenchant-anodized -p quenchant-spec-macros -p quenchant-fixture-macros
+      - name: check private-item rustdoc
+        env: &rustdoc-warnings
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --document-private-items
+      - name: check private-item rustdoc in fast arithmetic mode
+        env: *rustdoc-warnings
+        run: cargo doc --workspace --no-deps --document-private-items --features quenchant-arith/fast
+      - *upload-test-report
+
+  cargo-dylint-gates:
+    name: test Dylint library
+    needs: *rust-needs
+    if: *heavy-lane
+    runs-on: *linux
+    container: *ci-image # zizmor: ignore[unpinned-images]
+    env:
+      CI_CACHE_SAVE: "true"
+      CI_INSTALL_TOOLS: *without-image
+      CI_TOOLS: CI_TOOLS_DYLINT
+      CI_REPORT_NAME: junit-dylint
+      CI_REPORT_PATH: target/dylint-tests*/nextest/ci/junit.xml
+    steps:
+      - *git-checkout
+      - *setup-rust
+      - *restore-dylint-drivers
+      - *restore-dylint-library
+      - *install-tools
+      - name: test Dylint package
+        working-directory: &dylint-package crates/quenchant-dylints
+        env:
+          CARGO_TARGET_DIR: ../../target/dylint-tests
+        run: cargo nextest run --profile ci
+      - name: exercise enforcing specification exits
+        working-directory: *dylint-package
+        env:
+          # Environment flags replace Cargo configuration; retain the linker.
+          RUSTFLAGS: --cfg anodized_panic -C linker=dylint-link
+          CARGO_TARGET_DIR: ../../target/dylint-tests-enforcing
+        run: cargo nextest run --profile ci --features anodized -E 'test(specification_tests::)'
+      - name: lint Dylint package
+        working-directory: *dylint-package
+        run: cargo clippy --all-targets -- --deny warnings
+      - name: load Dylint library over workspace
+        run: cargo dylint --lib quenchant_dylints --no-deps -- --workspace --all-targets
+      - name: resolve adequacy witnesses
+        run: cargo run -p quenchant-gates -- witnesses --manifest-path Cargo.toml
+      - *save-dylint-library
+      - *save-dylint-drivers
+      - *upload-test-report
+
+  anodized-gate:
+    name: check anodized invocation policy
+    needs: *rust-needs
+    if: &rust-lane ${{ needs.changes.outputs.rust == 'true' }}
+    runs-on: *linux
+    container: *ci-image # zizmor: ignore[unpinned-images]
+    steps:
+      - *git-checkout
+      - *setup-rust
+      - name: install the gate binary
+        run: cargo install --path crates/quenchant-gates --locked --root "$RUNNER_TEMP/quenchant-gates"
+      - name: report installed anodized invocation state
+        run: '"$RUNNER_TEMP/quenchant-gates/bin/quenchant-gates" anodized --manifest-path Cargo.toml'
+      - name: require installed anodized enforcement
+        env: *enforcing-specifications
+        run: '"$RUNNER_TEMP/quenchant-gates/bin/quenchant-gates" anodized --manifest-path Cargo.toml --require-enforcing'
+
+  cargo-clippy-crates:
+    name: check Clippy wall
+    needs: *rust-needs
+    if: *rust-lane
+    runs-on: *linux
+    container: *ci-image # zizmor: ignore[unpinned-images]
+    steps:
+      - *git-checkout
+      - *setup-rust
+      - name: lint every workspace target outside the Dylint package
+        run: cargo clippy --workspace --all-targets --exclude quenchant-dylints -- --deny warnings
+      - name: lint every workspace target in fast arithmetic mode
+        run: cargo clippy --workspace --all-targets --exclude quenchant-dylints --features quenchant-arith/fast -- --deny warnings
+      - name: lint published instrumentation
+        run: >-
+          cargo clippy --workspace --all-targets --exclude quenchant-dylints
+          --features quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized
+          -- --deny warnings
+
+  format-gate:
+    name: check policy and formatting
+    needs: ci-image-ref
+    runs-on: *linux
+    container: *ci-image # zizmor: ignore[unpinned-images]
+    env:
+      CI_FETCH_DEPTH: "0"
+    steps:
+      - *git-checkout
+      - *setup-rust
+      - *install-policy-tools
+      - name: check formatting and static policy
+        run: mise run treefmt:check
+      - name: check dependency policy
+        run: mise run check:deny
+      - name: check conflict markers
+        run: mise run check:conflict-markers
+      - name: check public boundary
+        run: mise run check:public-boundary
+      - name: check shared baseline
+        run: mise run check:baseline-hash
+      - name: check compiler and Dylint pins
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: mise run check:ci-pins
+      - name: check Action allowlist and pins
+        run: mise run check:action-pins
+      - name: check publication metadata
+        run: mise run check:publish
+
+  workflow-lint:
+    name: check workflow lints (zizmor)
+    runs-on: *linux
+    env:
+      CI_TOOLS: CI_TOOLS_ZIZMOR
+    steps:
+      - *git-checkout
+      - *install-tools
+      - name: zizmor
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: zizmor .github/workflows
