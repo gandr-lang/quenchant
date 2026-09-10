@@ -47,6 +47,8 @@ Prefer the task to the bare binary. A task body carries the pinned tool, the env
 
 ## gates
 
+A new tree's hosted CI MUST open in gandr's shape, minus lanes that do not apply, as specified in [ci-local.md §Container image](ci-local.md#container-image); NEVER start with bare-runner-only CI.
+
 | Gate                                 | Command                                                     | Refuses                                                                       |
 | ------------------------------------ | ----------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | conflict markers                     | `mise run check:conflict-markers`                           | an unresolved Git conflict marker in a tracked file                           |

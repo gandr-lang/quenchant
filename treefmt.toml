@@ -35,6 +35,7 @@ excludes = [
   "docs/agents/rust.md",
   "docs/agents/testing-contracts.md",
   "docs/agents/source-workflow.md",
+  "docs/agents/ci-local.md",
 ]
 
 [formatter.rustfmt]

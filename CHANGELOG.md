@@ -8,10 +8,12 @@ All notable changes to quenchant are documented here.
 
 - *(repo)* Adopt shared changelog guidance
 - *(repo)* Adopt empty-root guidance
+- *(agents)* Adopt shared fast CI pattern
 
 ### Unreleased Continuous Integration
 
 - *(ci)* Run cargo-deny gate
+- *(ci)* Port image-backed parallel gates
 
 ### Unreleased Configuration
 
