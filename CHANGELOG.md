@@ -7,6 +7,7 @@ All notable changes to quenchant are documented here.
 ### Unreleased Features
 
 - *(repo)* Seed the quenchant workspace
+- *(dylints)* Enforce arithmetic and absence bounds
 
 ### Unreleased Maintenance
 
