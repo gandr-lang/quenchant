@@ -64,8 +64,9 @@ RUN set -eux; \
     done
 
 # act invokes JavaScript actions through PATH rather than the hosted runner's
-# bundled Node. Expose the already-pinned mise installation for that path.
-RUN ln -sf "$(mise which node)" /opt/ci/.local/bin/node
+# bundled Node. The pin gate invokes gh directly. Expose both pinned tools.
+RUN ln -sf "$(mise which node)" /opt/ci/.local/bin/node \
+    && ln -sf "$(mise which gh)" /opt/ci/.local/bin/gh
 
 WORKDIR /opt/ci/warmup/app
 

@@ -14,6 +14,7 @@ All notable changes to quenchant are documented here.
 
 - *(ci)* Run cargo-deny gate
 - *(ci)* Port image-backed parallel gates
+- *(ci)* Include GitHub CLI in the tool image
 
 ### Unreleased Configuration
 

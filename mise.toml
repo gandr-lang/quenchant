@@ -56,6 +56,8 @@ includes = [".config/mise/tasks"]
 "cargo:cargo-mutants" = "27.1.0"
 "cargo:dylint-link" = "6.0.4"
 "github:aubepkg/aube" = "2.2.4"
+# The pin gate reads upstream Clippy source with `gh api`, including in CI.
+"github:cli/cli" = "2.100.0"
 "github:crate-ci/typos" = "v1.50.0"
 "github:embarkstudios/cargo-deny" = "0.20.2"
 "github:nextest-rs/nextest" = "cargo-nextest-0.9.143"
