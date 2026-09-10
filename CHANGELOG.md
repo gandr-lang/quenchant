@@ -18,6 +18,10 @@ All notable changes to quenchant are documented here.
 
 - *(github)* Enable CodeRabbit reviews
 
+### Unreleased Bug Fixes
+
+- *(ci)* Allow job tokens to read CI images
+
 ### Unreleased Maintenance
 
 - *(repo)* Prepare the 0.0.0-rc.0 publication head
