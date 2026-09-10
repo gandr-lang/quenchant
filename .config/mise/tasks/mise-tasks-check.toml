@@ -54,7 +54,7 @@ depends = ["anodized:specifications"]
 description = "Exercise real postcondition failures with enforcing specifications"
 dir = "crates/quenchant-dylints"
 env.RUSTFLAGS = "--cfg anodized_panic"
-run = "cargo nextest run --profile ci --features anodized -E 'test(specification_tests::)'"
+run = "rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} {{ exec(command='mise which cargo-nextest') | quote }} nextest run --profile ci --features anodized -E 'test(specification_tests::)'"
 
 ["check:no-std"]
 description = "Build both library modes for a bare-metal target without std"

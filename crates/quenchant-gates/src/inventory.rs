@@ -28,7 +28,6 @@ use crate::catalog::is_integration;
 use crate::semantic::CommandLine;
 use crate::semantic::ErrorMessage;
 use crate::semantic::HoldsPackageSource;
-use crate::semantic::NextestAvailable;
 use crate::semantic::PackageId;
 use crate::semantic::PackageName;
 use crate::semantic::PinsToolchain;
@@ -83,10 +82,27 @@ pub struct Workspace
 #[inline]
 pub fn discover(manifest_path: &Path) -> Result<Workspace, GateError>
 {
-    let mut command = Command::new(cargo());
+    let manifest_path = std::fs::canonicalize(manifest_path).map_err(|error| {
+        GateError::tool(
+            "cargo metadata".into(),
+            ErrorMessage::from(&error.to_string()),
+        )
+    })?;
+    let Some(scope) = manifest_path.parent()
+    else {
+        return Err(GateError::tool(
+            "cargo metadata".into(),
+            "manifest has no parent directory".into(),
+        ));
+    };
+    let runner = ListingRunner::CargoTest {
+        toolchain: active_toolchain(scope)?,
+    };
+    let mut command = runner_command(&runner);
+    command.current_dir(scope);
     command.args(["metadata", "--no-deps", "--format-version", "1"]);
     command.arg("--manifest-path");
-    command.arg(manifest_path);
+    command.arg(&manifest_path);
     let stdout = capture(&mut command, "cargo metadata".into())?;
     let document: serde_json::Value = serde_json::from_str(&stdout).map_err(|error| {
         GateError::tool(
@@ -204,7 +220,6 @@ fn target_holds_package_source(target: &serde_json::Value) -> HoldsPackageSource
 #[inline]
 pub fn catalog(workspace: &Workspace) -> Result<TestCatalog, GateError>
 {
-    let nextest = nextest_available();
     let mut catalog = TestCatalog::new();
     let pinned: Vec<&Member> = workspace
         .members
@@ -212,19 +227,23 @@ pub fn catalog(workspace: &Workspace) -> Result<TestCatalog, GateError>
         .filter(|member| member.pins_toolchain.0)
         .collect();
 
-    let mut command = list_command(nextest);
-    command.current_dir(&workspace.root);
-    command.arg("--workspace");
-    for member in &pinned {
-        command.arg("--exclude");
-        command.arg(&member.name);
+    if pinned.len() != workspace.members.len() {
+        let runner = listing_runner(&workspace.root)?;
+        let mut command = list_command(&runner);
+        command.current_dir(&workspace.root);
+        command.arg("--workspace");
+        for member in &pinned {
+            command.arg("--exclude");
+            command.arg(&member.name);
+        }
+        merge_listing(&mut catalog, &mut command, &workspace.root, &runner)?;
     }
-    merge_listing(&mut catalog, &mut command, &workspace.root, nextest)?;
 
     for member in pinned {
-        let mut command = list_command(nextest);
+        let runner = listing_runner(&member.directory)?;
+        let mut command = list_command(&runner);
         command.current_dir(&member.directory);
-        merge_listing(&mut catalog, &mut command, &member.directory, nextest)?;
+        merge_listing(&mut catalog, &mut command, &member.directory, &runner)?;
     }
 
     if usize::from(catalog.alias_count()) == 0_usize {
@@ -349,38 +368,199 @@ pub fn source_files(directory: &Path) -> Result<Vec<PathBuf>, GateError>
     Ok(files)
 }
 
-/// Successful nextest discovery selects the aggregate-listing instrument.
-///
-/// # Specification
-/// - ensures: answers affirmatively exactly when `cargo nextest --version` runs
-///   and exits successfully; a Cargo that cannot be started answers negatively
-///   rather than failing.
-/// - panics: none.
-fn nextest_available() -> NextestAvailable
+/// The selected test-listing instrument and its source-owned compiler context.
+enum ListingRunner
 {
-    NextestAvailable(
-        Command::new(cargo())
-            .args(["nextest", "--version"])
-            .output()
-            .is_ok_and(|output| output.status.success()),
-    )
+    /// Mise resolves the executable; Rustup owns its compiler environment.
+    Nextest
+    {
+        /// Absolute executable retained from the consumer's mise selection.
+        executable: PathBuf,
+        /// Source-resolved Rustup toolchain, independent of the launch
+        /// directory.
+        toolchain: String,
+    },
+    /// Without mise, the ordinary Cargo inventory remains the supported route.
+    CargoTest
+    {
+        /// The fallback retains the same source-owned compiler selection.
+        toolchain: String,
+    },
 }
 
-/// Listing arguments preserve the selected inventory instrument's output
-/// format.
+/// Select the consumer's runner once per compiler scope, never through Cargo's
+/// plugin search.
 ///
 /// # Specification
-/// - ensures: returns `cargo nextest list` in JSON when nextest is available,
-///   and the `cargo test --no-run` listing otherwise.
+/// - ensures: a successful mise selection is one absolute executable path,
+///   probed through Rustup under the scope's own active compiler selection.
+/// - ensures: missing mise selects the ordinary Cargo inventory; failed mise
+///   selection or selected-runner execution never invokes a global nextest.
+/// - fails: [`GateError::Tool`] on malformed selection, unavailable selected
+///   compiler or runner, or an unsuccessful selection/probe.
 /// - panics: none.
-fn list_command(nextest: NextestAvailable) -> Command
+///
+/// # Errors
+/// Returns the failed selection or probe as an addressed operational error.
+///
+/// # Adequacy
+/// - hypothesis: L3 — an actual consumer inventory resolves its own selected
+///   runner despite an unusable launch selection and a poisoned `CARGO_HOME`
+///   plugin; invalid source remains an operational error from that selected
+///   runner.
+/// - witness: `gates::repository::witness_inventory_uses_consumer_selection_over_shadowed_plugins`
+fn listing_runner(scope: &Path) -> Result<ListingRunner, GateError>
 {
-    let mut command = Command::new(cargo());
-    if nextest.0 {
-        command.args(["nextest", "list", "--message-format", "json"]);
+    let toolchain = active_toolchain(scope)?;
+    let selection = Command::new("mise")
+        .args(["which", "cargo-nextest"])
+        .current_dir(scope)
+        .env_remove("RUSTUP_TOOLCHAIN")
+        .output();
+    let selection = match selection {
+        | Ok(selection) => selection,
+        #[expect(
+            clippy::std_instead_of_core,
+            reason = "core::io is unstable on the supported compiler; process spawn errors use std"
+        )]
+        | Err(error) => {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                return Ok(ListingRunner::CargoTest { toolchain });
+            }
+            return Err(GateError::tool(
+                "mise which cargo-nextest".into(),
+                ErrorMessage::from(&error.to_string()),
+            ));
+        },
+    };
+    if !selection.status.success() {
+        return Err(GateError::tool(
+            "mise which cargo-nextest".into(),
+            ErrorMessage::from(String::from_utf8_lossy(&selection.stderr).as_ref()),
+        ));
     }
+    let selected = String::from_utf8(selection.stdout).map_err(|error| {
+        GateError::tool(
+            "mise which cargo-nextest".into(),
+            ErrorMessage::from(&error.to_string()),
+        )
+    })?;
+    let selected = selected.trim();
+    let executable = PathBuf::from(selected);
+    if !executable.is_absolute() || selected.lines().count() != 1_usize {
+        return Err(GateError::tool(
+            "mise which cargo-nextest".into(),
+            "selection must be exactly one absolute executable path".into(),
+        ));
+    }
+    let runner = ListingRunner::Nextest {
+        executable,
+        toolchain,
+    };
+    let mut probe = runner_command(&runner);
+    probe.current_dir(scope).args(["nextest", "--version"]);
+    let label = format!("{probe:?}");
+    capture(&mut probe, CommandLine::from(&label))?;
+    Ok(runner)
+}
+
+/// Resolve the compiler from the supplied source scope instead of inherited
+/// producer state.
+///
+/// # Specification
+/// - ensures: Rustup's active source selection supplies the compiler identity;
+///   an inherited `RUSTUP_TOOLCHAIN` cannot override the source's pin.
+/// - fails: [`GateError::Tool`] when Rustup cannot resolve a nonempty
+///   selection.
+/// - panics: none.
+///
+/// # Errors
+/// Returns a failed or empty Rustup selection as an operational error.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the consumer fixture has a supported source pin while its
+///   caller supplies an unavailable compiler and Cargo path; inventory
+///   succeeds.
+/// - witness: `gates::repository::witness_inventory_uses_consumer_selection_over_shadowed_plugins`
+fn active_toolchain(scope: &Path) -> Result<String, GateError>
+{
+    let active = capture(
+        Command::new("rustup")
+            .args(["show", "active-toolchain"])
+            .env_remove("RUSTUP_TOOLCHAIN")
+            .current_dir(scope),
+        "rustup show active-toolchain".into(),
+    )?;
+    let Some(toolchain) = active.split_whitespace().next()
     else {
-        command.args(["test", "--no-run", "--message-format", "json"]);
+        return Err(GateError::tool(
+            "rustup show active-toolchain".into(),
+            "no active compiler was selected".into(),
+        ));
+    };
+    Ok(toolchain.to_owned())
+}
+
+/// Reuse the selected executable under the complete Rustup proxy environment.
+///
+/// # Specification
+/// - ensures: nextest uses the retained executable and compiler; an inherited
+///   producer `CARGO` path cannot redirect the consumer's compiler invocation.
+/// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the actual selected-runner fixture compiles and
+///   inventories under the consumer compiler despite an unrelated launch
+///   compiler.
+/// - witness: `gates::repository::witness_inventory_uses_consumer_selection_over_shadowed_plugins`
+fn runner_command(runner: &ListingRunner) -> Command
+{
+    match *runner {
+        | ListingRunner::Nextest { ref executable, .. } => {
+            context_command(runner, executable.as_os_str())
+        },
+        | ListingRunner::CargoTest { .. } => context_command(runner, OsStr::new("cargo")),
+    }
+}
+
+/// Apply the retained Rustup context to a selected tool or a built native test
+/// binary.
+///
+/// # Specification
+/// - ensures: every subprocess uses the retained compiler context, including
+///   dynamic-library search paths; producer `CARGO` does not redirect it.
+/// - panics: none.
+fn context_command(
+    runner: &ListingRunner,
+    executable: &OsStr,
+) -> Command
+{
+    let (ListingRunner::Nextest { ref toolchain, .. } | ListingRunner::CargoTest { ref toolchain }) =
+        *runner;
+    let mut command = Command::new("rustup");
+    command
+        .args(["run", toolchain])
+        .arg(executable)
+        .env_remove("CARGO");
+    command
+}
+
+/// Listing arguments preserve the selected instrument's output format.
+///
+/// # Specification
+/// - ensures: the selected nextest supplies aggregate JSON; the explicit
+///   ordinary Cargo route supplies executable artifacts for native listing.
+/// - panics: none.
+fn list_command(runner: &ListingRunner) -> Command
+{
+    let mut command = runner_command(runner);
+    match *runner {
+        | ListingRunner::Nextest { .. } => {
+            command.args(["nextest", "list", "--message-format", "json"]);
+        },
+        | ListingRunner::CargoTest { .. } => {
+            command.args(["test", "--no-run", "--message-format", "json"]);
+        },
     }
     command
 }
@@ -390,7 +570,7 @@ fn list_command(nextest: NextestAvailable) -> Command
 ///
 /// # Specification
 /// - requires: `command` was built by [`list_command`] for the same instrument
-///   `nextest` names, and `scope` is the directory it runs in.
+///   `runner` names, and `scope` is the directory it runs in.
 /// - ensures: every test the command lists is recorded under its own package
 ///   and target, merged into whatever `catalog` already held.
 /// - provides: the one step [`catalog`] repeats per toolchain scope.
@@ -405,21 +585,12 @@ fn merge_listing(
     catalog: &mut TestCatalog,
     command: &mut Command,
     scope: &Path,
-    nextest: NextestAvailable,
+    runner: &ListingRunner,
 ) -> Result<(), GateError>
 {
-    let label = format!(
-        "{} (in {})",
-        if nextest.0 {
-            "cargo nextest list"
-        }
-        else {
-            "cargo test --no-run"
-        },
-        scope.display()
-    );
+    let label = format!("{command:?} (in {})", scope.display());
     let stdout = capture(command, CommandLine::from(&label))?;
-    if nextest.0 {
+    if matches!(runner, ListingRunner::Nextest { .. }) {
         let listed = TestCatalog::from_nextest_json(SourceText::from(&stdout))?;
         catalog.absorb(&listed);
         return Ok(());
@@ -428,6 +599,8 @@ fn merge_listing(
         catalog,
         SourceText::from(&stdout),
         CommandLine::from(&label),
+        scope,
+        runner,
     )
 }
 
@@ -438,8 +611,9 @@ fn merge_listing(
 /// - requires: `stdout` is the JSON-lines output of `cargo test --no-run
 ///   --message-format json`.
 /// - ensures: every built test binary is run with `--list --format terse` and
-///   its tests recorded under the binary's own package and target.
-/// - provides: the inventory on a machine without cargo-nextest.
+///   its tests recorded under the binary's own package and target. Native
+///   listings retain the source compiler's Rustup execution context.
+/// - provides: the ordinary Cargo inventory when mise is unavailable.
 /// - fails: [`GateError::Tool`] when a binary cannot be listed.
 /// - panics: none.
 ///
@@ -449,6 +623,8 @@ fn merge_cargo_test_listing(
     catalog: &mut TestCatalog,
     stdout: SourceText<'_>,
     label: CommandLine<'_>,
+    scope: &Path,
+    runner: &ListingRunner,
 ) -> Result<(), GateError>
 {
     for line in stdout.0.lines() {
@@ -491,7 +667,8 @@ fn merge_cargo_test_listing(
         else {
             continue;
         };
-        let mut command = Command::new(executable);
+        let mut command = context_command(runner, OsStr::new(executable));
+        command.current_dir(scope);
         command.args(["--list", "--format", "terse"]);
         let listing = capture(&mut command, label)?;
         let label_text = format!("{package}::{name}");
@@ -577,15 +754,4 @@ fn capture(
         return Err(GateError::tool(label, ErrorMessage::from(&stderr)));
     }
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
-}
-
-/// Cargo selection respects the executable supplied by the invoking toolchain.
-///
-/// # Specification
-/// - ensures: returns the `CARGO` the current invocation was started under, and
-///   `cargo` when the variable is unset or not text.
-/// - panics: none.
-fn cargo() -> String
-{
-    std::env::var("CARGO").unwrap_or_else(|_| String::from("cargo"))
 }

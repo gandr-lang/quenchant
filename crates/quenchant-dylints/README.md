@@ -71,10 +71,34 @@ For normal work, prefer the repository's `mise run check:tests` task, which sele
 | `specification_present`                      | Authored functions and methods carry a specification section; `trivial` cannot sit beside substantive clauses                              |
 | `adequacy_block_grammar`                     | An authored adequacy section has the required hypothesis and witness shape                                                                 |
 | `mode_dispatch_wildcard`                     | A declared judgment scrutinee cannot be hidden behind a fallback match arm                                                                 |
+| `primitive_arithmetic`                       | Primitive integer operators and resolved inherent arithmetic families use the nominal arithmetic surface                                   |
+| `option_signature`                           | Authored signatures preserve absence reasons; foreign methods admit only the `Option` layers their declarations require                    |
 
 The plugin is a policy floor, not a proof of totality or complete semantics. Call edges erased by function-pointer coercion, compiler-generated drop behavior, and unresolved type relationships require the corresponding review or evidence boundary. The ownership and call analyses address different mechanisms; neither subsumes the other.
 
-The primitive-signature rule does not establish that a wrapper's meaning, visibility, conversions, or absence policy is correct. The shared policy has obligations beyond this predicate, including its treatment of `Option`; passing this lint alone does not establish compliance with the whole policy.
+The primitive-signature rule does not establish a wrapper's meaning, visibility, conversions, or absence policy. `option_signature` checks absence exposure separately; neither rule proves that a chosen wrapper or reason enum models the domain correctly.
+
+### Arithmetic and absence activation
+
+`primitive_arithmetic` and `option_signature` are opt-in lints; the seven established rules retain their default levels. Select both explicitly in the consumer's Dylint invocation or through `cfg_attr(dylint_lib = "quenchant_dylints", deny(primitive_arithmetic, option_signature))` on its crate roots. Registration alone does not enable either policy. The producer's UI suites deny both the selected predicate and unknown lint names; a missing predicate cannot satisfy their expected diagnostics.
+
+### Primitive arithmetic
+
+The predicate rejects integer `+`, `-`, `*`, `/`, `%`, shifts, their assignment forms, and unary negation. It also rejects compiler-resolved inherent integer methods in the `checked`, `strict`, `wrapping`, `saturating`, `overflowing`, and `unchecked` families, including UFCS, type aliases, autodereferenced receivers, and function-item references. The inspected operations are addition/subtraction and their signed/unsigned forms, multiplication, division/remainder including Euclidean forms, negation, powers, absolute value, shifts, signed/unsigned differences, next multiples/powers of two, integer square root, and integer logarithms.
+
+Method definition identity and primitive receiver type are both checked. Binary and assignment operators require primitive integer operands on both sides: a nominal right-hand operand can define a legitimate overload even when the left-hand operand is an integer. Same-spelled nominal methods, extension-trait methods, and nominal overloaded operators remain accepted. Boolean/bitwise operations and comparisons are outside this predicate. Floating-point arithmetic, other partial APIs, and the justification of modular or clamping semantics remain separate policy obligations; existing Clippy denials still apply.
+
+The representation boundary is an implementation of the local `quenchant_arith::arith::Integer` trait for the local `quenchant_arith::arith::Int<primitive integer>` type. Those methods implement the library's explicit arithmetic families and therefore must reach primitive operations. Closures within the method retain that boundary; nested functions, unrelated producer helpers, different traits, and different nominal self types do not. This is canonical definition-path recognition, not a crate-wide exemption or an authenticity check on a package bearing that name.
+
+Resolved function items remain visible, including before pointer coercion. An already-erased function pointer has no recoverable method identity. Rustc's external-expansion diagnostic filtering remains a reporting boundary. Passing this lint is not a proof that overflow is unreachable or that a strict operation cannot panic.
+
+### Absence signatures
+
+The predicate identifies the standard `Option` through rustc's diagnostic-item identity. It checks all visibilities of free, const, async, and extern functions, inherent methods, local trait declarations/defaults/implementations, and foreign declarations. Inferred closure signatures are implementation details rather than authored APIs.
+
+Normalization exposes resolvable aliases and associated substitutions. Inspection follows references, pointers, tuples, arrays, slices, function pointers, generic arguments, dynamic-trait bounds, and explicit opaque/future bounds. It stops at a local transparent nominal type or the canonical `quenchant_shape::shape::Maybe`; it does not inspect representation fields. Unresolved projections are not a claim of checked absence.
+
+A foreign trait implementation is paired with the foreign method's unsubstituted signature. Only corresponding required `Option` layers are admitted. `Iterator::next` may return its required `Option<Item>`, but substituting `Option<Value>` for `Item` introduces another refused layer. `From<Option<Value>>::from` likewise introduces absence where the foreign declaration has a generic parameter and remains refused. Required callback, dynamic, and future shapes follow the same rule. A comment justifying primitive unpacking does not waive a prohibited signature.
 
 ## Structured documentation
 

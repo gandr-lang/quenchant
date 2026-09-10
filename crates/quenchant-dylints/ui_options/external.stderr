@@ -1,0 +1,76 @@
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/external.rs:21:24
+   |
+LL |     fn required(value: Option<Option<Value>>) -> Option<Option<Value>> { value }
+   |                        ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: requested on the command line with `-D option-signature`
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/external.rs:21:50
+   |
+LL |     fn required(value: Option<Option<Value>>) -> Option<Option<Value>> { value }
+   |                                                  ^^^^^^^^^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/external.rs:22:23
+   |
+LL |     fn generic(value: Option<Value>) -> Option<Value> { value }
+   |                       ^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/external.rs:22:41
+   |
+LL |     fn generic(value: Option<Value>) -> Option<Value> { value }
+   |                                         ^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/external.rs:23:24
+   |
+LL |     fn callback(value: fn(Option<Option<Value>>) -> Option<Option<Value>>) { let _ = value; }
+   |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/external.rs:24:23
+   |
+LL |     fn dynamic(value: &dyn Iterator<Item = Option<Option<Value>>>) { let _ = value; }
+   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/external.rs:25:32
+   |
+LL |     async fn asynchronous() -> Option<Option<Value>> { None }
+   |                                ^^^^^^^^^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/external.rs:26:20
+   |
+LL |     fn future() -> impl core::future::Future<Output = Option<Option<Value>>> { async { None } }
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/external.rs:27:24
+   |
+LL |     fn argument(value: &dyn foreign_policy::Carrier<Option<Option<Value>>>) { let _ = value; }
+   |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/external.rs:28:20
+   |
+LL |     fn opaque() -> impl foreign_policy::Carrier<Option<Option<Value>>> { () }
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/external.rs:31:25
+   |
+LL | fn local_dynamic(value: &dyn foreign_policy::Carrier<Option<Value>>) { let _ = value; }
+   |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/external.rs:32:22
+   |
+LL | fn local_opaque() -> impl foreign_policy::Carrier<Option<Value>> { () }
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 12 previous errors
+

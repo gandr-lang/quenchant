@@ -1,0 +1,82 @@
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/structural.rs:8:18
+   |
+LL | fn direct(value: Option<Value>) -> Missing<Value> { value }
+   |                  ^^^^^^^^^^^^^
+   |
+   = note: requested on the command line with `-D option-signature`
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/structural.rs:8:36
+   |
+LL | fn direct(value: Option<Value>) -> Missing<Value> { value }
+   |                                    ^^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/structural.rs:9:18
+   |
+LL | fn nested(value: &[(Nested, *const Missing<Value>)]) { let _ = value; }
+   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/structural.rs:10:20
+   |
+LL | fn callback(value: fn(Value) -> Option<Value>) { let _ = value; }
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/structural.rs:11:28
+   |
+LL | async fn asynchronous() -> Missing<Value> { None }
+   |                            ^^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/structural.rs:12:16
+   |
+LL | fn future() -> impl core::future::Future<Output = Missing<Value>> { async { None } }
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/structural.rs:13:19
+   |
+LL | fn dynamic(value: &dyn Iterator<Item = Missing<Value>>) { let _ = value; }
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/structural.rs:16:24
+   |
+LL |     fn required(value: Missing<Value>);
+   |                        ^^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/structural.rs:17:22
+   |
+LL |     fn provided() -> Option<Value> { None }
+   |                      ^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/structural.rs:20:24
+   |
+LL |     fn required(value: Missing<Value>) { let _ = value; }
+   |                        ^^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/structural.rs:23:32
+   |
+LL |     const fn inherent(self) -> Option<Self> { Some(self) }
+   |                                ^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/structural.rs:27:23
+   |
+LL |     fn foreign(value: Option<core::num::NonZeroU8>) -> Option<core::num::NonZeroU8>;
+   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/structural.rs:27:56
+   |
+LL |     fn foreign(value: Option<core::num::NonZeroU8>) -> Option<core::num::NonZeroU8>;
+   |                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 13 previous errors
+

@@ -35,6 +35,10 @@ The facade's optional consumer feature and the backend's cfgs are separate choic
 
 The `witnesses` command discovers package ownership and source roots, obtains a runnable test inventory, and resolves each declared witness within its owning package. Missing, ambiguous, cross-package, and wrong-target references produce addressed findings. A failed inventory query or unparseable source is an operational error, never an empty successful result.
 
+Runner selection belongs to the supplied consumer workspace. Rustup is required: metadata discovery, runner probing/listing, and fallback native-binary listing use the source-resolved compiler through `rustup run`, preserving its complete proxy environment. Inherited producer `CARGO` and `RUSTUP_TOOLCHAIN` values do not select the consumer's compiler. For each nonempty compiler scope, the gate resolves `mise which cargo-nextest` there and retains that absolute executable through its version probe and JSON listing, without Cargo's global plugin search.
+
+Mise-managed scopes require a selected, installed nextest. A failed selection, malformed executable path, failed probe, or failed listing is an operational error; no global nextest is substituted. When mise itself is unavailable, the ordinary `cargo test --no-run` plus native test-binary listing route remains supported. A workspace containing only member-local compiler scopes has no shared listing to execute; each member is still inventoried, and a final inventory containing no tests is refused.
+
 A resolved name proves that the named test is available under the inventoried configuration. It does not prove that the test ran in another configuration, that its oracle is adequate, or that it establishes the item's complete specification. The authored hypothesis must name the inputs, observations, fault classes, and remaining scope.
 
 ## Repository checks
