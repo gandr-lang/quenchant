@@ -13,6 +13,8 @@ quenchant-shape = { version = "=0.0.0", path = "../quenchant/crates/quenchant-sh
 
 Registry-only installation follows publication. The default library is `no_std`, uses no allocator, and forbids unsafe code in its implementation.
 
+Compiler-policy builds use the internal `quenchant_compiler_policy` cfg to register `Maybe`'s diagnostic identity for the matched nightly plugin. This is a whole-graph compiler flag, not a Cargo feature; ordinary and `--all-features` library builds retain the declared stable compiler boundary. The [plugin's activation guide](../quenchant-dylints/README.md#absence-signatures) specifies flag composition, external dependencies, and explicit lint enablement.
+
 ## Example
 
 ```rust

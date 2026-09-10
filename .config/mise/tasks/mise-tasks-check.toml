@@ -77,6 +77,10 @@ run = "cargo run -p quenchant-gates --locked -- witnesses --manifest-path Cargo.
 ["check:dylint"]
 description = "Load the workspace's own Dylint library over the workspace"
 env.CARGO_INCREMENTAL = "0"
+# Cargo's encoded flags win even when empty. Otherwise encode the ordinary
+# whitespace-separated flags before appending this policy-only cfg. Dylint's
+# workspace wrapper alone does not configure external dependencies.
+env.CARGO_ENCODED_RUSTFLAGS = "{% if env.CARGO_ENCODED_RUSTFLAGS is defined %}{% set flags = env.CARGO_ENCODED_RUSTFLAGS %}{% else %}{% set flags = env.RUSTFLAGS | default(value='') | trim | regex_replace(pattern='\\\\s+', rep='\u001f') %}{% endif %}{{ flags }}{% if flags %}\u001f{% endif %}--cfg=quenchant_compiler_policy"
 run = "cargo dylint --lib quenchant_dylints --no-deps -- --workspace --all-targets"
 
 # `RUSTDOCFLAGS="-D warnings"` makes every rustdoc lint fatal for the targets

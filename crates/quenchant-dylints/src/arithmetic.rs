@@ -41,8 +41,8 @@ impl<'tcx> LateLintPass<'tcx> for PrimitiveArithmetic
     ///
     /// # Specification
     /// - ensures: reports arithmetic with primitive integer operands and
-    ///   resolved primitive inherent families, including function-item
-    ///   references.
+    ///   resolved primitive inherent arithmetic families and partial methods,
+    ///   including function-item references.
     /// - panics: none.
     ///
     /// # Adequacy
@@ -136,8 +136,9 @@ enum ArithmeticIdentity
 /// Resolve arithmetic through the method's inherent implementation self type.
 ///
 /// # Specification
-/// - ensures: only inherent integer methods with a named arithmetic family are
-///   classified as primitive; extension traits and nominal methods are not.
+/// - ensures: inherent integer arithmetic families and unprefixed partial
+///   arithmetic methods are classified as primitive; extension traits and
+///   nominal methods are not. Unsigned square root remains total.
 /// - panics: none.
 ///
 /// # Adequacy
@@ -165,6 +166,33 @@ fn primitive_method(
     }
     let name = cx.tcx.item_name(method);
     let name = name.as_str();
+    // This inventory follows core's integer domains: unsigned square root is
+    // total, while signed square root rejects negative inputs.
+    if matches!(
+        name,
+        "pow"
+            | "abs"
+            | "div_euclid"
+            | "rem_euclid"
+            | "div_floor"
+            | "div_ceil"
+            | "next_multiple_of"
+            | "next_power_of_two"
+            | "ilog"
+            | "ilog2"
+            | "ilog10"
+            | "funnel_shl"
+            | "funnel_shr"
+    ) || (name == "isqrt"
+        && cx
+            .tcx
+            .type_of(implementation)
+            .instantiate_identity()
+            .skip_norm_wip()
+            .is_signed())
+    {
+        return ArithmeticIdentity::Primitive;
+    }
     let Some((family, operation)) = name.split_once('_')
     else {
         return ArithmeticIdentity::Other;
@@ -184,6 +212,8 @@ fn primitive_method(
             | "abs"
             | "shl"
             | "shr"
+            | "funnel_shl"
+            | "funnel_shr"
             | "add_signed"
             | "sub_signed"
             | "add_unsigned"

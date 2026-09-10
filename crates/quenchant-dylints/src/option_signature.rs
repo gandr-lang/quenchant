@@ -480,7 +480,14 @@ enum NominalBoundary
 /// # Specification
 /// - ensures: field layouts are never traversed; a same-spelled foreign Maybe
 ///   is not confused with the Quenchant definition.
+/// - ensures: aliases and re-exports retain the producer's diagnostic-item
+///   `DefId`; an unmarked dependency receives no canonical exemption.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 same-crate-name rlibs with distinct metadata distinguish
+///   diagnostic-item identity from spelling; aliases retain real identity.
+/// - witness: `tests::ui_options`
 fn nominal_boundary(
     cx: &LateContext<'_>,
     adt: ty::AdtDef<'_>,
@@ -489,12 +496,9 @@ fn nominal_boundary(
     if adt.did().is_local() && adt.repr().transparent() {
         return NominalBoundary::Reached;
     }
-    let item = adt.did();
-    let module = cx.tcx.parent(item);
-    if cx.tcx.crate_name(item.krate) == Symbol::intern("quenchant_shape")
-        && cx.tcx.opt_item_name(item) == Some(Symbol::intern("Maybe"))
-        && cx.tcx.opt_item_name(module) == Some(Symbol::intern("shape"))
-        && cx.tcx.parent(module).is_crate_root()
+    if cx
+        .tcx
+        .is_diagnostic_item(Symbol::intern("quenchant_maybe"), adt.did())
     {
         NominalBoundary::Reached
     }

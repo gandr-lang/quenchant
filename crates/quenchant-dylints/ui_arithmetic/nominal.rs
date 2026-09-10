@@ -6,6 +6,8 @@ impl Count {
     fn checked_add(self, _other: Self) -> Self { self }
     fn wrapping_mul(self, _other: Self) -> Self { self }
     fn saturating_sub(self, _other: Self) -> Self { self }
+    fn pow(self, _exponent: u32) -> Self { self }
+    fn isqrt(self) -> Self { self }
 }
 
 impl core::ops::Add for Count {
@@ -15,9 +17,11 @@ impl core::ops::Add for Count {
 
 trait IntegerExtension {
     fn checked_add(self, other: Self) -> Self;
+    fn pow(self, exponent: u32) -> Self;
 }
 impl IntegerExtension for u32 {
     fn checked_add(self, _other: Self) -> Self { self }
+    fn pow(self, _exponent: u32) -> Self { self }
 }
 fn accepted(left: Count, right: Count, bits: u32) {
     let _ = left + right;
@@ -29,6 +33,14 @@ fn accepted(left: Count, right: Count, bits: u32) {
     let _ = bits == 1;
     let _ = !bits;
     let _ = <u32 as IntegerExtension>::checked_add(bits, bits);
+    let _ = left.pow(2);
+    let operation = Count::isqrt;
+    let _ = operation(left);
+    let _ = <u32 as IntegerExtension>::pow(bits, 2);
+    let _ = bits.isqrt();
+    let _ = bits.abs_diff(1);
+    let _ = bits.midpoint(1);
+    let _ = i32::MIN.unsigned_abs();
 }
 
 #[repr(transparent)]

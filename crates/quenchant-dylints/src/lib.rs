@@ -834,6 +834,37 @@ non_owning_generics = [
             "-Aspecification_present".to_owned(),
             "-Adead_code".to_owned(),
         ]);
+        let target = std::env::current_exe()
+            .expect("the test executable has a path")
+            .parent()
+            .expect("the test executable lives in a directory")
+            .join("ui-options-identity");
+        std::fs::create_dir_all(&target).expect("the identity artifact directory is writable");
+        for alias in ["foreign_shape", "unmarked_shape"] {
+            let library = target.join(format!("lib{alias}.rlib"));
+            let output = std::process::Command::new("rustc")
+                .current_dir(env!("CARGO_MANIFEST_DIR"))
+                .arg(format!("ui_options/auxiliary/{alias}.rs"))
+                .args([
+                    "--edition=2024",
+                    "--crate-type=rlib",
+                    "--crate-name=quenchant_shape",
+                ])
+                .arg(format!("-Cmetadata={alias}"))
+                .arg("-o")
+                .arg(&library)
+                .output()
+                .expect("the selected compiler can build a same-name dependency");
+            assert!(
+                output.status.success(),
+                "same-name dependency build failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            flags.extend([
+                "--extern".to_owned(),
+                format!("{alias}={}", library.display()),
+            ]);
+        }
         dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_options")
             .rustc_flags(flags)
             .run();
@@ -862,6 +893,8 @@ non_owning_generics = [
     ///   directories reported by that Cargo build.
     /// - ensures: the fixture edition and `anodized` cfg match that
     ///   interpretation.
+    /// - ensures: the whole dependency graph receives the compiler-policy cfg,
+    ///   preserving inherited flags with Cargo's encoded-flags precedence.
     /// - panics: a failed build, invalid Cargo output, or missing selected
     ///   artifact fails setup instead of selecting a different cached
     ///   configuration.
@@ -882,8 +915,25 @@ non_owning_generics = [
             .parent()
             .expect("the test binary lives in Cargo's deps directory")
             .join("ui-specification-deps");
+        let inherited = std::env::var_os("CARGO_ENCODED_RUSTFLAGS").map_or_else(
+            || {
+                std::env::var("RUSTFLAGS")
+                    .unwrap_or_default()
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join("\u{1f}")
+            },
+            |flags| flags.into_string().expect("Cargo flags are Unicode"),
+        );
+        let policy_flags = if inherited.is_empty() {
+            "--cfg=quenchant_compiler_policy".to_owned()
+        }
+        else {
+            format!("{inherited}\u{1f}--cfg=quenchant_compiler_policy")
+        };
         let output = std::process::Command::new(env!("CARGO"))
             .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .env("CARGO_ENCODED_RUSTFLAGS", policy_flags)
             .args([
                 "build",
                 "--locked",
@@ -900,7 +950,7 @@ non_owning_generics = [
                 "quenchant-anodized/anodized",
                 "--target-dir",
             ])
-            .arg(target)
+            .arg(&target)
             .output()
             .expect("Cargo can build the UI fixture dependencies");
         assert!(

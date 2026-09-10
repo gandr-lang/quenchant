@@ -1,0 +1,136 @@
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/partial.rs:6:13
+   |
+LL |     let _ = value.pow(2);
+   |             ^^^^^^^^^^^^
+   |
+   = note: requested on the command line with `-D primitive-arithmetic`
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/partial.rs:7:13
+   |
+LL |     let _ = signed.abs();
+   |             ^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/partial.rs:8:13
+   |
+LL |     let _ = value.div_euclid(divisor);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/partial.rs:9:13
+   |
+LL |     let _ = signed.rem_euclid(2);
+   |             ^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/partial.rs:10:13
+   |
+LL |     let _ = signed.div_floor(2);
+   |             ^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/partial.rs:11:13
+   |
+LL |     let _ = value.div_ceil(divisor);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/partial.rs:12:13
+   |
+LL |     let _ = value.next_multiple_of(divisor);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/partial.rs:13:13
+   |
+LL |     let _ = value.next_power_of_two();
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/partial.rs:14:13
+   |
+LL |     let _ = value.ilog(divisor);
+   |             ^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/partial.rs:15:13
+   |
+LL |     let _ = signed.ilog2();
+   |             ^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/partial.rs:16:13
+   |
+LL |     let _ = value.ilog10();
+   |             ^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/partial.rs:17:13
+   |
+LL |     let _ = signed.isqrt();
+   |             ^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/partial.rs:18:13
+   |
+LL |     let _ = value.funnel_shl(divisor, 1);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/partial.rs:19:13
+   |
+LL |     let _ = value.funnel_shr(divisor, 1);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/partial.rs:20:22
+   |
+LL |     let _ = unsafe { value.unchecked_funnel_shl(divisor, 1) };
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/partial.rs:21:22
+   |
+LL |     let _ = unsafe { value.unchecked_funnel_shr(divisor, 1) };
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/partial.rs:22:13
+   |
+LL |     let _ = Representation::pow(value, 2);
+   |             ^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/partial.rs:23:21
+   |
+LL |     let operation = i32::isqrt;
+   |                     ^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/partial.rs:24:13
+   |
+LL |     let _ = operation(signed);
+   |             ^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/partial.rs:26:13
+   |
+LL |     let _ = borrowed.pow(2);
+   |             ^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/partial.rs:32:13
+   |
+LL |     Operand(value.0.pow(2))
+   |             ^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/partial.rs:35:13
+   |
+LL |     Operand(value.0 * value.0)
+   |             ^^^^^^^^^^^^^^^^^
+
+error: aborting due to 22 previous errors
+
