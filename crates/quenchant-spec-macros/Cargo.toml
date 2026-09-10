@@ -1,0 +1,26 @@
+[package]
+name = "quenchant-spec-macros"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Conditional specification attributes with token-preserving erasure"
+readme = "README.md"
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords = ["no-std", "proc-macro", "specification"]
+categories = ["development-tools::procedural-macro-helpers"]
+publish.workspace = true
+
+[lib]
+proc-macro = true
+
+[dev-dependencies]
+anodized-macros.workspace = true
+
+[features]
+default = []
+anodized = []
+
+[lints]
+workspace = true

@@ -1,0 +1,189 @@
+error: `- input recursion: none.` is refuted: a call inside this recursive cycle passes data derived from the function's own parameters
+  --> $DIR/recursion.rs:248:5
+   |
+LL | /     fn false_none_self(&self)
+LL | |     {
+LL | |         self.false_none_self();
+LL | |     }
+   | |_____^
+   |
+   = note: `#[deny(recursion_forbidden)]` on by default
+
+error: function participates in a recursive call cycle; recursion is forbidden — write the iterative form (worklist, explicit frame stack), or take the owner-approved exception (`#[expect(recursion_forbidden, reason = "...")]` plus a complete `# Termination` section)
+  --> $DIR/recursion.rs:257:1
+   |
+LL | / fn closure_mediated(value: Count) -> Count
+LL | | {
+LL | |     let step = || closure_mediated(value);
+LL | |     step()
+LL | | }
+   | |_^
+
+error: `- input recursion: none.` is refuted: a call inside this recursive cycle passes data derived from the function's own parameters
+  --> $DIR/recursion.rs:173:1
+   |
+LL | / fn false_none_direct(value: Count) -> Count
+LL | | {
+LL | |     false_none_direct(value)
+LL | | }
+   | |_^
+
+error: `- input recursion: none.` is refuted: a call inside this recursive cycle passes data derived from the function's own parameters
+  --> $DIR/recursion.rs:184:1
+   |
+LL | / fn false_none_let(value: Count) -> Count
+LL | | {
+LL | |     let child = value;
+LL | |     false_none_let(child)
+LL | | }
+   | |_^
+
+error: `- input recursion: none.` is refuted: a call inside this recursive cycle passes data derived from the function's own parameters
+  --> $DIR/recursion.rs:196:1
+   |
+LL | / fn false_none_match(value: Option<Count>) -> Count
+LL | | {
+LL | |     match value {
+LL | |         | Some(child) => false_none_match(Some(child)),
+...  |
+LL | | }
+   | |_^
+
+error: `- input recursion: none.` is refuted: a call inside this recursive cycle passes data derived from the function's own parameters
+  --> $DIR/recursion.rs:210:1
+   |
+LL | / fn false_none_mutual_left(value: Count) -> Count
+LL | | {
+LL | |     false_none_mutual_right(value)
+LL | | }
+   | |_^
+
+error: `- input recursion: none.` is refuted: a call inside this recursive cycle passes data derived from the function's own parameters
+  --> $DIR/recursion.rs:221:1
+   |
+LL | / fn false_none_mutual_right(value: Count) -> Count
+LL | | {
+LL | |     false_none_mutual_left(value)
+LL | | }
+   | |_^
+
+error: `- input recursion: none.` is refuted: a call inside this recursive cycle passes data derived from the function's own parameters
+  --> $DIR/recursion.rs:325:1
+   |
+LL | / fn false_none_punctuated(value: Count) -> Count
+LL | | {
+LL | |     false_none_punctuated(value)
+LL | | }
+   | |_^
+
+error: `- input recursion: none.` is refuted: a call inside this recursive cycle passes data derived from the function's own parameters
+  --> $DIR/recursion.rs:233:1
+   |
+LL | / fn false_none_trailing_prose(value: Count) -> Count
+LL | | {
+LL | |     false_none_trailing_prose(value)
+LL | | }
+   | |_^
+
+error: function participates in a recursive call cycle; recursion is forbidden — write the iterative form (worklist, explicit frame stack), or take the owner-approved exception (`#[expect(recursion_forbidden, reason = "...")]` plus a complete `# Termination` section)
+  --> $DIR/recursion.rs:263:1
+   |
+LL | / fn fn_item_indirection(value: Count) -> Count
+LL | | {
+LL | |     let call = fn_item_indirection;
+LL | |     call(value)
+LL | | }
+   | |_^
+
+error: `# Termination` section must contain exactly the bullets `- reason:`, `- measure:`, `- boundedness:`, `- input recursion:`, in that order, each with a value
+  --> $DIR/recursion.rs:153:1
+   |
+LL | / fn heading_terminated_section(value: Count) -> Count
+LL | | {
+LL | |     heading_terminated_section(value)
+LL | | }
+   | |_^
+
+error: recursion exception must be attached to this item: an `#[expect(recursion_forbidden, ..)]` on an enclosing module or on the crate root approves nothing inside it
+  --> $DIR/recursion.rs:293:5
+   |
+LL | /     pub fn borrowed_approval(value: Count) -> Count
+LL | |     {
+LL | |         borrowed_approval(value)
+LL | |     }
+   | |_____^
+
+error: `# Termination` section must contain exactly the bullets `- reason:`, `- measure:`, `- boundedness:`, `- input recursion:`, in that order, each with a value
+  --> $DIR/recursion.rs:134:1
+   |
+LL | / fn misordered_section(value: Count) -> Count
+LL | | {
+LL | |     misordered_section(value)
+LL | | }
+   | |_^
+
+error: recursion exception is missing its `# Termination` rustdoc section
+  --> $DIR/recursion.rs:115:1
+   |
+LL | / fn missing_section(value: Count) -> Count
+LL | | {
+LL | |     missing_section(value)
+LL | | }
+   | |_^
+
+error: `# Termination` section must contain exactly the bullets `- reason:`, `- measure:`, `- boundedness:`, `- input recursion:`, in that order, each with a value
+  --> $DIR/recursion.rs:123:1
+   |
+LL | / fn short_section(value: Count) -> Count
+LL | | {
+LL | |     short_section(value)
+LL | | }
+   | |_^
+
+error: `# Termination` section must contain exactly the bullets `- reason:`, `- measure:`, `- boundedness:`, `- input recursion:`, in that order, each with a value
+  --> $DIR/recursion.rs:314:1
+   |
+LL | / fn subheading_terminated_section(value: Count) -> Count
+LL | | {
+LL | |     subheading_terminated_section(value)
+LL | | }
+   | |_^
+
+error: function participates in a recursive call cycle; recursion is forbidden — write the iterative form (worklist, explicit frame stack), or take the owner-approved exception (`#[expect(recursion_forbidden, reason = "...")]` plus a complete `# Termination` section)
+  --> $DIR/recursion.rs:10:1
+   |
+LL | / fn unguarded_direct(value: Count) -> Count
+LL | | {
+LL | |     unguarded_direct(value)
+LL | | }
+   | |_^
+
+error: function participates in a recursive call cycle; recursion is forbidden — write the iterative form (worklist, explicit frame stack), or take the owner-approved exception (`#[expect(recursion_forbidden, reason = "...")]` plus a complete `# Termination` section)
+  --> $DIR/recursion.rs:15:1
+   |
+LL | / fn unguarded_mutual_left(value: Count) -> Count
+LL | | {
+LL | |     unguarded_mutual_right(value)
+LL | | }
+   | |_^
+
+error: function participates in a recursive call cycle; recursion is forbidden — write the iterative form (worklist, explicit frame stack), or take the owner-approved exception (`#[expect(recursion_forbidden, reason = "...")]` plus a complete `# Termination` section)
+  --> $DIR/recursion.rs:20:1
+   |
+LL | / fn unguarded_mutual_right(value: Count) -> Count
+LL | | {
+LL | |     unguarded_mutual_left(value)
+LL | | }
+   | |_^
+
+error: recursion exception must state `reason = "..."` on its `#[expect(recursion_forbidden, ..)]` attribute
+  --> $DIR/recursion.rs:159:1
+   |
+LL | / fn unreasoned_exception(value: Count) -> Count
+LL | | {
+LL | |     unreasoned_exception(value)
+LL | | }
+   | |_^
+
+error: aborting due to 20 previous errors
+

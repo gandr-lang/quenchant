@@ -1,0 +1,11 @@
+#:tombi toml-version = "v1.0.0"
+#:schema https://mise.jdx.dev/schema/mise-task.json
+
+# The Verus pass is an explicit local experiment, not a merge gate: the verifier
+# is a commissioned binary rather than a pinned tool, so `VERUS_BIN` names it in
+# the running shell and never in a tracked file. The task takes no `check:`
+# name, so the wall's fan-out leaves it alone. A refusal is a recorded verdict,
+# not a task failure; an absent verifier is.
+["verus:derive"]
+description = "Derive a Verus proof input per declared specification and check each"
+run = "cargo run --example verus_derive --locked"

@@ -1,0 +1,286 @@
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:34:17
+   |
+LL |     bool_value: bool,
+   |                 ^^^^
+   |
+   = note: `#[deny(primitive_signature)]` on by default
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:35:17
+   |
+LL |     char_value: char,
+   |                 ^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:36:16
+   |
+LL |     f32_value: f32,
+   |                ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:37:16
+   |
+LL |     f64_value: f64,
+   |                ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:38:15
+   |
+LL |     i8_value: i8,
+   |               ^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:39:16
+   |
+LL |     i16_value: i16,
+   |                ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:40:16
+   |
+LL |     i32_value: i32,
+   |                ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:41:16
+   |
+LL |     i64_value: i64,
+   |                ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:42:17
+   |
+LL |     i128_value: i128,
+   |                 ^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:43:15
+   |
+LL |     u8_value: u8,
+   |               ^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:44:16
+   |
+LL |     u16_value: u16,
+   |                ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:45:16
+   |
+LL |     u32_value: u32,
+   |                ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:46:16
+   |
+LL |     u64_value: u64,
+   |                ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:47:17
+   |
+LL |     u128_value: u128,
+   |                 ^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:48:18
+   |
+LL |     isize_value: isize,
+   |                  ^^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:49:18
+   |
+LL |     usize_value: usize,
+   |                  ^^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:50:17
+   |
+LL |     str_value: &str,
+   |                 ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:51:6
+   |
+LL | ) -> bool
+   |      ^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:56:30
+   |
+LL | async fn direct_async(value: u8) -> bool
+   |                              ^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:56:37
+   |
+LL | async fn direct_async(value: u8) -> bool
+   |                                     ^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:62:16
+   |
+LL |     ref_bool: &bool,
+   |                ^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:63:22
+   |
+LL |     raw_char: *const char,
+   |                      ^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:64:17
+   |
+LL |     array_f32: [f32; 1],
+   |                 ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:65:18
+   |
+LL |     slice_f64: &[f64],
+   |                  ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:66:21
+   |
+LL |     tuple_indices: (isize, usize),
+   |                     ^^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:66:28
+   |
+LL |     tuple_indices: (isize, usize),
+   |                            ^^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:67:18
+   |
+LL |     callback: fn(u8) -> i16,
+   |                  ^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:67:25
+   |
+LL |     callback: fn(u8) -> i16,
+   |                         ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:68:15
+   |
+LL |     alias_u8: AliasU8,
+   |               ^^^^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:69:18
+   |
+LL |     alias_tuple: AliasTuple,
+   |                  ^^^^^^^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:70:11
+   |
+LL | ) -> *mut str
+   |           ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:76:25
+   |
+LL |     option_bool: Option<bool>,
+   |                         ^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:77:26
+   |
+LL |     result_usize: Result<usize, WrappedU8>,
+   |                          ^^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:78:19
+   |
+LL |     vec_char: Vec<char>,
+   |                   ^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:79:19
+   |
+LL |     boxed_u8: Box<u8>,
+   |                   ^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:80:16
+   |
+LL |     rc_i32: Rc<i32>,
+   |                ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:81:18
+   |
+LL |     arc_u64: Arc<u64>,
+   |                  ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:82:27
+   |
+LL |     cow_str: Cow<'static, str>,
+   |                           ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:83:21
+   |
+LL |     cell_bool: Cell<bool>,
+   |                     ^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:84:26
+   |
+LL |     refcell_f32: RefCell<f32>,
+   |                          ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:90:18
+   |
+LL |     range: Range<u64>,
+   |                  ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:91:27
+   |
+LL |     local: LocalContainer<u64>,
+   |                           ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:97:33
+   |
+LL |     generic_alias: GenericAlias<u32>,
+   |                                 ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:98:21
+   |
+LL |     external_alias: ExternalAlias,
+   |                     ^^^^^^^^^^^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:133:61
+   |
+LL | async fn async_nested_primitive(value: WrappedU8) -> Option<u8>
+   |                                                             ^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:139:79
+   |
+LL | async fn async_nested_primitive_under_layers(value: WrappedU8) -> Result<Vec<(u8, char)>, WrappedU8>
+   |                                                                               ^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/primitive_signatures.rs:139:83
+   |
+LL | async fn async_nested_primitive_under_layers(value: WrappedU8) -> Result<Vec<(u8, char)>, WrappedU8>
+   |                                                                                   ^^^^
+
+error: aborting due to 47 previous errors
+

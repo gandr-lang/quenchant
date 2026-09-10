@@ -1,0 +1,15 @@
+error: missing documentation for a function
+  --> $DIR/author_docs.rs:16:1
+   |
+LL | #[quenchant::spec(requires: count > Count::ZERO)]
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the lint level is defined here
+  --> $DIR/author_docs.rs:3:9
+   |
+LL | #![deny(missing_docs)]
+   |         ^^^^^^^^^^^^
+   = note: this error originates in the attribute macro `::quenchant::__instrument` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: aborting due to 1 previous error
+

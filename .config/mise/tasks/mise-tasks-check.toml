@@ -1,0 +1,92 @@
+#:tombi toml-version = "v1.0.0"
+#:schema https://mise.jdx.dev/schema/mise-task.json
+
+# Marker recognition and its seven-character boundary live in the Rust gate.
+["check:conflict-markers"]
+description = "Detect unresolved Git conflict markers in tracked files"
+run = "cargo run --quiet --locked -p quenchant-gates -- conflict-markers"
+
+# The shared baseline page is byte-identical wherever it is tracked and pinned
+# by content hash. The pin is `docs/agents/baseline.sha256` beside the page, one
+# `sha256sum` check line, so no script and no binary carries a digest. macOS
+# ships `sha256sum` as `/sbin/sha256sum`.
+["check:baseline-hash"]
+description = "Check the shared baseline page against the pin beside it"
+run = "sha256sum -c docs/agents/baseline.sha256"
+
+["check:public-boundary"]
+description = "Reject private-material shapes in repository history and tree"
+run = "cargo run --quiet --locked -p quenchant-gates -- public-boundary"
+
+["check:ci-pins"]
+description = "Check compiler-coupled and Dylint version pins"
+run = "cargo run --quiet --locked -p quenchant-gates -- pins"
+
+["check:action-pins"]
+description = "Require allowed, full-SHA GitHub Action references"
+run = "cargo run --quiet --locked -p quenchant-gates -- action-pins"
+
+["check:publish"]
+description = "Verify the exact package publication eligibility boundary"
+run = "cargo run --quiet --locked -p quenchant-gates -- publish-allowlist"
+
+["check:anodized"]
+description = "Report the resolved specification state of the workspace"
+run = "cargo run -p quenchant-gates --locked -- anodized --manifest-path Cargo.toml"
+
+# The enforcing twin: the specification runtime turns postcondition failures
+# into panics across the whole dependency graph, so RUSTFLAGS is set for the
+# entire build rather than for one crate.
+["check:anodized-enforcing"]
+description = "Require enforcing cfgs and exercise real postcondition failures"
+env.RUSTFLAGS = "--cfg anodized_panic"
+run = "cargo run --quiet --locked -p quenchant-gates -- anodized --manifest-path Cargo.toml --require-enforcing"
+depends = ["anodized:specifications"]
+
+["anodized:specifications"]
+description = "Exercise real postcondition failures with enforcing specifications"
+dir = "crates/quenchant-dylints"
+env.RUSTFLAGS = "--cfg anodized_panic"
+run = "cargo nextest run --profile ci --features anodized -E 'test(specification_tests::)'"
+
+["check:no-std"]
+description = "Build both library modes for a bare-metal target without std"
+run = [
+  "cargo build --locked -p quenchant -p quenchant-arith -p quenchant-shape --no-default-features --target thumbv7em-none-eabi",
+  "cargo build --locked -p quenchant-arith -p quenchant-shape --no-default-features --features quenchant-arith/fast --target thumbv7em-none-eabi",
+]
+
+["check:witnesses"]
+description = "Resolve every declared adequacy witness against a runnable target"
+run = "cargo run -p quenchant-gates --locked -- witnesses --manifest-path Cargo.toml"
+
+# The compiler-plugin half of the lint wall, self-hosted: the library is a
+# member of this workspace and is loaded from its path, so the driver builds it
+# from these sources rather than from a pinned revision. Incremental
+# compilation is off because the driver reads whole-crate HIR: an incremental
+# rebuild can skip the units the lints need to see. A toolchain bump
+# invalidates the driver -- `rm -rf ~/.dylint_drivers target/dylint` before the
+# wall runs again.
+["check:dylint"]
+description = "Load the workspace's own Dylint library over the workspace"
+env.CARGO_INCREMENTAL = "0"
+run = "cargo dylint --lib quenchant_dylints --no-deps -- --workspace --all-targets"
+
+# `RUSTDOCFLAGS="-D warnings"` makes every rustdoc lint fatal for the targets
+# rustdoc reads. The clippy wall's `missing_docs_in_private_items` supplies the
+# missing-docs half; this gate supplies the rustdoc-lint half. The second pass
+# reaches the arithmetic library's `fast` documentation.
+["check:doc"]
+description = "Check workspace private-item rustdoc with warnings denied"
+env.RUSTDOCFLAGS = "-D warnings"
+run = [
+  "cargo doc --workspace --locked --no-deps --document-private-items",
+  "cargo doc --workspace --locked --no-deps --document-private-items --features quenchant-arith/fast",
+]
+
+# Fan out to every check:* task; a new check:* task is picked up without
+# touching this one. Formatting stays explicit because its task name is
+# treefmt:check rather than check:treefmt.
+[check]
+description = "Run every repository gate"
+depends = ["check:*", "treefmt:check"]

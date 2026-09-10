@@ -1,0 +1,200 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_NEXTEST_VERSION: "0.9.143"
+  DYLINT_VERSION: "6.0.4"
+
+jobs:
+  build-test:
+    name: build and test the workspace
+    runs-on: ubuntu-latest
+    steps:
+      - name: git checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: setup rust
+        uses: ./.github/actions/setup-rust
+        with:
+          cache-save: "true"
+          cache-workspace-crates: "true"
+      - name: install cargo-nextest
+        uses: taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf # v2.87.2
+        with:
+          tool: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
+      - name: build workspace targets
+        run: cargo build --workspace --all-targets
+      - name: build workspace targets in fast arithmetic mode
+        run: cargo build --workspace --all-targets --features quenchant-arith/fast
+      - name: check libraries without a standard library
+        run: cargo build --locked -p quenchant-arith -p quenchant-shape --no-default-features --target thumbv7em-none-eabi
+      - name: check fast libraries without a standard library
+        run: cargo build --locked -p quenchant-arith -p quenchant-shape --no-default-features --features quenchant-arith/fast --target thumbv7em-none-eabi
+      - name: test the workspace
+        run: cargo nextest run --workspace --exclude quenchant-dylints
+      - name: test the workspace in release
+        run: cargo nextest run --workspace --exclude quenchant-dylints --release
+      - name: test the workspace in fast arithmetic mode
+        run: >-
+          cargo nextest run --workspace --exclude quenchant-dylints
+          --features quenchant-arith/fast
+      - name: test the workspace with enforcement
+        env:
+          RUSTFLAGS: --cfg anodized_panic
+        run: >-
+          cargo nextest run --workspace --exclude quenchant-dylints
+          --features quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized
+      - name: test documentation examples
+        run: cargo test --doc -p quenchant-arith -p quenchant-shape -p quenchant-anodized -p quenchant-spec-macros -p quenchant-fixture-macros
+      - name: install the gate binary
+        run: cargo install --path crates/quenchant-gates --locked --root "$RUNNER_TEMP/quenchant-gates"
+      - name: report installed anodized invocation state
+        run: >-
+          "$RUNNER_TEMP/quenchant-gates/bin/quenchant-gates" anodized
+          --manifest-path Cargo.toml
+      - name: require installed anodized enforcement
+        env:
+          RUSTFLAGS: --cfg anodized_panic
+        run: >-
+          "$RUNNER_TEMP/quenchant-gates/bin/quenchant-gates" anodized
+          --manifest-path Cargo.toml --require-enforcing
+      - name: check private-item rustdoc
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: cargo doc --workspace --no-deps --document-private-items
+      - name: check private-item rustdoc in fast arithmetic mode
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: >-
+          cargo doc --workspace --no-deps --document-private-items
+          --features quenchant-arith/fast
+
+  dylint:
+    name: test Dylint library
+    runs-on: ubuntu-latest
+    steps:
+      - name: git checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: setup rust
+        uses: ./.github/actions/setup-rust
+      - name: restore Dylint drivers
+        id: dylint-drivers-restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.dylint_drivers
+          key: dylint-drivers-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml') }}-${{ env.DYLINT_VERSION }}
+      - name: restore Dylint library
+        id: dylint-library-restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/dylint
+          key: dylint-library-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml') }}-${{ env.DYLINT_VERSION }}-${{ hashFiles('crates/quenchant-dylints/**', 'Cargo.toml', 'Cargo.lock') }}
+      - name: install Dylint tools
+        uses: taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf # v2.87.2
+        with:
+          tool: cargo-dylint@${{ env.DYLINT_VERSION }},dylint-link@${{ env.DYLINT_VERSION }},cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
+      - name: test Dylint package
+        working-directory: crates/quenchant-dylints
+        run: cargo nextest run --profile ci
+      - name: exercise enforcing specification exits
+        working-directory: crates/quenchant-dylints
+        env:
+          RUSTFLAGS: --cfg anodized_panic
+        run: cargo nextest run --profile ci --features anodized -E 'test(specification_tests::)'
+      - name: lint Dylint package
+        working-directory: crates/quenchant-dylints
+        run: cargo clippy --all-targets -- --deny warnings
+      - name: load Dylint library over workspace
+        run: cargo dylint --lib quenchant_dylints --no-deps -- --workspace --all-targets
+      - name: resolve adequacy witnesses
+        run: cargo run -p quenchant-gates -- witnesses --manifest-path Cargo.toml
+      - name: save Dylint library
+        if: ${{ steps.dylint-library-restore.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: target/dylint
+          key: ${{ steps.dylint-library-restore.outputs.cache-primary-key }}
+      - name: save Dylint drivers
+        if: ${{ steps.dylint-drivers-restore.outputs.cache-hit != 'true' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.dylint_drivers
+          key: ${{ steps.dylint-drivers-restore.outputs.cache-primary-key }}
+      - name: upload Dylint test report
+        if: ${{ always() }}
+        continue-on-error: true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: junit-dylint
+          path: target/nextest/ci/junit.xml
+
+  clippy:
+    name: check Clippy wall
+    runs-on: ubuntu-latest
+    steps:
+      - name: git checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: setup rust
+        uses: ./.github/actions/setup-rust
+      - name: lint every workspace target outside the Dylint package
+        run: >-
+          cargo clippy --workspace --all-targets --exclude quenchant-dylints
+          -- --deny warnings
+      - name: lint every workspace target in fast arithmetic mode
+        run: >-
+          cargo clippy --workspace --all-targets --exclude quenchant-dylints
+          --features quenchant-arith/fast -- --deny warnings
+      - name: lint published instrumentation
+        run: >-
+          cargo clippy --workspace --all-targets --exclude quenchant-dylints
+          --features quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized
+          -- --deny warnings
+
+  policy:
+    name: check policy and formatting
+    runs-on: ubuntu-latest
+    steps:
+      - name: git checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - name: setup rust
+        uses: ./.github/actions/setup-rust
+      - name: install mise-managed policy tools
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.8.15
+      - name: check formatting and static policy
+        run: mise run treefmt:check
+      - name: check conflict markers
+        run: mise run check:conflict-markers
+      - name: check public boundary
+        run: mise run check:public-boundary
+      - name: check shared baseline
+        run: mise run check:baseline-hash
+      - name: check compiler and Dylint pins
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: mise run check:ci-pins
+      - name: check Action allowlist and pins
+        run: mise run check:action-pins
+      - name: check publication metadata
+        run: mise run check:publish

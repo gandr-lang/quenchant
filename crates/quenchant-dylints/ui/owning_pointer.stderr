@@ -1,0 +1,102 @@
+error: type owns its way back to itself; pointer-linked recursive data is forbidden — the drop glue and the derived traversals both recurse over the pointee, and neither is a function the call-plane gate can see
+  --> $DIR/owning_pointer.rs:43:8
+   |
+LL | struct ArcCycle(Arc<ArcCycle>);
+   |        ^^^^^^^^
+   |
+   = note: ownership cycle: `ArcCycle::0` → `ArcCycle`
+   = help: use the flat id-addressed form: a child is an index into an arena or interning table, never a node linked through `Box`, `Rc`, `Arc`, `Vec`, or any other owning carrier. Outside a recursive position `Arc` is the one permitted shared-ownership pointer, for whole values at boundaries
+   = note: `#[deny(recursive_owned_pointer)]` on by default
+
+error: type owns its way back to itself; pointer-linked recursive data is forbidden — the drop glue and the derived traversals both recurse over the pointee, and neither is a function the call-plane gate can see
+  --> $DIR/owning_pointer.rs:20:8
+   |
+LL | struct BoxedSelf(Box<BoxedSelf>);
+   |        ^^^^^^^^^
+   |
+   = note: ownership cycle: `BoxedSelf::0` → `BoxedSelf`
+   = help: use the flat id-addressed form: a child is an index into an arena or interning table, never a node linked through `Box`, `Rc`, `Arc`, `Vec`, or any other owning carrier. Outside a recursive position `Arc` is the one permitted shared-ownership pointer, for whole values at boundaries
+
+error: type owns its way back to itself; pointer-linked recursive data is forbidden — the drop glue and the derived traversals both recurse over the pointee, and neither is a function the call-plane gate can see
+  --> $DIR/owning_pointer.rs:25:8
+   |
+LL | struct MutualLeft(Box<MutualRight>);
+   |        ^^^^^^^^^^
+   |
+   = note: ownership cycle: `MutualLeft::0` → `MutualRight::0` → `MutualLeft`
+   = help: use the flat id-addressed form: a child is an index into an arena or interning table, never a node linked through `Box`, `Rc`, `Arc`, `Vec`, or any other owning carrier. Outside a recursive position `Arc` is the one permitted shared-ownership pointer, for whole values at boundaries
+
+error: type owns its way back to itself; pointer-linked recursive data is forbidden — the drop glue and the derived traversals both recurse over the pointee, and neither is a function the call-plane gate can see
+  --> $DIR/owning_pointer.rs:28:8
+   |
+LL | struct MutualRight(Box<MutualLeft>);
+   |        ^^^^^^^^^^^
+   |
+   = note: ownership cycle: `MutualRight::0` → `MutualLeft::0` → `MutualRight`
+   = help: use the flat id-addressed form: a child is an index into an arena or interning table, never a node linked through `Box`, `Rc`, `Arc`, `Vec`, or any other owning carrier. Outside a recursive position `Arc` is the one permitted shared-ownership pointer, for whole values at boundaries
+
+error: type owns its way back to itself; pointer-linked recursive data is forbidden — the drop glue and the derived traversals both recurse over the pointee, and neither is a function the call-plane gate can see
+  --> $DIR/owning_pointer.rs:57:8
+   |
+LL | struct OptionBoxSelf(Option<Box<OptionBoxSelf>>);
+   |        ^^^^^^^^^^^^^
+   |
+   = note: ownership cycle: `OptionBoxSelf::0` → `OptionBoxSelf`
+   = help: use the flat id-addressed form: a child is an index into an arena or interning table, never a node linked through `Box`, `Rc`, `Arc`, `Vec`, or any other owning carrier. Outside a recursive position `Arc` is the one permitted shared-ownership pointer, for whole values at boundaries
+
+error: type owns its way back to itself; pointer-linked recursive data is forbidden — the drop glue and the derived traversals both recurse over the pointee, and neither is a function the call-plane gate can see
+  --> $DIR/owning_pointer.rs:84:8
+   |
+LL | struct OwnedThroughGeneric(Owner<OwnedThroughGeneric>);
+   |        ^^^^^^^^^^^^^^^^^^^
+   |
+   = note: ownership cycle: `OwnedThroughGeneric::0` → `OwnedThroughGeneric`
+   = help: use the flat id-addressed form: a child is an index into an arena or interning table, never a node linked through `Box`, `Rc`, `Arc`, `Vec`, or any other owning carrier. Outside a recursive position `Arc` is the one permitted shared-ownership pointer, for whole values at boundaries
+
+error: type owns its way back to itself; pointer-linked recursive data is forbidden — the drop glue and the derived traversals both recurse over the pointee, and neither is a function the call-plane gate can see
+  --> $DIR/owning_pointer.rs:61:6
+   |
+LL | enum Pattern
+   |      ^^^^^^^
+   |
+   = note: ownership cycle: `Pattern::As::0` → `Pattern`
+   = help: use the flat id-addressed form: a child is an index into an arena or interning table, never a node linked through `Box`, `Rc`, `Arc`, `Vec`, or any other owning carrier. Outside a recursive position `Arc` is the one permitted shared-ownership pointer, for whole values at boundaries
+
+error: type owns its way back to itself; pointer-linked recursive data is forbidden — the drop glue and the derived traversals both recurse over the pointee, and neither is a function the call-plane gate can see
+  --> $DIR/owning_pointer.rs:90:8
+   |
+LL | struct RawLinked(Option<NonNull<RawLinked>>);
+   |        ^^^^^^^^^
+   |
+   = note: ownership cycle: `RawLinked::0` → `RawLinked`
+   = help: use the flat id-addressed form: a child is an index into an arena or interning table, never a node linked through `Box`, `Rc`, `Arc`, `Vec`, or any other owning carrier. Outside a recursive position `Arc` is the one permitted shared-ownership pointer, for whole values at boundaries
+
+error: type owns its way back to itself; pointer-linked recursive data is forbidden — the drop glue and the derived traversals both recurse over the pointee, and neither is a function the call-plane gate can see
+  --> $DIR/owning_pointer.rs:47:8
+   |
+LL | struct RcList
+   |        ^^^^^^
+   |
+   = note: ownership cycle: `RcList::rest` → `RcList`
+   = help: use the flat id-addressed form: a child is an index into an arena or interning table, never a node linked through `Box`, `Rc`, `Arc`, `Vec`, or any other owning carrier. Outside a recursive position `Arc` is the one permitted shared-ownership pointer, for whole values at boundaries
+
+error: type owns its way back to itself; pointer-linked recursive data is forbidden — the drop glue and the derived traversals both recurse over the pointee, and neither is a function the call-plane gate can see
+  --> $DIR/owning_pointer.rs:72:8
+   |
+LL | struct Scope
+   |        ^^^^^
+   |
+   = note: ownership cycle: `Scope::entries` → `Scope`
+   = help: use the flat id-addressed form: a child is an index into an arena or interning table, never a node linked through `Box`, `Rc`, `Arc`, `Vec`, or any other owning carrier. Outside a recursive position `Arc` is the one permitted shared-ownership pointer, for whole values at boundaries
+
+error: type owns its way back to itself; pointer-linked recursive data is forbidden — the drop glue and the derived traversals both recurse over the pointee, and neither is a function the call-plane gate can see
+  --> $DIR/owning_pointer.rs:34:8
+   |
+LL | struct VecSelf
+   |        ^^^^^^^
+   |
+   = note: ownership cycle: `VecSelf::children` → `VecSelf`
+   = help: use the flat id-addressed form: a child is an index into an arena or interning table, never a node linked through `Box`, `Rc`, `Arc`, `Vec`, or any other owning carrier. Outside a recursive position `Arc` is the one permitted shared-ownership pointer, for whole values at boundaries
+
+error: aborting due to 11 previous errors
+
