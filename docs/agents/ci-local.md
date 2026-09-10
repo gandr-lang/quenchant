@@ -96,6 +96,19 @@ Measure before and after on hosted runs with the same event, applicable lanes an
 
 Omit gandr's big-endian, Miri and cross-OS lanes only when absent from the adopting project's existing coverage. Keep applicable lanes and their platform constraints. Revisit this pattern only on a measured regression, changed hosting capability, or a documented project requirement it cannot meet.
 
+### Adopter measurements
+
+These observations retain their execution boundary; cross-platform and cross-event rows are not speedup ratios.
+
+| Adopter and observation                                    | Elapsed                                         | Scope and evidence                                                                                                                                                        |
+| ---------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Quenchant before the image port, hosted `main`, 2026-09-09 | 16m49s overall; Dylint 16m38s; build/test 4m21s | [Run 34402774193](https://github.com/gandr-lang/quenchant/actions/runs/34402774193), creation to last job completion; full hosted gate set.                               |
+| Quenchant after the port, native arm64 act, 2026-09-10     | Build/test 71.07s; Dylint 126.03s               | [Eight-job acceptance](https://github.com/gandr-lang/quenchant/pull/3#issuecomment-5611148612), with the image already local; each invocation includes prerequisite jobs. |
+| Gandr reference, hosted `main`, 2026-09-08                 | 13m54s overall; Dylint 13m44s                   | [Run 34248970279](https://github.com/gandr-lang/gandr/actions/runs/34248970279), including heavy and cross-OS lanes.                                                      |
+| Gandr reference, hosted pull request, 2026-09-08           | 2m39s overall                                   | [Run 34249391296](https://github.com/gandr-lang/gandr/actions/runs/34249391296), with both heavy jobs skipped; this is not a full-CI timing.                              |
+
+Quenchant's local acceptance verifies every applicable `ci.yml` job. Its post-port hosted timing remains a separate measurement; neither the local numbers nor gandr's short PR run establishes the five-minute hosted target.
+
 ## Platform notes
 
 - Host is macOS; act needs Docker Desktop's daemon socket up (`docker info`) before any invocation works. Docker's privileged-helper install can stick on an interactive macOS admin prompt (`supervisor.log` shows an `osascript ... administrator privileges` call that never exits) — that needs a human at the GUI. Switching Docker Desktop to unprivileged user-socket mode (`EnableDefaultDockerSocket=false`, `RequireVmnetd=false` in its settings, then restart) avoids the prompt entirely; `docker info` reports `Context: desktop-linux` when this is active. If neither resolves it, static analysis + hosted-run timings (`gh api repos/<owner>/<repo>/actions/jobs/<id>`) are the fallback.
@@ -103,6 +116,7 @@ Omit gandr's big-endian, Miri and cross-OS lanes only when absent from the adopt
 - act always prints "You are using Apple M-series chip and you have not specified container architecture" on this host — cosmetic boilerplate, not a fault signal; every job here has run clean under the native arm64 image.
 - act 0.2.89 runs a built-in cache server by default (`--cache-server-path`, defaults under `~/.cache/actcache`), so the workflow's `actions/cache` steps work locally with no extra flags.
 - Run separate act invocations sequentially when they share prerequisite jobs: act assigns the same container names to those jobs, so concurrent invocations collide before execution. The CI image MUST expose its pinned Node executable on `PATH`; act uses it for JavaScript actions rather than the hosted runner's bundled Node.
+- History-dependent jobs need a complete Git directory inside act's copied checkout. A linked worktree's `.git` file can point outside the container; run such jobs from a disposable full clone of the same branch, with release tags present. This applies to git-cliff and repository metadata gates, not merely Rust compilation.
 - `secrets.GITHUB_TOKEN` is empty under act unless supplied. The zizmor job reads it for `GH_TOKEN`; pass a real token only if a step needs live GitHub API calls, and use act's bare env-form secret (`-s KEY` with no value reads the value from `act`'s own process environment) rather than a `KEY=value` argument, so the token never lands in argv or shell history: `GITHUB_TOKEN="$(gh auth token)" act pull_request -j workflow-lint -s GITHUB_TOKEN`.
 - Composite actions with inline shell functions (`taiki-e/install-action`'s `bail() { ... }`) can surface as spurious `⭐ Run Main bail() {` log lines — an act log-parsing quirk, not a step failure; the real step still reports its own success line.
 - Local per-step wall time is not a hosted-CI predictor: this M-series host compiles the whole workspace in ~15-20s where GH's shared runner takes 70-100s for the same step. Use act-local timing only for relative before/after on one host, not as an absolute hosted-minutes estimate.

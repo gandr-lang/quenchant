@@ -9,6 +9,7 @@ All notable changes to quenchant are documented here.
 - *(repo)* Adopt shared changelog guidance
 - *(repo)* Adopt empty-root guidance
 - *(agents)* Adopt shared fast CI pattern
+- *(agents)* Record measured CI adoption
 
 ### Unreleased Continuous Integration
 
