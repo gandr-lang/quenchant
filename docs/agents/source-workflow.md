@@ -30,6 +30,8 @@ A library producer owns its plugin's unit/UI suites and Clippy pass: run those f
 
 Tooling is not accumulated. A tool, a task, or a gate that has stopped being useful is removed rather than parked: a parked one keeps its dependencies, its pin, and its place in the wall, and reads as current to whoever finds it next.
 
+Open every new repository with an empty root commit before its first content commit. That stable base lets later history rewrites use an ordinary rebase instead of `git rebase --root`.
+
 **Rust for everything possible.** Bespoke tooling is a small binary in the workspace, never a script. A task may invoke a tool; it never becomes one — the moment a task body carries logic rather than a launch line, that logic moves into a crate, with the conventions and the tests every other crate owes. Scripts already in a tree are retired by the crates that replace them, on a burn-down the tree tracks; new ones do not open.
 
 Two narrow exceptions, admitted per project and never standing:

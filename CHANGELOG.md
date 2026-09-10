@@ -7,6 +7,7 @@ All notable changes to quenchant are documented here.
 ### Unreleased Documentation
 
 - *(repo)* Adopt shared changelog guidance
+- *(repo)* Adopt empty-root guidance
 
 ### Unreleased Continuous Integration
 
