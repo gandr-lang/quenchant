@@ -9,6 +9,10 @@ All notable changes to quenchant are documented here.
 - *(repo)* Seed the quenchant workspace
 - *(dylints)* Enforce arithmetic and absence bounds
 
+### Unreleased Bug Fixes
+
+- *(dylints)* Close identity and arithmetic gaps
+
 ### Unreleased Maintenance
 
 - *(repo)* Prepare the 0.0.0-rc.0 publication head
