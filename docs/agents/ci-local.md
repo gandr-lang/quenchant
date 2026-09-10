@@ -4,6 +4,55 @@ Run `.github/workflows/ci.yml` locally via [act](https://github.com/nektos/act) 
 
 The local loop and [container pattern](#container-image) bind every Rust tree. Port gandr's applicable workflow shape rather than designing a second one: the composite setup action at `.github/actions/setup-rust/action.yml`, `.actrc`, path-filtered parallel jobs, workflow lint, image build and switch. Preserve the adopting project's gate commands. The script names, external-policy commands and platform lanes below are source examples; a root binding maps them to the project's own tools and omits only lanes the project does not adopt.
 
+## Anchor-first sharing
+
+Hosted workflows MUST use a disabled `template` job as an organized catalogue of reusable YAML anchors. Sharing takes priority: refactor differences into action inputs, job parameters, or shared mappings rather than copy orchestration. New functionality MUST reuse existing template anchors or introduce anchors when recurrence is likely. Define job-metadata anchors at their first schema-valid site; preserve readable, gate-specific commands in the consuming jobs.
+
+YAML aliases reuse complete nodes; they neither merge mappings nor splice step sequences. Anchors are document-local. Use composite actions for shared multi-step or cross-workflow behavior, with anchored calls inside each workflow; NEVER add dependency jobs or serialize parallel lanes merely to share setup. A demonstrated performance cost is the exception to structural sharing, not a reason to abandon reuse: record the affected path and comparable measurements, then retain shared logic through actions wherever possible. Preserve cache keys and writers, exact policy-cache freshness, image/bootstrap selection, checkout depth, event/path conditions, and every gate obligation.
+
+Every workflow MUST start with a brief binding comment so a reader entering through that file encounters the rule. The comment repeats the local editing constraint, not a second policy. Quenchant's gate workflow uses:
+
+```yaml
+# <critical>
+# MUST preserve anchor-first CI: maximal sharing, no copied orchestration.
+# New functionality MUST reuse template anchors or add anchors for likely reuse.
+# MUST parameterize differences; performance exceptions require measured evidence.
+# Share exceptional logic through actions; preserve parallelism, caches, and gates.
+# </critical>
+```
+
+The image workflow uses the same notice with its final obligation naming native parallel image builds. Its shared definitions include this fragment; live build and manifest jobs consume the three aliases in their existing step order:
+
+```yaml
+jobs:
+  template:
+    if: false
+    runs-on: &linux ubuntu-latest
+    permissions: &image-permissions
+      contents: read
+      packages: write
+    steps:
+      - &git-checkout
+        name: git checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - &registry-login
+        name: log in to GHCR
+        uses: docker/login-action@dbcb813823bdd20940b903addbd779551569679f # v4.6.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - &setup-buildx
+        name: set up buildx
+        uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
+```
+
+Each consumer supplies `permissions: *image-permissions` and reuses `*git-checkout`, `*registry-login`, and `*setup-buildx`; the build matrix still selects native runners. The gate workflow similarly shares Rust setup, tool installation, cache operations, reports, and repeated job metadata. Job parameters select tool sets and report destinations. Tool versions resolve in step context because job-level `env` cannot refer to workflow `env`. Only the history-dependent formatting job requests a full checkout; only the existing main warmer jobs save shared caches.
+
+Verify the expanded execution contract and exercise every applicable job under act, including parameter variants and image/bootstrap conditions. Compare timings under matching events, platforms, images, and cache state; hosted acceptance remains the [container measurement contract](#container-image). Revisit this sharing rule only on measured regression or changed workflow-engine capabilities, never for editing convenience.
+
 ## Inline run: rule
 
 An inline `run:` step MUST be one command or one pipeline. Branching orchestration belongs in the project's Rust tooling; steps pass inputs through `env:`, never `${{ }}` inside `run:`. Gandr's existing `scripts/ci/` commands below are source examples, not scripts a new tree should introduce. Quenchant's `changes` job uses a Git/JQ pipeline without shell control flow or a third-party filter action; separate fetch and filter steps expose failure through their outcomes, which force the Rust category on.
