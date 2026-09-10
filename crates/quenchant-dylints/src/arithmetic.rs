@@ -1,4 +1,4 @@
-//! Primitive arithmetic is resolved by operand type and inherent-definition
+//! Primitive arithmetic is resolved by operand type and compiler definition
 //! identity.
 //!
 //! The producer's sealed integer implementation is the representation boundary;
@@ -19,8 +19,8 @@ use rustc_session::impl_lint_pass;
 use rustc_span::Symbol;
 
 declare_lint! {
-    /// Reject primitive integer operators and resolved inherent arithmetic families.
-    /// Nominal operators and same-spelled nominal methods remain accepted.
+    /// Reject primitive integer operators and resolved arithmetic methods.
+    /// Nominal operands and same-spelled unrelated methods remain accepted.
     /// The local `Integer for Int<primitive>` producer implementation owns the
     /// representation-level operations; nested functions do not inherit it.
     pub PRIMITIVE_ARITHMETIC,
@@ -41,8 +41,8 @@ impl<'tcx> LateLintPass<'tcx> for PrimitiveArithmetic
     ///
     /// # Specification
     /// - ensures: reports arithmetic with primitive integer operands and
-    ///   resolved primitive inherent arithmetic families and partial methods,
-    ///   including function-item references.
+    ///   resolved primitive inherent arithmetic families, partial methods, and
+    ///   standard operator traits, including function-item references.
     /// - panics: none.
     ///
     /// # Adequacy
@@ -105,11 +105,20 @@ impl<'tcx> LateLintPass<'tcx> for PrimitiveArithmetic
                         .type_dependent_def_id(expr.hir_id)
                         .is_some_and(|method| {
                             matches!(primitive_method(cx, method), ArithmeticIdentity::Primitive)
+                                || matches!(
+                                    primitive_operator(
+                                        cx,
+                                        method,
+                                        cx.typeck_results().node_args(expr.hir_id),
+                                    ),
+                                    ArithmeticIdentity::Primitive
+                                )
                         })
             },
             | ExprKind::Path(_) => {
-                matches!(*cx.typeck_results().expr_ty(expr).kind(), ty::FnDef(method, _)
-                    if matches!(primitive_method(cx, method), ArithmeticIdentity::Primitive))
+                matches!(*cx.typeck_results().expr_ty(expr).kind(), ty::FnDef(method, arguments)
+                    if matches!(primitive_method(cx, method), ArithmeticIdentity::Primitive)
+                        || matches!(primitive_operator(cx, method, arguments), ArithmeticIdentity::Primitive))
             },
             | _ => false,
         };
@@ -127,10 +136,79 @@ impl<'tcx> LateLintPass<'tcx> for PrimitiveArithmetic
 /// Resolved arithmetic ownership, independent of source spelling.
 enum ArithmeticIdentity
 {
-    /// A primitive inherent method in the selected arithmetic families.
+    /// A selected primitive inherent method or standard integer operator.
     Primitive,
     /// Another function or a non-arithmetic primitive method.
     Other,
+}
+
+/// Classify standard arithmetic traits using their instantiated input types.
+///
+/// # Specification
+/// - ensures: only the arithmetic operator language items qualify, and every
+///   instantiated input must be integral after peeling references.
+/// - ensures: nominal RHS overloads, unrelated traits, and unresolved generic
+///   inputs remain outside the primitive classification.
+/// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 UI cases enumerate the fifteen operator traits through
+///   method calls, UFCS, and function items; nominal, borrowed, generic, and
+///   non-arithmetic controls distinguish identity and input-type boundaries.
+/// - witness: `tests::ui_arithmetic`
+fn primitive_operator<'tcx>(
+    cx: &LateContext<'tcx>,
+    method: DefId,
+    arguments: ty::GenericArgsRef<'tcx>,
+) -> ArithmeticIdentity
+{
+    let Some(item) = cx.tcx.opt_associated_item(method)
+    else {
+        return ArithmeticIdentity::Other;
+    };
+    let trait_method = item.trait_item_def_id().unwrap_or(method);
+    let Some(owner) = cx.tcx.trait_of_assoc(trait_method)
+    else {
+        return ArithmeticIdentity::Other;
+    };
+    let language_items = cx.tcx.lang_items();
+    if ![
+        language_items.add_trait(),
+        language_items.sub_trait(),
+        language_items.mul_trait(),
+        language_items.div_trait(),
+        language_items.rem_trait(),
+        language_items.shl_trait(),
+        language_items.shr_trait(),
+        language_items.add_assign_trait(),
+        language_items.sub_assign_trait(),
+        language_items.mul_assign_trait(),
+        language_items.div_assign_trait(),
+        language_items.rem_assign_trait(),
+        language_items.shl_assign_trait(),
+        language_items.shr_assign_trait(),
+        language_items.neg_trait(),
+    ]
+    .contains(&Some(owner))
+    {
+        return ArithmeticIdentity::Other;
+    }
+    let signature = cx
+        .tcx
+        .fn_sig(method)
+        .instantiate(cx.tcx, arguments)
+        .skip_norm_wip()
+        .skip_binder();
+    if signature
+        .inputs()
+        .iter()
+        .all(|input| input.peel_refs().is_integral())
+    {
+        ArithmeticIdentity::Primitive
+    }
+    else {
+        ArithmeticIdentity::Other
+    }
 }
 
 /// Resolve arithmetic through the method's inherent implementation self type.
