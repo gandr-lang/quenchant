@@ -8,6 +8,10 @@ All notable changes to quenchant are documented here.
 
 - *(repo)* Seed the quenchant workspace
 
+### Unreleased Configuration
+
+- *(github)* Enable CodeRabbit reviews
+
 ### Unreleased Maintenance
 
 - *(repo)* Prepare the 0.0.0-rc.0 publication head
