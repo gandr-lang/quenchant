@@ -1,0 +1,47 @@
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/gate_survival.rs:37:31
+   |
+LL | fn specified_primitive(value: u32) -> u32 {
+   |                               ^^^
+   |
+   = note: `#[deny(primitive_signature)]` on by default
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/gate_survival.rs:37:39
+   |
+LL | fn specified_primitive(value: u32) -> u32 {
+   |                                       ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/gate_survival.rs:42:30
+   |
+LL | fn ordinary_primitive(value: u32) -> u32 {
+   |                              ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/gate_survival.rs:42:38
+   |
+LL | fn ordinary_primitive(value: u32) -> u32 {
+   |                                      ^^^
+
+error: function participates in a recursive call cycle; recursion is forbidden — write the iterative form (worklist, explicit frame stack), or take the owner-approved exception (`#[expect(recursion_forbidden, reason = "...")]` plus a complete `# Termination` section)
+  --> $DIR/gate_survival.rs:28:1
+   |
+LL | / fn ordinary_recursion(fuel: Fuel) -> Count {
+LL | |     match fuel {
+LL | |         Fuel::One => ordinary_recursion(Fuel::Zero),
+LL | |         Fuel::Zero => Count::ZERO,
+LL | |     }
+LL | | }
+   | |_^
+   |
+   = note: `#[deny(recursion_forbidden)]` on by default
+
+error: function participates in a recursive call cycle; recursion is forbidden — write the iterative form (worklist, explicit frame stack), or take the owner-approved exception (`#[expect(recursion_forbidden, reason = "...")]` plus a complete `# Termination` section)
+  --> $DIR/gate_survival.rs:20:4
+   |
+LL | fn specified_recursion(fuel: Fuel) -> Count {
+   |    ^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 6 previous errors
+

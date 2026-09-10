@@ -1,0 +1,39 @@
+#:tombi toml-version = "v1.0.0"
+
+[package]
+name = "quenchant"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "One namespace over the quenchant arithmetic, shape, and specification libraries"
+readme = "README.md"
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords = ["arithmetic", "no-std", "nominal", "specification"]
+categories = ["no-std", "rust-patterns"]
+publish.workspace = true
+
+# The facade is named here rather than through the workspace's `quenchant`
+# alias: a package cannot take a dependency under its own name.
+[dependencies]
+quenchant-anodized.workspace = true
+quenchant-arith.workspace = true
+quenchant-gates = { workspace = true, optional = true }
+quenchant-shape.workspace = true
+
+# `anodized` forwards the consumer-side selection to every re-exported library,
+# because each one tests that condition in its own crate. `gates` is separate
+# and off by default: the gate library reads Cargo and nextest output and needs
+# `std`, which the arithmetic and shape libraries do not.
+[features]
+default = []
+anodized = [
+  "quenchant-anodized/anodized",
+  "quenchant-arith/anodized",
+  "quenchant-shape/anodized",
+]
+gates = ["dep:quenchant-gates"]
+
+[lints]
+workspace = true

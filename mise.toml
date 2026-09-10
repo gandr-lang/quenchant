@@ -1,0 +1,85 @@
+#:tombi toml-version = "v1.1.0"
+#:schema https://mise.jdx.dev/schema/mise.json
+# The published mise schema omits several live `settings` keys; strict mode
+# would reject them.
+#:tombi schema.strict = false
+
+min_version = "2026.8.15"
+
+[settings]
+activate_aggressive = true
+experimental = true
+env_shell_expand = true
+minimum_release_age = "1d"
+lockfile = true
+
+[settings.cargo]
+binstall = true
+# mise's built-in binstall: fetches crate binaries itself, no external
+# cargo-binstall needed — without it, CI falls back to `cargo install`
+# source builds for every cargo pin.
+binstall_native = true
+# mise disables cargo-quickinstall by default (jdx/mise PR 10923), so pins
+# without crate-author binstall artifacts compile from source (~20 min CI
+# lanes). Owner-accepted trust boundary: quickinstall's third-party binaries.
+binstall_quickinstall = true
+
+[settings.npm]
+package_manager = "aube"
+
+[env]
+# Rustup resolves the repository pin from its standard CARGO_HOME installation.
+# Proxies precede the resolved toolchain so Rustup supplies RUSTUP_TOOLCHAIN to
+# compiler-plugin builds. An absent installation or pin fails activation.
+_.path = [
+  "{{ get_env(name='CARGO_HOME', default=env.HOME ~ '/.cargo') }}/bin",
+  "{{ exec(command=(get_env(name='CARGO_HOME', default=env.HOME ~ '/.cargo') ~ '/bin/rustup' | quote) ~ ' which cargo') | dirname }}",
+]
+
+[task_config]
+includes = [".config/mise/tasks"]
+
+# The formatter set, hooks, test runner, Dylint driver and linker, mutation
+# instrument, and local CI runner are the complete tool surface. Formatter
+# entries and pins move together: treefmt refuses to initialize with a missing
+# formatter. The Dylint pair carries the version the policy library declares:
+# `cargo dylint` builds the loaded library against its own `dylint_linting`, so
+# a driver or linker at another version cannot load it.
+
+# Every tool that publishes cross-platform release binaries installs through
+# the github backend: a cargo: pin is a source build the moment binstall
+# resolution misses, and that hazard recurs with every upstream default
+# change.
+[tools]
+# The linker and driver pins are read structurally by quenchant-gates.
+# Mutation campaigns are local, explicit experiments, not merge gates.
+"cargo:cargo-mutants" = "27.1.0"
+"cargo:dylint-link" = "6.0.4"
+"github:aubepkg/aube" = "2.2.4"
+# The pin gate reads upstream Clippy source with `gh api`, including in CI.
+"github:cli/cli" = "2.100.0"
+"github:crate-ci/typos" = "v1.50.0"
+"github:embarkstudios/cargo-deny" = "0.20.2"
+"github:nextest-rs/nextest" = "cargo-nextest-0.9.143"
+"github:orhun/git-cliff" = "2.13.1"
+"github:numtide/treefmt" = "2.5.0"
+"github:j178/prek" = "v0.5.0"
+"github:rvben/rumdl" = "0.2.62"
+"github:tombi-toml/tombi" = "1.5.0"
+"npm:@commitlint/cli" = "21.2.2"
+"npm:oxfmt" = "0.65.0"
+node = "26.8.1"
+
+# sizelint publishes no release binaries; the one remaining source build.
+[tools."cargo:sizelint"]
+version = "0.1.5"
+
+# The Dylint driver builds the workspace's own policy library and loads it into
+# rustc. Neither it nor the linker publishes release binaries, so both stay
+# `cargo:` pins.
+[tools."cargo:cargo-dylint"]
+version = "6.0.4"
+
+# Local workflow runner, so a workflow change is testable without a push.
+[tools."github:nektos/act"]
+version = "0.2.89"

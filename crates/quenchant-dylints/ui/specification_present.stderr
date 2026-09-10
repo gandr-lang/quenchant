@@ -1,0 +1,115 @@
+error: this function carries no `# Specification` rustdoc block; the specification is authored before the body it governs, so an absent block records that nothing was decided about what the body owes
+  --> $DIR/specification_present.rs:32:4
+   |
+LL | fn documented_without_a_block()
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: write the block as clauses in the fixed order — `- req$DIRres:`, `- ensures:`, `- provides:`, `- fails:`, `- panics:`, `- intension:` — or, where the item has nothing to state, as the canonical body `trivial.` with the terminal period, which the rule also accepts without it, and in either case no bullet marker and no clause beside it
+   = note: `#[deny(specification_present)]` on by default
+
+error: this function carries no `# Specification` rustdoc block; the specification is authored before the body it governs, so an absent block records that nothing was decided about what the body owes
+  --> $DIR/specification_present.rs:36:4
+   |
+LL | fn undocumented()
+   |    ^^^^^^^^^^^^
+   |
+   = help: write the block as clauses in the fixed order — `- req$DIRres:`, `- ensures:`, `- provides:`, `- fails:`, `- panics:`, `- intension:` — or, where the item has nothing to state, as the canonical body `trivial.` with the terminal period, which the rule also accepts without it, and in either case no bullet marker and no clause beside it
+
+error: `# Specification` writes `trivial` beside another line; the marker claims there is nothing to specify, so a clause written next to it contradicts the claim
+  --> $DIR/specification_present.rs:45:4
+   |
+LL | fn marker_beside_a_clause()
+   |    ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: write the block as clauses in the fixed order — `- req$DIRres:`, `- ensures:`, `- provides:`, `- fails:`, `- panics:`, `- intension:` — or, where the item has nothing to state, as the canonical body `trivial.` with the terminal period, which the rule also accepts without it, and in either case no bullet marker and no clause beside it
+
+error: `# Specification` writes `trivial` beside another line; the marker claims there is nothing to specify, so a clause written next to it contradicts the claim
+  --> $DIR/specification_present.rs:54:4
+   |
+LL | fn clause_before_the_marker()
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: write the block as clauses in the fixed order — `- req$DIRres:`, `- ensures:`, `- provides:`, `- fails:`, `- panics:`, `- intension:` — or, where the item has nothing to state, as the canonical body `trivial.` with the terminal period, which the rule also accepts without it, and in either case no bullet marker and no clause beside it
+
+error: `# Specification` writes `trivial` as a bullet; the marker is a claim about the whole block rather than one clause of it, so the body carries the word alone
+  --> $DIR/specification_present.rs:64:4
+   |
+LL | fn marker_written_as_a_bullet()
+   |    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: write the block as clauses in the fixed order — `- req$DIRres:`, `- ensures:`, `- provides:`, `- fails:`, `- panics:`, `- intension:` — or, where the item has nothing to state, as the canonical body `trivial.` with the terminal period, which the rule also accepts without it, and in either case no bullet marker and no clause beside it
+
+error: this function carries no `# Specification` rustdoc block; the specification is authored before the body it governs, so an absent block records that nothing was decided about what the body owes
+  --> $DIR/specification_present.rs:77:10
+   |
+LL | const fn constant_without_a_block()
+   |          ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: write the block as clauses in the fixed order — `- req$DIRres:`, `- ensures:`, `- provides:`, `- fails:`, `- panics:`, `- intension:` — or, where the item has nothing to state, as the canonical body `trivial.` with the terminal period, which the rule also accepts without it, and in either case no bullet marker and no clause beside it
+
+error: this function carries no `# Specification` rustdoc block; the specification is authored before the body it governs, so an absent block records that nothing was decided about what the body owes
+  --> $DIR/specification_present.rs:107:8
+   |
+LL |     fn inherent_without_a_block(&self)
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: write the block as clauses in the fixed order — `- req$DIRres:`, `- ensures:`, `- provides:`, `- fails:`, `- panics:`, `- intension:` — or, where the item has nothing to state, as the canonical body `trivial.` with the terminal period, which the rule also accepts without it, and in either case no bullet marker and no clause beside it
+
+error: this function carries no `# Specification` rustdoc block; the specification is authored before the body it governs, so an absent block records that nothing was decided about what the body owes
+  --> $DIR/specification_present.rs:122:8
+   |
+LL |     fn req$DIRred_without_a_block(&self);
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: write the block as clauses in the fixed order — `- req$DIRres:`, `- ensures:`, `- provides:`, `- fails:`, `- panics:`, `- intension:` — or, where the item has nothing to state, as the canonical body `trivial.` with the terminal period, which the rule also accepts without it, and in either case no bullet marker and no clause beside it
+
+error: this function carries no `# Specification` rustdoc block; the specification is authored before the body it governs, so an absent block records that nothing was decided about what the body owes
+  --> $DIR/specification_present.rs:133:8
+   |
+LL |     fn provided_without_a_block(&self)
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: write the block as clauses in the fixed order — `- req$DIRres:`, `- ensures:`, `- provides:`, `- fails:`, `- panics:`, `- intension:` — or, where the item has nothing to state, as the canonical body `trivial.` with the terminal period, which the rule also accepts without it, and in either case no bullet marker and no clause beside it
+
+error: this function carries no `# Specification` rustdoc block; the specification is authored before the body it governs, so an absent block records that nothing was decided about what the body owes
+  --> $DIR/specification_present.rs:149:8
+   |
+LL |     fn req$DIRred_without_a_block(&self)
+   |        ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: write the block as clauses in the fixed order — `- req$DIRres:`, `- ensures:`, `- provides:`, `- fails:`, `- panics:`, `- intension:` — or, where the item has nothing to state, as the canonical body `trivial.` with the terminal period, which the rule also accepts without it, and in either case no bullet marker and no clause beside it
+
+error: this function carries no `# Specification` rustdoc block; the specification is authored before the body it governs, so an absent block records that nothing was decided about what the body owes
+  --> $DIR/specification_present.rs:180:8
+   |
+LL |     fn foreign_without_a_block();
+   |        ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: write the block as clauses in the fixed order — `- req$DIRres:`, `- ensures:`, `- provides:`, `- fails:`, `- panics:`, `- intension:` — or, where the item has nothing to state, as the canonical body `trivial.` with the terminal period, which the rule also accepts without it, and in either case no bullet marker and no clause beside it
+
+error: this function carries no `# Specification` rustdoc block; the specification is authored before the body it governs, so an absent block records that nothing was decided about what the body owes
+  --> $DIR/specification_present.rs:206:25
+   |
+LL | undocumented_expansion!(from_a_local_macro);
+   |                         ^^^^^^^^^^^^^^^^^^
+   |
+   = help: write the block as clauses in the fixed order — `- req$DIRres:`, `- ensures:`, `- provides:`, `- fails:`, `- panics:`, `- intension:` — or, where the item has nothing to state, as the canonical body `trivial.` with the terminal period, which the rule also accepts without it, and in either case no bullet marker and no clause beside it
+
+error: this function carries no `# Specification` rustdoc block; the specification is authored before the body it governs, so an absent block records that nothing was decided about what the body owes
+  --> $DIR/specification_present.rs:231:8
+   |
+LL |     fn helper_without_a_block()
+   |        ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: write the block as clauses in the fixed order — `- req$DIRres:`, `- ensures:`, `- provides:`, `- fails:`, `- panics:`, `- intension:` — or, where the item has nothing to state, as the canonical body `trivial.` with the terminal period, which the rule also accepts without it, and in either case no bullet marker and no clause beside it
+
+error: this function carries no `# Specification` rustdoc block; the specification is authored before the body it governs, so an absent block records that nothing was decided about what the body owes
+  --> $DIR/specification_present.rs:237:4
+   |
+LL | fn r#type()
+   |    ^^^^^^
+   |
+   = help: write the block as clauses in the fixed order — `- req$DIRres:`, `- ensures:`, `- provides:`, `- fails:`, `- panics:`, `- intension:` — or, where the item has nothing to state, as the canonical body `trivial.` with the terminal period, which the rule also accepts without it, and in either case no bullet marker and no clause beside it
+
+error: aborting due to 14 previous errors
+

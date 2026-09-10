@@ -1,0 +1,10 @@
+# Cargo discovers configuration from the build's working directory upward, so
+# this file applies ONLY to builds invoked from this directory — workspace-root
+# builds never see it. That is exactly the split the gate crate needs:
+# `dylint_testing`'s UI build runs `cargo build` with this package directory as
+# the working directory, and the cdylib must be linked by `dylint-link` (which
+# renames the artifact with the toolchain suffix Dylint loads by) — while
+# ordinary workspace builds of the crate use the default linker and only need
+# the crate to compile.
+[target."cfg(all())"]
+rustflags = ["-C", "linker=dylint-link"]

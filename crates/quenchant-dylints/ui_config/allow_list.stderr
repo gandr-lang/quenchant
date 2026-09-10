@@ -1,0 +1,23 @@
+error: each `non_owning_generics` entry must state `path` and a non-empty `justification`; the entry is refused, so the type stays conservatively owning (entry: `std::vec::Vec`)
+  --> $DIR/allow_list.rs:1:1
+   |
+LL | / #![allow(dead_code, specification_present)]
+LL | |
+LL | | use std::ptr::NonNull;
+...  |
+LL | | }
+   | |_^
+   |
+   = note: `#[deny(recursive_owned_pointer)]` on by default
+
+error: type owns its way back to itself; pointer-linked recursive data is forbidden — the drop glue and the derived traversals both recurse over the pointee, and neither is a function the call-plane gate can see
+  --> $DIR/allow_list.rs:16:8
+   |
+LL | struct VecSelf
+   |        ^^^^^^^
+   |
+   = note: ownership cycle: `VecSelf::children` → `VecSelf`
+   = help: use the flat id-addressed form: a child is an index into an arena or interning table, never a node linked through `Box`, `Rc`, `Arc`, `Vec`, or any other owning carrier. Outside a recursive position `Arc` is the one permitted shared-ownership pointer, for whole values at boundaries
+
+error: aborting due to 2 previous errors
+

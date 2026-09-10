@@ -1,0 +1,27 @@
+error: single-field struct must declare #[repr(transparent)]
+  --> $DIR/repr.rs:3:8
+   |
+LL | struct MissingNamed
+   |        ^^^^^^^^^^^^
+   |
+   = note: `#[deny(single_field_struct_needs_transparent_repr)]` on by default
+
+error: single-field struct must declare #[repr(transparent)]
+  --> $DIR/repr.rs:8:8
+   |
+LL | struct MissingTuple(u16);
+   |        ^^^^^^^^^^^^
+
+error: single-field struct must declare #[repr(transparent)]
+  --> $DIR/repr.rs:29:16
+   |
+LL |         struct MacroGenerated(u8);
+   |                ^^^^^^^^^^^^^^
+...
+LL | generated_single_field_struct!();
+   | -------------------------------- in this macro invocation
+   |
+   = note: this error originates in the macro `generated_single_field_struct` (in Nightly b$DIRlds, run with -Z macro-backtrace for more info)
+
+error: aborting due to 3 previous errors
+

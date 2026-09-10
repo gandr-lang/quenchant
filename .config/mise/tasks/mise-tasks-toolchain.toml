@@ -1,0 +1,10 @@
+#:tombi toml-version = "v1.0.0"
+#:schema https://mise.jdx.dev/schema/mise-task.json
+
+# Move the nightly and clippy_utils tag as one compiler-coupled pin.
+["toolchain:bump"]
+description = "Point the pinned toolchain and clippy_utils tag at a stable release"
+usage = """
+arg "<version>" help="stable release to pin, e.g. 1.98.0"
+"""
+run = 'cargo run --quiet --locked -p quenchant-gates -- toolchain-bump --version "$usage_version"'

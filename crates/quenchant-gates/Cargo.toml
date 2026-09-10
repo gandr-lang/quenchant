@@ -1,0 +1,30 @@
+[package]
+name = "quenchant-gates"
+version.workspace = true
+edition.workspace = true
+description = "Workspace-wide specification feature and adequacy witness gates"
+readme = "README.md"
+repository.workspace = true
+license.workspace = true
+keywords = ["adequacy", "gate", "rust", "specifications", "workflow"]
+categories = ["development-tools"]
+publish.workspace = true
+# One consolidated integration target, so every witness path in this crate
+# names the suite it belongs to.
+autotests = false
+
+[[test]]
+name = "gates"
+path = "tests/lib.rs"
+
+[dependencies]
+proc-macro2.workspace = true
+quenchant-shape.workspace = true
+regex.workspace = true
+serde_json.workspace = true
+syn.workspace = true
+toml_edit.workspace = true
+yaml-rust2.workspace = true
+
+[lints]
+workspace = true

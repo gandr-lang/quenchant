@@ -1,0 +1,186 @@
+error: fallback arm in a match on the checking judgement's direction: a directed rule names the direction it applies to, so a mode reached through a fallback is a rule nobody wrote
+  --> $DIR/mode_dispatch.rs:61:9
+   |
+LL |         _ => Verdict::Refused,
+   |         ^
+   |
+note: this scrutinee's type declares itself the judgement's direction
+  --> $DIR/mode_dispatch.rs:59:11
+   |
+LL |     match direction {
+   |           ^^^^^^^^^
+   = help: name every case in an arm of its own; a term the judgement has no rule for is a refusal, and a fallback arm answers for it instead
+   = note: `#[deny(mode_dispatch_wildcard)]` on by default
+
+error: fallback arm in a match on the checking judgement's direction: a directed rule names the direction it applies to, so a mode reached through a fallback is a rule nobody wrote
+  --> $DIR/mode_dispatch.rs:70:9
+   |
+LL |         other => other,
+   |         ^^^^^
+   |
+note: this scrutinee's type declares itself the judgement's direction
+  --> $DIR/mode_dispatch.rs:68:11
+   |
+LL |     match direction {
+   |           ^^^^^^^^^
+   = help: name every case in an arm of its own; a term the judgement has no rule for is a refusal, and a fallback arm answers for it instead
+
+error: fallback arm in a match on the checking judgement's direction: a directed rule names the direction it applies to, so a mode reached through a fallback is a rule nobody wrote
+  --> $DIR/mode_dispatch.rs:78:29
+   |
+LL |         Direction::Checks | _ => Verdict::Accepted,
+   |                             ^
+   |
+note: this scrutinee's type declares itself the judgement's direction
+  --> $DIR/mode_dispatch.rs:77:11
+   |
+LL |     match direction {
+   |           ^^^^^^^^^
+   = help: name every case in an arm of its own; a term the judgement has no rule for is a refusal, and a fallback arm answers for it instead
+
+error: fallback arm in a match on the checking judgement's direction: a directed rule names the direction it applies to, so a mode reached through a fallback is a rule nobody wrote
+  --> $DIR/mode_dispatch.rs:87:9
+   |
+LL |         _ if matches!(verdict, Verdict::Refused) => Verdict::Refused,
+   |         ^
+   |
+note: this scrutinee's type declares itself the judgement's direction
+  --> $DIR/mode_dispatch.rs:85:11
+   |
+LL |     match direction {
+   |           ^^^^^^^^^
+   = help: name every case in an arm of its own; a term the judgement has no rule for is a refusal, and a fallback arm answers for it instead
+
+error: fallback arm in a match on the checking judgement's direction: a directed rule names the direction it applies to, so a mode reached through a fallback is a rule nobody wrote
+  --> $DIR/mode_dispatch.rs:97:9
+   |
+LL |         _ => Verdict::Refused,
+   |         ^
+   |
+note: this scrutinee's type declares itself the judgement's direction
+  --> $DIR/mode_dispatch.rs:95:11
+   |
+LL |     match direction {
+   |           ^^^^^^^^^
+   = help: name every case in an arm of its own; a term the judgement has no rule for is a refusal, and a fallback arm answers for it instead
+
+error: fallback arm in a match on the expected type: no arm of the judgement chooses its mode by inspecting the type a term is checked against
+  --> $DIR/mode_dispatch.rs:155:9
+   |
+LL |         _ => Verdict::Refused,
+   |         ^
+   |
+note: this scrutinee mentions the parameter declared to carry the expected type
+  --> $DIR/mode_dispatch.rs:153:11
+   |
+LL |     match expected {
+   |           ^^^^^^^^
+   = help: name every case in an arm of its own; a term the judgement has no rule for is a refusal, and a fallback arm answers for it instead
+
+error: fallback arm in a match on the expected type: no arm of the judgement chooses its mode by inspecting the type a term is checked against
+  --> $DIR/mode_dispatch.rs:167:9
+   |
+LL |         other => head_verdict(other),
+   |         ^^^^^
+   |
+note: this scrutinee mentions the parameter declared to carry the expected type
+  --> $DIR/mode_dispatch.rs:165:11
+   |
+LL |     match head_of(expected) {
+   |           ^^^^^^^^^^^^^^^^^
+   = help: name every case in an arm of its own; a term the judgement has no rule for is a refusal, and a fallback arm answers for it instead
+
+error: `# Judgement` section declares nothing: state `- direction:` on the type whose values are the judgement's modes, or `- expected: `name`` on the parameter carrying the type a term is checked against
+  --> $DIR/mode_dispatch.rs:188:6
+   |
+LL | enum SaysNothing
+   |      ^^^^^^^^^^^
+
+error: `- direction:` states no value: say what the direction is, so the declaration reads as a claim rather than as a marker
+  --> $DIR/mode_dispatch.rs:197:6
+   |
+LL | enum Unexplained
+   |      ^^^^^^^^^^^
+
+error: `- expected:` names exactly one parameter in backticks, as `- expected: `expected``
+  --> $DIR/mode_dispatch.rs:206:4
+   |
+LL | fn malformed_expected(head: TypeHead) -> Verdict
+   |    ^^^^^^^^^^^^^^^^^^
+
+error: `- expected:` names `offered`, which no parameter of this function binds; a declaration that names nothing gates nothing
+  --> $DIR/mode_dispatch.rs:215:4
+   |
+LL | fn unbound_expected(head: TypeHead) -> Verdict
+   |    ^^^^^^^^^^^^^^^^
+
+error: `- direction:` declares the type whose values are the judgement's modes, so it belongs on that type's definition
+  --> $DIR/mode_dispatch.rs:224:4
+   |
+LL | fn direction_off_type(head: TypeHead) -> Verdict
+   |    ^^^^^^^^^^^^^^^^^^
+
+error: `- expected:` names a parameter carrying the expected type, so it belongs on the function that takes it
+  --> $DIR/mode_dispatch.rs:233:6
+   |
+LL | enum ExpectedOffFunction
+   |      ^^^^^^^^^^^^^^^^^^^
+
+error: `# Judgement` section is read on a type definition and on a function with a body; on any other item it declares nothing
+  --> $DIR/mode_dispatch.rs:242:7
+   |
+LL | const MISPLACED: Verdict = Verdict::Accepted;
+   |       ^^^^^^^^^
+
+error: `# Judgement` section is read on a type definition and on a function with a body; on any other item it declares nothing
+  --> $DIR/mode_dispatch.rs:251:10
+   |
+LL |     type Answer;
+   |          ^^^^^^
+
+error: `# Judgement` section is read on a type definition and on a function with a body; on any other item it declares nothing
+  --> $DIR/mode_dispatch.rs:258:8
+   |
+LL |     fn check_declared(&self, expected: TypeHead) -> Verdict;
+   |        ^^^^^^^^^^^^^^
+
+error: fallback arm in a match on the expected type: no arm of the judgement chooses its mode by inspecting the type a term is checked against
+  --> $DIR/mode_dispatch.rs:269:13
+   |
+LL |             _ => Verdict::Refused,
+   |             ^
+   |
+note: this scrutinee mentions the parameter declared to carry the expected type
+  --> $DIR/mode_dispatch.rs:267:15
+   |
+LL |         match expected {
+   |               ^^^^^^^^
+   = help: name every case in an arm of its own; a term the judgement has no rule for is a refusal, and a fallback arm answers for it instead
+
+error: `# Judgement` section is read on a type definition and on a function with a body; on any other item it declares nothing
+  --> $DIR/mode_dispatch.rs:283:11
+   |
+LL |     const FALLBACK: Verdict = Verdict::Refused;
+   |           ^^^^^^^^
+
+error: fallback arm in a match on the expected type: no arm of the judgement chooses its mode by inspecting the type a term is checked against
+  --> $DIR/mode_dispatch.rs:299:13
+   |
+LL |             _ => Self::FALLBACK,
+   |             ^
+   |
+note: this scrutinee mentions the parameter declared to carry the expected type
+  --> $DIR/mode_dispatch.rs:297:15
+   |
+LL |         match expected {
+   |               ^^^^^^^^
+   = help: name every case in an arm of its own; a term the judgement has no rule for is a refusal, and a fallback arm answers for it instead
+
+error: `# Judgement` section is read on a type definition and on a function with a body; on any other item it declares nothing
+  --> $DIR/mode_dispatch.rs:310:8
+   |
+LL |     fn check_foreign();
+   |        ^^^^^^^^^^^^^
+
+error: aborting due to 20 previous errors
+

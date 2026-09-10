@@ -1,0 +1,40 @@
+#:tombi toml-version = "v1.0.0"
+
+[package]
+name = "quenchant-shape"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+description = "Nominal non-failure absence and transparent type scaffolding"
+readme = "README.md"
+homepage.workspace = true
+repository.workspace = true
+license.workspace = true
+keywords = ["absence", "newtype", "no-std", "nominal"]
+categories = ["no-std", "rust-patterns"]
+publish.workspace = true
+
+# The Verus adapter is an example, never part of the shipping library, and its
+# own witnesses are the adequacy records its functions name: the target carries
+# `test = true` so the test lanes run them beside the library's.
+[[example]]
+name = "verus_derive"
+path = "examples/verus_derive.rs"
+test = true
+
+[dependencies]
+quenchant.workspace = true
+
+# The Verus adapter reads this crate's own source; nothing in the library needs
+# a parser, so the three stay development-only.
+[dev-dependencies]
+proc-macro2.workspace = true
+quote.workspace = true
+syn.workspace = true
+
+[features]
+default = []
+anodized = ["quenchant/anodized"]
+
+[lints]
+workspace = true
