@@ -12,6 +12,7 @@ All notable changes to quenchant are documented here.
 ### Unreleased Bug Fixes
 
 - *(dylints)* Close identity and arithmetic gaps
+- *(dylints)* Reject primitive operator trait calls
 
 ### Unreleased Maintenance
 
