@@ -1,0 +1,358 @@
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:6:13
+   |
+LL |     let _ = value.add(rhs);
+   |             ^^^^^^^^^^^^^^
+   |
+   = note: requested on the command line with `-D primitive-arithmetic`
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:7:13
+   |
+LL |     let _ = value.sub(rhs);
+   |             ^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:8:13
+   |
+LL |     let _ = value.mul(rhs);
+   |             ^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:9:13
+   |
+LL |     let _ = value.div(rhs);
+   |             ^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:10:13
+   |
+LL |     let _ = value.rem(rhs);
+   |             ^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:11:13
+   |
+LL |     let _ = value.shl(rhs);
+   |             ^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:12:13
+   |
+LL |     let _ = value.shr(rhs);
+   |             ^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:13:5
+   |
+LL |     value.add_assign(rhs);
+   |     ^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:14:5
+   |
+LL |     value.sub_assign(rhs);
+   |     ^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:15:5
+   |
+LL |     value.mul_assign(rhs);
+   |     ^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:16:5
+   |
+LL |     value.div_assign(rhs);
+   |     ^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:17:5
+   |
+LL |     value.rem_assign(rhs);
+   |     ^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:18:5
+   |
+LL |     value.shl_assign(rhs);
+   |     ^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:19:5
+   |
+LL |     value.shr_assign(rhs);
+   |     ^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:20:13
+   |
+LL |     let _ = signed.neg();
+   |             ^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:24:13
+   |
+LL |     let _ = <Word as Add>::add(value, rhs);
+   |             ^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:25:13
+   |
+LL |     let _ = <Word as Sub>::sub(value, rhs);
+   |             ^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:26:13
+   |
+LL |     let _ = <u32 as core::ops::Mul>::mul(value, rhs);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:27:13
+   |
+LL |     let _ = <Word as Div>::div(value, rhs);
+   |             ^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:28:13
+   |
+LL |     let _ = <Word as Rem>::rem(value, rhs);
+   |             ^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:29:13
+   |
+LL |     let _ = <Word as Shl>::shl(value, rhs);
+   |             ^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:30:13
+   |
+LL |     let _ = <Word as Shr>::shr(value, rhs);
+   |             ^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:31:5
+   |
+LL |     <Word as AddAssign>::add_assign(&mut value, rhs);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:32:5
+   |
+LL |     <Word as SubAssign>::sub_assign(&mut value, rhs);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:33:5
+   |
+LL |     <Word as MulAssign>::mul_assign(&mut value, rhs);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:34:5
+   |
+LL |     <Word as DivAssign>::div_assign(&mut value, rhs);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:35:5
+   |
+LL |     <Word as RemAssign>::rem_assign(&mut value, rhs);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:36:5
+   |
+LL |     <Word as ShlAssign>::shl_assign(&mut value, rhs);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:37:5
+   |
+LL |     <Word as ShrAssign>::shr_assign(&mut value, rhs);
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:38:13
+   |
+LL |     let _ = <i32 as Neg>::neg(signed);
+   |             ^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:42:13
+   |
+LL |     let _ = <Word as Add>::add;
+   |             ^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:43:13
+   |
+LL |     let _ = <Word as Sub>::sub;
+   |             ^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:44:13
+   |
+LL |     let _ = <Word as Mul>::mul;
+   |             ^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:45:13
+   |
+LL |     let _ = <Word as Div>::div;
+   |             ^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:46:13
+   |
+LL |     let _ = <Word as Rem>::rem;
+   |             ^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:47:13
+   |
+LL |     let _ = <Word as Shl>::shl;
+   |             ^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:48:13
+   |
+LL |     let _ = <Word as Shr>::shr;
+   |             ^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:49:13
+   |
+LL |     let _ = <Word as AddAssign>::add_assign;
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:50:13
+   |
+LL |     let _ = <Word as SubAssign>::sub_assign;
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:51:13
+   |
+LL |     let _ = <Word as MulAssign>::mul_assign;
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:52:13
+   |
+LL |     let _ = <Word as DivAssign>::div_assign;
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:53:13
+   |
+LL |     let _ = <Word as RemAssign>::rem_assign;
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:54:13
+   |
+LL |     let _ = <Word as ShlAssign>::shl_assign;
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:55:13
+   |
+LL |     let _ = <Word as ShrAssign>::shr_assign;
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:56:13
+   |
+LL |     let _ = <i32 as Neg>::neg;
+   |             ^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:60:13
+   |
+LL |     let _ = <&u32 as Mul<&u32>>::mul(&value, &rhs);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:61:13
+   |
+LL |     let _ = (&value).mul(&rhs);
+   |             ^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:62:13
+   |
+LL |     let _ = <u32 as Mul<&u32>>::mul;
+   |             ^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:63:13
+   |
+LL |     let _ = <&u32 as Mul<u32>>::mul;
+   |             ^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:64:5
+   |
+LL |     value.add_assign(&rhs);
+   |     ^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:65:13
+   |
+LL |     let _ = <u32 as AddAssign<&u32>>::add_assign;
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:66:13
+   |
+LL |     let _ = <&i32 as Neg>::neg(&signed);
+   |             ^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:67:13
+   |
+LL |     let _ = <&i32 as Neg>::neg;
+   |             ^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:68:13
+   |
+LL |     let _ = <u32 as Shl<u8>>::shl(value, 1);
+   |             ^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:69:13
+   |
+LL |     let _ = <u32 as ShrAssign<u8>>::shr_assign;
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:70:42
+   |
+LL |     let operation: fn(u32, u32) -> u32 = Mul::mul;
+   |                                          ^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:76:13
+   |
+LL |     let _ = <T::Value as Mul>::mul(value, value);
+   |             ^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:77:13
+   |
+LL |     let _ = <T::Value as Mul>::mul;
+   |             ^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/operator_traits.rs:87:13
+   |
+LL |     let _ = value.mul(1);
+   |             ^^^^^^^^^^^^
+
+error: aborting due to 59 previous errors
+

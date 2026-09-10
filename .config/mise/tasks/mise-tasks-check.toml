@@ -54,7 +54,7 @@ depends = ["anodized:specifications"]
 description = "Exercise real postcondition failures with enforcing specifications"
 dir = "crates/quenchant-dylints"
 env.RUSTFLAGS = "--cfg anodized_panic"
-run = "cargo nextest run --profile ci --features anodized -E 'test(specification_tests::)'"
+run = "rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} {{ exec(command='mise which cargo-nextest') | quote }} nextest run --profile ci --features anodized -E 'test(specification_tests::)'"
 
 ["check:no-std"]
 description = "Build both library modes for a bare-metal target without std"
@@ -77,6 +77,10 @@ run = "cargo run -p quenchant-gates --locked -- witnesses --manifest-path Cargo.
 ["check:dylint"]
 description = "Load the workspace's own Dylint library over the workspace"
 env.CARGO_INCREMENTAL = "0"
+# Cargo's encoded flags win even when empty. Otherwise encode the ordinary
+# whitespace-separated flags before appending this policy-only cfg. Dylint's
+# workspace wrapper alone does not configure external dependencies.
+env.CARGO_ENCODED_RUSTFLAGS = "{% if env.CARGO_ENCODED_RUSTFLAGS is defined %}{% set flags = env.CARGO_ENCODED_RUSTFLAGS %}{% else %}{% set flags = env.RUSTFLAGS | default(value='') | trim | regex_replace(pattern='\\\\s+', rep='\u001f') %}{% endif %}{{ flags }}{% if flags %}\u001f{% endif %}--cfg=quenchant_compiler_policy"
 run = "cargo dylint --lib quenchant_dylints --no-deps -- --workspace --all-targets"
 
 # `RUSTDOCFLAGS="-D warnings"` makes every rustdoc lint fatal for the targets

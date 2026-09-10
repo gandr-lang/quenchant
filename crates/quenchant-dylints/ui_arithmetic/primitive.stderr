@@ -1,0 +1,153 @@
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:4:13
+   |
+LL |     let _ = left + right;
+   |             ^^^^^^^^^^^^
+   |
+   = note: requested on the command line with `-D primitive-arithmetic`
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:5:13
+   |
+LL |     let _ = left - right;
+   |             ^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:6:13
+   |
+LL |     let _ = left * right;
+   |             ^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:7:13
+   |
+LL |     let _ = left / right;
+   |             ^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:8:13
+   |
+LL |     let _ = left % right;
+   |             ^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:9:13
+   |
+LL |     let _ = left << right;
+   |             ^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:10:5
+   |
+LL |     left += right;
+   |     ^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:11:5
+   |
+LL |     left >>= right;
+   |     ^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:12:13
+   |
+LL |     let _ = -i32::from(1_i8);
+   |             ^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:13:13
+   |
+LL |     let _ = left.checked_add(right);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:14:13
+   |
+LL |     let _ = left.saturating_sub(right);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:15:13
+   |
+LL |     let _ = left.wrapping_mul(right);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:16:13
+   |
+LL |     let _ = left.strict_div(right);
+   |             ^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:17:13
+   |
+LL |     let _ = left.overflowing_rem(right);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:18:22
+   |
+LL |     let _ = unsafe { left.unchecked_add(right) };
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:19:13
+   |
+LL |     let _ = Representation::checked_add(left, right);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:20:13
+   |
+LL |     let _ = <u32>::saturating_sub(left, right);
+   |             ^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:21:21
+   |
+LL |     let operation = u32::wrapping_mul;
+   |                     ^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:22:13
+   |
+LL |     let _ = operation(left, right);
+   |             ^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:24:13
+   |
+LL |     let _ = borrowed.checked_add(right);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:25:13
+   |
+LL |     let _ = left.checked_shl(right);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:26:13
+   |
+LL |     let _ = left.checked_div_euclid(right);
+   |             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:36:13
+   |
+LL |     let _ = value.checked_add(1);
+   |             ^^^^^^^^^^^^^^^^^^^^
+
+error: primitive arithmetic must use the nominal arithmetic surface
+  --> $DIR/primitive.rs:40:24
+   |
+LL |     ($value:expr) => { $value.checked_add(1) };
+   |                        ^^^^^^^^^^^^^^^^^^^^^
+...
+LL |     let _ = primitive_call!(value);
+   |             ---------------------- in this macro invocation
+   |
+   = note: this error originates in the macro `primitive_call` (in Nightly builds, run with -Z macro-backtrace for more info)
+
+error: aborting due to 24 previous errors
+

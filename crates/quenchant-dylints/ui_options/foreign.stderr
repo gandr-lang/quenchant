@@ -1,0 +1,16 @@
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/foreign.rs:15:27
+   |
+LL |     fn next(&mut self) -> Option<Self::Item> { None }
+   |                           ^^^^^^^^^^^^^^^^^^
+   |
+   = note: requested on the command line with `-D option-signature`
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/foreign.rs:19:20
+   |
+LL |     fn from(value: Option<Value>) -> Self {
+   |                    ^^^^^^^^^^^^^
+
+error: aborting due to 2 previous errors
+

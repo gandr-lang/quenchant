@@ -103,11 +103,6 @@ semantic_copy!(
     struct PinsToolchain(bool);
 );
 semantic_copy!(
-    /// Availability determines whether nextest can supply an aggregate
-    /// inventory.
-    struct NextestAvailable(bool);
-);
-semantic_copy!(
     /// A nonempty finding set makes the policy run unsuccessful.
     struct GateFailed(bool);
 );

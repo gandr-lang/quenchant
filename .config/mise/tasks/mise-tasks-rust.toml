@@ -35,14 +35,18 @@ run = "cargo clippy --all-targets -- --deny warnings"
 # enforcing twin sets RUSTFLAGS for the whole graph rather than one crate alone.
 # The Dylint library's UI matrix runs from its own package directory under the
 # `ci` nextest profile, which is where its compiletest fixtures resolve.
+# Resolve the pinned executable directly: Cargo and the Rustup proxy PATH can
+# otherwise dispatch a different global cargo-nextest before mise's tool.
+# Rustup run supplies the complete compiler proxy environment, including the
+# compiler identity and dynamic-library search paths required by Dylint UI.
 ["check:tests"]
 description = "Exercise every specification with and without enforcement"
 depends = ["tests:enforcing", "dylint:tests"]
 run = [
-  "cargo nextest run --workspace --exclude quenchant-dylints --locked",
-  "cargo nextest run --workspace --exclude quenchant-dylints --locked --release",
-  "cargo nextest run --workspace --exclude quenchant-dylints --locked --features quenchant-arith/fast",
-  "cargo nextest run --workspace --exclude quenchant-dylints --locked --features quenchant-arith/fast --release",
+  "rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} {{ exec(command='mise which cargo-nextest') | quote }} nextest run --workspace --exclude quenchant-dylints --locked",
+  "rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} {{ exec(command='mise which cargo-nextest') | quote }} nextest run --workspace --exclude quenchant-dylints --locked --release",
+  "rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} {{ exec(command='mise which cargo-nextest') | quote }} nextest run --workspace --exclude quenchant-dylints --locked --features quenchant-arith/fast",
+  "rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} {{ exec(command='mise which cargo-nextest') | quote }} nextest run --workspace --exclude quenchant-dylints --locked --features quenchant-arith/fast --release",
   "cargo test --doc --locked -p quenchant -p quenchant-arith -p quenchant-shape -p quenchant-anodized -p quenchant-spec-macros -p quenchant-fixture-macros",
   "cargo test --doc --locked -p quenchant-arith --features quenchant-arith/fast",
 ]
@@ -51,15 +55,15 @@ run = [
 description = "Exercise library specifications under enforcing cfgs"
 env.RUSTFLAGS = "--cfg anodized_panic"
 run = [
-  "cargo nextest run --workspace --exclude quenchant-dylints --locked --features quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized",
-  "cargo nextest run --workspace --exclude quenchant-dylints --locked --release --features quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized",
-  "cargo nextest run --workspace --exclude quenchant-dylints --locked --features quenchant-arith/fast,quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized",
+  "rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} {{ exec(command='mise which cargo-nextest') | quote }} nextest run --workspace --exclude quenchant-dylints --locked --features quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized",
+  "rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} {{ exec(command='mise which cargo-nextest') | quote }} nextest run --workspace --exclude quenchant-dylints --locked --release --features quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized",
+  "rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} {{ exec(command='mise which cargo-nextest') | quote }} nextest run --workspace --exclude quenchant-dylints --locked --features quenchant-arith/fast,quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized",
 ]
 
 ["dylint:tests"]
 description = "Exercise the compiler plugin from its linker-configured directory"
 dir = "crates/quenchant-dylints"
-run = "cargo nextest run --profile ci"
+run = "rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} {{ exec(command='mise which cargo-nextest') | quote }} nextest run --profile ci"
 
 ["check:miri"]
 description = "Interpret the valid-input fast precondition witnesses"

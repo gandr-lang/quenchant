@@ -1,0 +1,34 @@
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/identity.rs:12:15
+   |
+LL | fn foreign(_: foreign::shape::Maybe<Option<u8>, ()>) {}
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: requested on the command line with `-D option-signature`
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/identity.rs:13:21
+   |
+LL | fn foreign_alias(_: ForeignAlias<Option<u8>, ()>) {}
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/identity.rs:14:24
+   |
+LL | fn foreign_reexport(_: ForeignReexport<Option<u8>, ()>) {}
+   |                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/identity.rs:15:16
+   |
+LL | fn unmarked(_: unmarked_shape::shape::Maybe<Option<u8>, ()>) {}
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/identity.rs:16:21
+   |
+LL | fn direct_option(_: Option<u8>) {}
+   |                     ^^^^^^^^^^
+
+error: aborting due to 5 previous errors
+

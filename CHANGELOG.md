@@ -7,6 +7,12 @@ All notable changes to quenchant are documented here.
 ### Unreleased Features
 
 - *(repo)* Seed the quenchant workspace
+- *(dylints)* Enforce arithmetic and absence bounds
+
+### Unreleased Bug Fixes
+
+- *(dylints)* Close identity and arithmetic gaps
+- *(dylints)* Reject primitive operator trait calls
 
 ### Unreleased Configuration
 

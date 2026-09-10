@@ -309,8 +309,11 @@ rust-2024-compatibility = "deny"
 # specification runtime's own modes: enforcing test twins set `anodized_panic`
 # across the whole dependency graph, and the UI matrix compiles fixtures under
 # the other two.
+# The internal policy-build cfg carries diagnostic identity through external
+# dependencies without making ordinary or all-features builds nightly-only.
 unexpected_cfgs = { level = "deny", priority = -1, check-cfg = [
   "cfg(dylint_lib, values(any()))",
+  "cfg(quenchant_compiler_policy)",
   "cfg(anodized_panic)",
   "cfg(anodized_print)",
   "cfg(anodized_discard_specs)",

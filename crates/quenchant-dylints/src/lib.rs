@@ -36,9 +36,11 @@ extern crate rustc_session;
 extern crate rustc_span;
 
 mod adequacy;
+mod arithmetic;
 mod callgraph;
 mod graph;
 mod judgement;
+mod option_signature;
 mod ownership;
 mod rustdoc;
 mod semantic;
@@ -311,6 +313,8 @@ pub fn register_lints(
         ADEQUACY_BLOCK_GRAMMAR,
         MODE_DISPATCH_WILDCARD,
         SPECIFICATION_PRESENT,
+        arithmetic::PRIMITIVE_ARITHMETIC,
+        option_signature::OPTION_SIGNATURE,
     ]);
     lint_store.register_late_pass(Box::new(move |_| {
         Box::new(WorkflowBoundaries::new(allow_list.clone()))
@@ -318,6 +322,8 @@ pub fn register_lints(
     lint_store.register_late_pass(Box::new(|_| Box::new(WorkflowAdequacy)));
     lint_store.register_late_pass(Box::new(|_| Box::new(WorkflowJudgement)));
     lint_store.register_late_pass(Box::new(|_| Box::new(WorkflowSpecification)));
+    lint_store.register_late_pass(Box::new(|_| Box::new(arithmetic::PrimitiveArithmetic)));
+    lint_store.register_late_pass(Box::new(|_| Box::new(option_signature::OptionSignature)));
 }
 
 /// Every member of a recovered call cycle receives this denial.
@@ -801,6 +807,70 @@ non_owning_generics = [
     }
 
     #[test]
+    fn ui_arithmetic()
+    {
+        let mut flags = fixture_extern_flags();
+        flags.extend([
+            "-Dunknown-lints".to_owned(),
+            "-Dprimitive_arithmetic".to_owned(),
+            "-Doption_signature".to_owned(),
+            "-Aprimitive_signature".to_owned(),
+            "-Aspecification_present".to_owned(),
+            "-Adead_code".to_owned(),
+        ]);
+        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_arithmetic")
+            .rustc_flags(flags)
+            .run();
+    }
+
+    #[test]
+    fn ui_options()
+    {
+        let mut flags = fixture_extern_flags();
+        flags.extend([
+            "-Dunknown-lints".to_owned(),
+            "-Doption_signature".to_owned(),
+            "-Aprimitive_signature".to_owned(),
+            "-Aspecification_present".to_owned(),
+            "-Adead_code".to_owned(),
+        ]);
+        let target = std::env::current_exe()
+            .expect("the test executable has a path")
+            .parent()
+            .expect("the test executable lives in a directory")
+            .join("ui-options-identity");
+        std::fs::create_dir_all(&target).expect("the identity artifact directory is writable");
+        for alias in ["foreign_shape", "unmarked_shape"] {
+            let library = target.join(format!("lib{alias}.rlib"));
+            let output = std::process::Command::new("rustc")
+                .current_dir(env!("CARGO_MANIFEST_DIR"))
+                .arg(format!("ui_options/auxiliary/{alias}.rs"))
+                .args([
+                    "--edition=2024",
+                    "--crate-type=rlib",
+                    "--crate-name=quenchant_shape",
+                ])
+                .arg(format!("-Cmetadata={alias}"))
+                .arg("-o")
+                .arg(&library)
+                .output()
+                .expect("the selected compiler can build a same-name dependency");
+            assert!(
+                output.status.success(),
+                "same-name dependency build failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+            flags.extend([
+                "--extern".to_owned(),
+                format!("{alias}={}", library.display()),
+            ]);
+        }
+        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_options")
+            .rustc_flags(flags)
+            .run();
+    }
+
+    #[test]
     fn ui_specifications()
     {
         dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_specifications")
@@ -817,12 +887,14 @@ non_owning_generics = [
     /// interpretation.
     ///
     /// # Specification
-    /// - ensures: commissions both fixture packages with the facade's
-    ///   `anodized` feature enabled, in an isolated target directory, and
-    ///   returns the exact artifact paths and dependency directories reported
-    ///   by that Cargo build.
+    /// - ensures: commissions the fixture packages and public arithmetic/shape
+    ///   libraries with the facade's `anodized` feature enabled, in an isolated
+    ///   target directory, and returns the exact artifact paths and dependency
+    ///   directories reported by that Cargo build.
     /// - ensures: the fixture edition and `anodized` cfg match that
     ///   interpretation.
+    /// - ensures: the whole dependency graph receives the compiler-policy cfg,
+    ///   preserving inherited flags with Cargo's encoded-flags precedence.
     /// - panics: a failed build, invalid Cargo output, or missing selected
     ///   artifact fails setup instead of selecting a different cached
     ///   configuration.
@@ -830,8 +902,11 @@ non_owning_generics = [
     /// # Adequacy
     /// - hypothesis: L3 the UI matrix exercises real specification expansion
     ///   even when ordinary and instrumented artifacts coexist in the workspace
-    ///   cache.
+    ///   cache; arithmetic and absence controls compile against the selected
+    ///   public library artifacts rather than nominal lookalikes.
     /// - witness: `tests::ui_specifications`
+    /// - witness: `tests::ui_arithmetic`
+    /// - witness: `tests::ui_options`
     fn fixture_extern_flags() -> Vec<String>
     {
         let test_binary =
@@ -840,8 +915,25 @@ non_owning_generics = [
             .parent()
             .expect("the test binary lives in Cargo's deps directory")
             .join("ui-specification-deps");
+        let inherited = std::env::var_os("CARGO_ENCODED_RUSTFLAGS").map_or_else(
+            || {
+                std::env::var("RUSTFLAGS")
+                    .unwrap_or_default()
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join("\u{1f}")
+            },
+            |flags| flags.into_string().expect("Cargo flags are Unicode"),
+        );
+        let policy_flags = if inherited.is_empty() {
+            "--cfg=quenchant_compiler_policy".to_owned()
+        }
+        else {
+            format!("{inherited}\u{1f}--cfg=quenchant_compiler_policy")
+        };
         let output = std::process::Command::new(env!("CARGO"))
             .current_dir(env!("CARGO_MANIFEST_DIR"))
+            .env("CARGO_ENCODED_RUSTFLAGS", policy_flags)
             .args([
                 "build",
                 "--locked",
@@ -850,11 +942,15 @@ non_owning_generics = [
                 "quenchant-anodized",
                 "-p",
                 "quenchant-fixture-macros",
+                "-p",
+                "quenchant-arith",
+                "-p",
+                "quenchant-shape",
                 "--features",
                 "quenchant-anodized/anodized",
                 "--target-dir",
             ])
-            .arg(target)
+            .arg(&target)
             .output()
             .expect("Cargo can build the UI fixture dependencies");
         assert!(
@@ -864,6 +960,8 @@ non_owning_generics = [
         );
         let mut anodized = None;
         let mut fixture_macros = None;
+        let mut arithmetic = None;
+        let mut shape = None;
         let mut directories = alloc::collections::BTreeSet::new();
         for message in
             serde_json::Deserializer::from_slice(&output.stdout).into_iter::<serde_json::Value>()
@@ -904,6 +1002,12 @@ non_owning_generics = [
                     | (Some("quenchant_anodized"), Some("rlib")) if instrumented => {
                         anodized = Some(path.to_path_buf());
                     },
+                    | (Some("quenchant_arith"), Some("rlib")) => {
+                        arithmetic = Some(path.to_path_buf());
+                    },
+                    | (Some("quenchant_shape"), Some("rlib")) => {
+                        shape = Some(path.to_path_buf());
+                    },
                     | (Some("quenchant_fixture_macros"), Some(extension))
                         if extension == std::env::consts::DLL_EXTENSION =>
                     {
@@ -915,6 +1019,8 @@ non_owning_generics = [
         }
         let anodized = anodized.expect("Cargo reported the instrumented facade rlib");
         let fixture_macros = fixture_macros.expect("Cargo reported the fixture macro library");
+        let arithmetic = arithmetic.expect("Cargo reported the arithmetic library");
+        let shape = shape.expect("Cargo reported the reason-bearing shape library");
         let mut flags = vec!["--edition=2024".to_owned()];
         for directory in directories {
             flags.push("-L".to_owned());
@@ -925,6 +1031,10 @@ non_owning_generics = [
             format!("quenchant={}", anodized.display()),
             "--extern".to_owned(),
             format!("quenchant_fixture_macros={}", fixture_macros.display()),
+            "--extern".to_owned(),
+            format!("quenchant_arith={}", arithmetic.display()),
+            "--extern".to_owned(),
+            format!("quenchant_shape={}", shape.display()),
             "--cfg".to_owned(),
             r#"feature="anodized""#.to_owned(),
         ]);

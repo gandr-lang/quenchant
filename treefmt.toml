@@ -16,6 +16,8 @@ excludes = [
   "crates/quenchant-dylints/ui/**",
   "crates/quenchant-dylints/ui_config/**",
   "crates/quenchant-dylints/ui_specifications/**",
+  "crates/quenchant-dylints/ui_arithmetic/**",
+  "crates/quenchant-dylints/ui_options/**",
   # Mutation-campaign output; gitignored, and excluded for the same reason.
   "mutants.out/**",
   # The markdown tool's own cache, written at the root of every tree it runs in.

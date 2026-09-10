@@ -296,6 +296,7 @@ reason_enum! {
 /// - witness: `shape::tests::mapping_preserves_absence_and_moves_values`
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 #[must_use]
+#[cfg_attr(quenchant_compiler_policy, rustc_diagnostic_item = "quenchant_maybe")]
 pub enum Maybe<Value, Reason>
 {
     /// An available payload; no absence evidence is manufactured alongside it.
