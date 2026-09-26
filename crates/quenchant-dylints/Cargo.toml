@@ -30,6 +30,7 @@ quenchant-shape.workspace = true
 # The harness uses the facade in its selected mode. UI fixtures commission
 # their enabled facade and foreign macro artifacts through an explicit build.
 [dev-dependencies]
+cxx.workspace = true
 dylint_testing.workspace = true
 quenchant.workspace = true
 serde_json.workspace = true

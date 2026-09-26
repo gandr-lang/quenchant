@@ -69,6 +69,7 @@ For normal work, prefer the repository's `mise run check:tests` task, which sele
 | `recursion_forbidden`                        | A function in a discovered local recursive call cycle needs the specified item-level exception and termination evidence                    |
 | `recursive_owned_pointer`                    | A local data type cannot own a path back to itself through the analyzed field graph                                                        |
 | `specification_present`                      | Authored functions and methods carry a specification section; `trivial` cannot sit beside substantive clauses                              |
+| `unsafe_safety_documentation`                | Unsafe declarations carry a `# Safety` section with a nonempty `- unsafe invariants:` clause, including C++ bridge extern blocks           |
 | `adequacy_block_grammar`                     | An authored adequacy section has the required hypothesis and witness shape                                                                 |
 | `mode_dispatch_wildcard`                     | A declared judgment scrutinee cannot be hidden behind a fallback match arm                                                                 |
 | `primitive_arithmetic`                       | Primitive integer operators and resolved inherent arithmetic families use the nominal arithmetic surface                                   |
@@ -80,7 +81,7 @@ The primitive-signature rule does not establish a wrapper's meaning, visibility,
 
 ### Arithmetic and absence activation
 
-`primitive_arithmetic` and `option_signature` are opt-in lints; the seven established rules retain their default levels. Select both explicitly in the consumer's Dylint invocation or through `cfg_attr(dylint_lib = "quenchant_dylints", deny(primitive_arithmetic, option_signature))` on its crate roots. Registration alone does not enable either policy. The producer's UI suites deny both the selected predicate and unknown lint names; a missing predicate cannot satisfy their expected diagnostics.
+`primitive_arithmetic` and `option_signature` are opt-in lints; the eight other rules retain their default levels. Select both explicitly in the consumer's Dylint invocation or through `cfg_attr(dylint_lib = "quenchant_dylints", deny(primitive_arithmetic, option_signature))` on its crate roots. Registration alone does not enable either policy. The producer's UI suites deny both the selected predicate and unknown lint names; a missing predicate cannot satisfy their expected diagnostics.
 
 ### Primitive arithmetic
 
@@ -115,6 +116,8 @@ A foreign trait implementation is paired with the foreign method's unsubstituted
 A generated sibling can reuse an author's identifier token without becoming an authored declaration. The presence analysis therefore inspects both declaration and name provenance. The specification UI fixtures use actual facade expansion and a separate fixture macro to distinguish these cases. Generated assertion failures still carry evidence and require classification; generation alone is not an exclusion.
 
 `# Termination` accompanies an approved recursive exception. Its reason, measure, boundedness, and input-recursion statements are independent obligations. Inherited lint configuration is not inherited approval. The analysis can refute some claims against discovered argument flow, but a well-shaped block is not a termination proof.
+
+`# Safety` and its `- unsafe invariants:` clause apply to every authored unsafe function, trait, implementation, and extern block. The pre-expansion pass sees extern blocks inside `#[cxx::bridge]` before cxx consumes them. Cxx rejects doc attributes on those blocks, so their bridge module carries the section instead. The pass does not inspect unsafe items introduced after expansion or prove the stated invariants; one module section can cover multiple C++ blocks.
 
 ## Ownership exceptions
 

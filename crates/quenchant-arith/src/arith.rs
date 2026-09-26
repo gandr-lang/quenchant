@@ -265,9 +265,9 @@ pub trait Integer: sealed::Sealed + Copy + Default + Eq + core::fmt::Debug
     /// - panics: none.
     ///
     /// # Safety
-    /// The corresponding [`Integer::checked`] call must return `Ok`. In
-    /// particular, signed MIN / -1 and MIN % -1 violate the precondition,
-    /// even though the mathematical remainder is zero.
+    /// - unsafe invariants: the corresponding [`Integer::checked`] call must
+    ///   return `Ok`. Signed MIN / -1 and MIN % -1 violate the precondition,
+    ///   even though the mathematical remainder is zero.
     ///
     /// # Adequacy
     /// - hypothesis: L2 under `fast`, each boundary-grid pair admitted by the
@@ -476,9 +476,9 @@ macro_rules! integers {
             /// - panics: none.
             ///
             /// # Safety
-            /// The corresponding [`Integer::checked`] call must return `Ok`.
-            /// Signed `MIN / -1` and `MIN % -1` violate the precondition even
-            /// though the mathematical remainder is zero.
+            /// - unsafe invariants: the corresponding [`Integer::checked`] call
+            ///   must return `Ok`. Signed `MIN / -1` and `MIN % -1` violate the
+            ///   precondition even though the mathematical remainder is zero.
             #[inline]
             unsafe fn unchecked(self, rhs: Self, operation: Operation) -> Self {
                 Self(match operation {

@@ -23,7 +23,7 @@ multiple-versions-include-dev = true
 wildcards = "deny"
 workspace-default-features = "deny"
 deny = [
-  { crate = "cmake", reason = "No workspace package builds C or C++ sources" },
+  { crate = "cmake", reason = "No workspace package builds C or C++ sources through CMake" },
   { crate = "git2", wrappers = ["dylint_internal"], reason = "Only Dylint toolchain discovery may use libgit2" },
   { crate = "libgit2-sys", wrappers = ["git2"], reason = "Only the admitted git2 wrapper may link libgit2" },
   { crate = "libssh2-sys", reason = "The workspace has no SSH runtime" },
@@ -120,6 +120,8 @@ allow-build-scripts = [
   "camino@1.2.5",
   # Dylint's UI harness configures compiletest through this build script.
   "compiletest_rs@0.11.2",
+  # The Dylint bridge UI fixture builds cxx's bundled C++ runtime.
+  "cxx@1.0.202",
   # Dylint configures its driver through this build script.
   "dylint@6.0.4",
   # Dylint configures its tool paths through this build script.
@@ -130,6 +132,8 @@ allow-build-scripts = [
   "getrandom@0.4.3",
   # Platform dependencies require libc's target capability probe.
   "libc@0.2.189",
+  # cxx's bundled runtime selects the platform C++ standard library.
+  "link-cplusplus@1.0.12",
   # Dylint's Git backend builds its vendored fallback through this script.
   "libgit2-sys@0.18.8+1.9.7",
   # libgit2-sys builds its zlib fallback through this script.
@@ -170,6 +174,11 @@ enable-builtin-globs = true
 include-dependencies = true
 include-workspace = true
 include-archives = true
+
+[[bans.build.bypass]]
+crate = "cxx@1.0.202"
+# Registry checksum pins documentation builders, which no fixture invokes.
+allow = [{ path = "book/build.js" }, { path = "book/build.sh" }]
 
 [[bans.build.bypass]]
 crate = "git2@0.21.0"

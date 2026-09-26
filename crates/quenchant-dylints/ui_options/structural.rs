@@ -23,7 +23,7 @@ impl Value {
     const fn inherent(self) -> Option<Self> { Some(self) }
 }
 
-unsafe extern "C" {
+#[allow(unsafe_safety_documentation)] unsafe extern "C" {
     fn foreign(value: Option<core::num::NonZeroU8>) -> Option<core::num::NonZeroU8>;
 }
 
