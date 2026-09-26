@@ -1,0 +1,11 @@
+error: unsafe declaration lacks documented invariants
+  --> $DIR/cxx_incomplete.rs:9:5
+   |
+LL |     unsafe extern "C++" {
+   |     ^^^^^^
+   |
+   = help: add a # Safety section with a nonempty - unsafe invariants: bullet (on the bridge module for C++ extern blocks)
+   = note: requested on the command line with `-D unsafe-safety-documentation`
+
+error: aborting due to 1 previous error
+

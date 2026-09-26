@@ -42,6 +42,14 @@ git = "https://github.com/rust-lang/rust-clippy"
 tag = "rust-1.98.0"
 version = "=0.1.98"
 
+# The real bridge macro verifies pre-expansion linting in a UI fixture.
+# consumers:
+# - quenchant-dylints (dev)
+[workspace.dependencies.cxx]
+version = "=1.0.202"
+default-features = false
+features = ["alloc"]
+
 # Dylint lint-library authoring runtime.
 # consumers:
 # - quenchant-dylints

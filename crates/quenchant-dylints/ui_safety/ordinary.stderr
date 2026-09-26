@@ -1,0 +1,67 @@
+error: unsafe declaration lacks documented invariants
+  --> $DIR/ordinary.rs:11:1
+   |
+LL | unsafe fn missing_section()
+   | ^^^^^^
+   |
+   = help: add a # Safety section with a nonempty - unsafe invariants: bullet (on the bridge module for C++ extern blocks)
+   = note: requested on the command line with `-D unsafe-safety-documentation`
+
+error: unsafe declaration lacks documented invariants
+  --> $DIR/ordinary.rs:17:1
+   |
+LL | unsafe fn missing_clause()
+   | ^^^^^^
+   |
+   = help: add a # Safety section with a nonempty - unsafe invariants: bullet (on the bridge module for C++ extern blocks)
+
+error: unsafe declaration lacks documented invariants
+  --> $DIR/ordinary.rs:23:1
+   |
+LL | unsafe fn empty_clause()
+   | ^^^^^^
+   |
+   = help: add a # Safety section with a nonempty - unsafe invariants: bullet (on the bridge module for C++ extern blocks)
+
+error: unsafe declaration lacks documented invariants
+  --> $DIR/ordinary.rs:31:1
+   |
+LL | unsafe fn misplaced_clause()
+   | ^^^^^^
+   |
+   = help: add a # Safety section with a nonempty - unsafe invariants: bullet (on the bridge module for C++ extern blocks)
+
+error: unsafe declaration lacks documented invariants
+  --> $DIR/ordinary.rs:43:5
+   |
+LL |     unsafe fn missing_method();
+   |     ^^^^^^
+   |
+   = help: add a # Safety section with a nonempty - unsafe invariants: bullet (on the bridge module for C++ extern blocks)
+
+error: unsafe declaration lacks documented invariants
+  --> $DIR/ordinary.rs:65:1
+   |
+LL | unsafe trait MissingTrait
+   | ^^^^^^
+   |
+   = help: add a # Safety section with a nonempty - unsafe invariants: bullet (on the bridge module for C++ extern blocks)
+
+error: unsafe declaration lacks documented invariants
+  --> $DIR/ordinary.rs:69:1
+   |
+LL | unsafe impl MissingTrait for Value
+   | ^^^^^^
+   |
+   = help: add a # Safety section with a nonempty - unsafe invariants: bullet (on the bridge module for C++ extern blocks)
+
+error: unsafe declaration lacks documented invariants
+  --> $DIR/ordinary.rs:79:1
+   |
+LL | unsafe extern "C" {
+   | ^^^^^^
+   |
+   = help: add a # Safety section with a nonempty - unsafe invariants: bullet (on the bridge module for C++ extern blocks)
+
+error: aborting due to 8 previous errors
+

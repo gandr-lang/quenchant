@@ -77,6 +77,9 @@ run = "cargo run -p quenchant-gates --locked -- witnesses --manifest-path Cargo.
 ["check:dylint"]
 description = "Load the workspace's own Dylint library over the workspace"
 env.CARGO_INCREMENTAL = "0"
+# The plugin must link through dylint-link even when cargo dylint builds it
+# from the workspace root, where its crate-local Cargo configuration is absent.
+env.CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER = "dylint-link"
 # Cargo's encoded flags win even when empty. Otherwise encode the ordinary
 # whitespace-separated flags before appending this policy-only cfg. Dylint's
 # workspace wrapper alone does not configure external dependencies.

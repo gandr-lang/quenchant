@@ -23,15 +23,14 @@ edition = "2024"
     std::fs::write(root.join("src/lib.rs"), "").unwrap();
     std::fs::write(
         root.join(".cargo/config.toml"),
-        r#"[build]
+        r#"[target.'cfg(all())']
 rustflags = ["--cfg", "anodized_print"]
 "#,
     )
     .unwrap();
 
-    // Launching elsewhere distinguishes manifest-selected configuration from
-    // caller-local configuration; encoded flags must override both it and
-    // RUSTFLAGS.
+    // A target-scoped fixture flag survives ambient target-specific flags;
+    // encoded flags must still override it and ordinary RUSTFLAGS.
     for (encoded, expected, expected_code) in [
         (None, "enforcing", Some(0_i32)),
         (

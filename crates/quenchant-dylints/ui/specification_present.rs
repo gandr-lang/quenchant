@@ -169,7 +169,7 @@ impl Marked for Wrapped
     }
 }
 
-unsafe extern "C" {
+#[allow(unsafe_safety_documentation)] unsafe extern "C" {
     /// A foreign declaration carrying its block.
     ///
     /// # Specification

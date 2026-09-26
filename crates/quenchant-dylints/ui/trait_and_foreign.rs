@@ -48,7 +48,7 @@ impl From<u8> for WrappedU8
     }
 }
 
-unsafe extern "C" {
+#[allow(unsafe_safety_documentation)] unsafe extern "C" {
     fn foreign(flag: bool) -> u8;
 }
 
