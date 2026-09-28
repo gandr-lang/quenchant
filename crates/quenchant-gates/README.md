@@ -45,13 +45,13 @@ A resolved name proves that the named test is available under the inventoried co
 
 These commands accept `--root <repository>`; omission selects the working directory. Run through `mise exec -- cargo run --quiet --locked -p quenchant-gates -- <command>` so Cargo and its instruments use the pinned toolchain.
 
-| Command             | Refusal boundary                                                                                                                                                                         |
-| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `public-boundary`   | Tracked control directories, private material in tracked text and commit messages, private contributor email. Opaque commit provenance remains permitted; tracked session tokens do not. |
-| `pins`              | Missing or drifted compiler/Dylint pins; malformed stable tags; unequal or incomplete consumer revisions.                                                                                |
-| `action-pins`       | External YAML action references outside the allowlist or without a full lowercase 40-hex revision. Local actions remain permitted.                                                       |
-| `publish-allowlist` | Missing, unclassified, or incorrectly publishable packages against the single declared package boundary.                                                                                 |
-| `conflict-markers`  | Exact seven-character Git conflict markers in tracked text.                                                                                                                              |
+| Command | Refusal boundary |
+| ------- | ---------------- |
+| `public-boundary` | Tracked control directories, private material in tracked text and commit messages, private contributor email. Opaque commit provenance remains permitted; tracked session tokens do not. |
+| `pins` | Missing or drifted compiler/Dylint pins; malformed stable tags; unequal or incomplete consumer revisions. |
+| `action-pins` | External YAML action references outside the allowlist or without a full lowercase 40-hex revision. Local actions remain permitted. |
+| `publish-allowlist` | Missing, unclassified, or incorrectly publishable packages against the single declared package boundary. |
+| `conflict-markers` | Exact seven-character Git conflict markers in tracked text. |
 
 `pins` reads the exact rust-clippy release through `gh api`. `--upstream-toolchain <file>` explicitly substitutes offline evidence. `WORKSPACE_MANIFEST`, `TOOL_CONFIG`, and `TOOLCHAIN_FILE` retain pin-input overrides. Optional `--consumer-manifest <file>` and `--consumer-config <file>` must appear together. Relative inputs resolve under `--root`.
 

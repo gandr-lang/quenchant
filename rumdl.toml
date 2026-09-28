@@ -119,9 +119,25 @@ minimum-before = 1
 minimum-after = 1
 
 # MD060
+#
+# `compact`: one space between a pipe and its cell, whatever the column's
+# widest cell holds. `aligned` pads every cell to the column width, so adding a
+# row whose cell is wider than the column — or widening any single cell —
+# rewrites every other row in the table. Two agents editing different rows of
+# one table then conflict over the whole block rather than over the rows they
+# each touched, and the same realignment buries a one-cell change in a diff the
+# size of the table.
+#
+# `aligned-delimiter = true` is what makes `compact` canonical rather than
+# merely narrower. Left to its default the delimiter row is preserved verbatim,
+# so a table arriving from `aligned` keeps a delimiter padded to widths no
+# other row carries any more, and nothing ever normalizes it. With it on, each
+# delimiter cell is the display width of its own header cell, less one dash per
+# alignment colon: a pure function of the header text, so a body-row edit never
+# touches it, and a header rename or a new column touches exactly two lines.
 [table-format]
 enabled = true
-style = "aligned"
+style = "compact"
 aligned-delimiter = true
 
 # MD070

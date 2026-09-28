@@ -62,18 +62,18 @@ For normal work, prefer the repository's `mise run check:tests` task, which sele
 
 ## Shipped rules
 
-| Lint                                         | Observable boundary                                                                                                                        |
-| -------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `single_field_struct_needs_transparent_repr` | A single-field struct states its transparent layout                                                                                        |
-| `primitive_signature`                        | A crate-authored signature reaches an appropriate nominal boundary instead of exposing a primitive through the inspected structural layers |
-| `recursion_forbidden`                        | A function in a discovered local recursive call cycle needs the specified item-level exception and termination evidence                    |
-| `recursive_owned_pointer`                    | A local data type cannot own a path back to itself through the analyzed field graph                                                        |
-| `specification_present`                      | Authored functions and methods carry a specification section; `trivial` cannot sit beside substantive clauses                              |
-| `unsafe_safety_documentation`                | Unsafe declarations carry a `# Safety` section with a nonempty `- unsafe invariants:` clause, including C++ bridge extern blocks           |
-| `adequacy_block_grammar`                     | An authored adequacy section has the required hypothesis and witness shape                                                                 |
-| `mode_dispatch_wildcard`                     | A declared judgment scrutinee cannot be hidden behind a fallback match arm                                                                 |
-| `primitive_arithmetic`                       | Primitive integer operators and resolved inherent arithmetic families use the nominal arithmetic surface                                   |
-| `option_signature`                           | Authored signatures preserve absence reasons; foreign methods admit only the `Option` layers their declarations require                    |
+| Lint | Observable boundary |
+| ---- | ------------------- |
+| `single_field_struct_needs_transparent_repr` | A single-field struct states its transparent layout |
+| `primitive_signature` | A crate-authored signature reaches an appropriate nominal boundary instead of exposing a primitive through the inspected structural layers |
+| `recursion_forbidden` | A function in a discovered local recursive call cycle needs the specified item-level exception and termination evidence |
+| `recursive_owned_pointer` | A local data type cannot own a path back to itself through the analyzed field graph |
+| `specification_present` | Authored functions and methods carry a specification section; `trivial` cannot sit beside substantive clauses |
+| `unsafe_safety_documentation` | Unsafe declarations carry a `# Safety` section with a nonempty `- unsafe invariants:` clause, including C++ bridge extern blocks |
+| `adequacy_block_grammar` | An authored adequacy section has the required hypothesis and witness shape |
+| `mode_dispatch_wildcard` | A declared judgment scrutinee cannot be hidden behind a fallback match arm |
+| `primitive_arithmetic` | Primitive integer operators and resolved inherent arithmetic families use the nominal arithmetic surface |
+| `option_signature` | Authored signatures preserve absence reasons; foreign methods admit only the `Option` layers their declarations require |
 
 The plugin is a policy floor, not a proof of totality or complete semantics. Call edges erased by function-pointer coercion, compiler-generated drop behavior, and unresolved type relationships require the corresponding review or evidence boundary. The ownership and call analyses address different mechanisms; neither subsumes the other.
 

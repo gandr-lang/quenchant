@@ -32,11 +32,11 @@ Postcondition patterns such as `|ref output|` borrow the returned value for insp
 
 ## Three separate choices
 
-| Configuration                                      | What the consumer receives                                 | What it establishes                                    |
-| -------------------------------------------------- | ---------------------------------------------------------- | ------------------------------------------------------ |
-| Consumer feature absent                            | Ordinary code with supported specification markers removed | No executable-check evidence                           |
-| Consumer feature present, no enforcing backend cfg | Published backend expansion, requiring `std`               | Predicate compilation, not violation panics            |
-| Consumer feature present, enforcing host cfg       | Executable checks on calls that reach them                 | Evidence for the interpreted predicates on those calls |
+| Configuration | What the consumer receives | What it establishes |
+| ------------- | -------------------------- | ------------------- |
+| Consumer feature absent | Ordinary code with supported specification markers removed | No executable-check evidence |
+| Consumer feature present, no enforcing backend cfg | Published backend expansion, requiring `std` | Predicate compilation, not violation panics |
+| Consumer feature present, enforcing host cfg | Executable checks on calls that reach them | Evidence for the interpreted predicates on those calls |
 
 The default path supports a real target without `std`. Procedural macros still use the build host's standard library; that is not a target runtime dependency. Required validation and safety checks must remain ordinary code, independent of this feature.
 

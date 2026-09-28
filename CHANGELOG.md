@@ -13,7 +13,7 @@ All notable changes to quenchant are documented here.
 ### Unreleased Configuration
 
 - *(github)* Enable CodeRabbit reviews (#7)
-- *(config)* Require semicolons inside blocks
+- *(config)* Require semicolons inside blocks (#16)
 
 ### Unreleased Maintenance
 
