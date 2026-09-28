@@ -11,13 +11,13 @@ Every item carries a one-line summary. Every function and method carries a `# Sp
 
 The clause grammar is fixed across languages:
 
-| Clause         | States                                                               |
-| -------------- | -------------------------------------------------------------------- |
-| `- requires:`  | Caller preconditions — the valid input space.                        |
-| `- ensures:`   | Postconditions on success.                                           |
-| `- provides:`  | What the item yields.                                                |
-| `- fails:`     | Failure modes and how they surface.                                  |
-| `- panics:`    | Reachable aborts/traps/panics; write `- panics: none.` explicitly.   |
+| Clause | States |
+| ------ | ------ |
+| `- requires:` | Caller preconditions — the valid input space. |
+| `- ensures:` | Postconditions on success. |
+| `- provides:` | What the item yields. |
+| `- fails:` | Failure modes and how they surface. |
+| `- panics:` | Reachable aborts/traps/panics; write `- panics: none.` explicitly. |
 | `- intension:` | Promised properties of how the computation proceeds; optional, last. |
 
 A **specification** states admitted behavior under a model, input domain, and observer. **Satisfaction** relates an implementation to that specification. **Evidence** is a proof, validated witness, or scoped verification result supporting a particular obligation. **Adequacy** asks whether the specification, observations, and chosen evidence can distinguish the deviations the hypothesis says matter. A passing suite is not a definition of any of the other three.
@@ -63,12 +63,12 @@ Two practical consequences:
 
 Prefer the highest applicable design rung, and state how it serves the hypothesis:
 
-| Rung             | Mechanism                                                                                    | Evidence and limit                                                                                                 |
-| ---------------- | -------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------ |
-| **L0 types**     | No-default values, newtypes, illegal states unrepresentable.                                 | A rejected illegal variant; not a runtime kill or an inflated score.                                               |
-| **L1 evidence**  | Return a checkable witness/certificate; validate it against the input.                       | Detects invalid evidence within the validator's justified relation; merely returning a certificate proves nothing. |
-| **L2 agreement** | Independent naïve reference, pinned conformance golden, or semantic stage-boundary artifact. | Detects observed disagreement on exercised inputs; shared bugs remain possible.                                    |
-| **L3 pointwise** | Boundary inputs with exact semantic variant/value assertions.                                | Distinguishes the stated tie-break, guard, or comparison residue.                                                  |
+| Rung | Mechanism | Evidence and limit |
+| ---- | --------- | ------------------ |
+| **L0 types** | No-default values, newtypes, illegal states unrepresentable. | A rejected illegal variant; not a runtime kill or an inflated score. |
+| **L1 evidence** | Return a checkable witness/certificate; validate it against the input. | Detects invalid evidence within the validator's justified relation; merely returning a certificate proves nothing. |
+| **L2 agreement** | Independent naïve reference, pinned conformance golden, or semantic stage-boundary artifact. | Detects observed disagreement on exercised inputs; shared bugs remain possible. |
+| **L3 pointwise** | Boundary inputs with exact semantic variant/value assertions. | Distinguishes the stated tie-break, guard, or comparison residue. |
 
 Binding rules:
 
@@ -84,16 +84,16 @@ For the normalizer, membership equality alone permits duplicates; sortedness alo
 
 Classify against the declared hypothesis and retain exact evidence:
 
-| Class                          | Meaning                                                                                             | Repair or disposition                                                                            |
-| ------------------------------ | --------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ |
-| missing-input (unreached)      | No valid exercised case reaches the change.                                                         | Improve input reachability, often at the uncovered file/decision.                                |
-| missing-input (no boundary)    | The line runs, but not where its outcomes differ.                                                   | Derive equality, emptiness, guard-true, or exactly-one-true cases.                               |
-| missing-observation (oracle)   | A distinguishing supported observation exists but no assertion notices it.                          | Assert exact semantics or validate external evidence.                                            |
-| missing-projection (API)       | A domain law chooses a correct behavior that the current public surface cannot reveal.              | Refine specification and API first, then the witness.                                            |
-| missing-specification          | Current clauses omit or misstate the independent domain law.                                        | Correct the authored obligation and every affected interpretation.                               |
-| equivalent (semantic)          | An argument establishes no separation for all valid inputs and the full declared observer.          | Exact exclusion with assumptions and rationale; finite survival is not that argument.            |
-| accepted-unspecified-variation | Only undeclared representation/intension changes, with no principled choice required by the domain. | Exact permitted-variation rationale and reversal condition; never a test-only accessor.          |
-| instrument-limitation          | Mutation, build, extraction, execution, or classification fails before the claimed observation.     | Record the failure and scope; never count it as a semantic survivor, kill, or equivalence proof. |
+| Class | Meaning | Repair or disposition |
+| ----- | ------- | --------------------- |
+| missing-input (unreached) | No valid exercised case reaches the change. | Improve input reachability, often at the uncovered file/decision. |
+| missing-input (no boundary) | The line runs, but not where its outcomes differ. | Derive equality, emptiness, guard-true, or exactly-one-true cases. |
+| missing-observation (oracle) | A distinguishing supported observation exists but no assertion notices it. | Assert exact semantics or validate external evidence. |
+| missing-projection (API) | A domain law chooses a correct behavior that the current public surface cannot reveal. | Refine specification and API first, then the witness. |
+| missing-specification | Current clauses omit or misstate the independent domain law. | Correct the authored obligation and every affected interpretation. |
+| equivalent (semantic) | An argument establishes no separation for all valid inputs and the full declared observer. | Exact exclusion with assumptions and rationale; finite survival is not that argument. |
+| accepted-unspecified-variation | Only undeclared representation/intension changes, with no principled choice required by the domain. | Exact permitted-variation rationale and reversal condition; never a test-only accessor. |
+| instrument-limitation | Mutation, build, extraction, execution, or classification fails before the claimed observation. | Record the failure and scope; never count it as a semantic survivor, kill, or equivalence proof. |
 
 **Killability is an API-adequacy obligation.** For every viable mutation class changing a domain-significant result on a valid input, the public surface MUST provide a principled semantic observation separating the correct and changed behavior. Derive the distinguishing input independently of the current API; ask whether a domain law chooses a result; strengthen an existing oracle or refine specification/API first. Otherwise record the exact equivalence or intended-variation rationale. Never expose raw private state, add a test-only accessor, or invent an arbitrary requirement to improve a score.
 

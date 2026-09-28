@@ -12,6 +12,7 @@
 - [Correctness](#correctness)
 - [Performance](#performance)
 - [Style](#style)
+- [Assembly](#assembly)
 - [Lints and enforcement](#lints-and-enforcement)
 - [Dependencies and the workspace](#dependencies-and-the-workspace)
 - [Documentation by specification](#documentation-by-specification)
@@ -35,13 +36,13 @@ Next split: Representation into its own page, retaining every rule and example b
 
 The sites below carry the source workspace's own vocabulary rather than a shared rule. Every rule stands as written — one naming authority, intent over mechanism, a name that survives a crate split, load-bearing machinery owned rather than depended on — and a project reads each site as an example of the rule it illustrates, binding it to its own vocabulary in its root `AGENTS.md`.
 
-| Site                                                                                                                        | Reads as                                               |
-| --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------ |
-| the `<category>-<name>` directory schema and its `gandr-<directory>` package prefix, in the naming bullet                   | the project's own directory schema and package prefix  |
-| the category list in that same bullet                                                                                       | the project's own categories                           |
-| the `# consumers:` line of the dependencies example                                                                         | a crate of the project's own workspace                 |
-| the flat data path in the crate bullet below                                                                                | the project's own pipeline                             |
-| the checker and the machine in the keystone clause under **Partial functions banned**                                       | the project's own core engines                         |
+| Site | Reads as |
+| ---- | -------- |
+| the `<category>-<name>` directory schema and its `gandr-<directory>` package prefix, in the naming bullet | the project's own directory schema and package prefix |
+| the category list in that same bullet | the project's own categories |
+| the `# consumers:` line of the dependencies example | a crate of the project's own workspace |
+| the flat data path in the crate bullet below | the project's own pipeline |
+| the checker and the machine in the keystone clause under **Partial functions banned** | the project's own core engines |
 | `gandr-owned` in the external-implementations bullet — the one site of a different kind, part of a rule every project keeps | the project's own owner name, and never a dropped rule |
 
 - **Crate boring, explicit.** One job per crate — one crate owns one concern end to end; flat data path (parser → CST → lowering → core IR → checker/machine). Clean cutover over compatibility shims; no aliases or dead paths unless the owner approves the exception, and a compatibility alias or deprecated path that does exist is removed together with its callers in one change. General/reusable machinery gets its own crate; a design pass owes the crate/module-boundary judgement, not only the edits.
@@ -56,27 +57,27 @@ The sites below carry the source workspace's own vocabulary rather than a shared
 
 **Signatures preserve information.** A signature that drops which failure occurred, why a value is absent, which state a value is in, or which domain a value belongs to is a defect: the caller cannot recover what the type no longer says, and every later reader pays for it. The rules in this section are that principle in particular places, and the table is the instruction.
 
-| Weaker signature                                                                                                    | What it drops                                           | What the rule requires                                                                                   |
-| ------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `Option<T>` for a fallible operation                                                                                | which failure occurred, and why                         | `Result<T, E>` with a named error enum; a non-failure absence goes to `Maybe<T, R>` rather than `Option` |
-| `bool` for a classification                                                                                         | which of more than two states, and the names of the two | an enum, even where there are exactly two states                                                         |
-| a bare primitive across a boundary                                                                                  | the domain meaning of the value                         | the nominal wrapper required by **Crate-defined signatures preserve semantic information** below         |
-| `Option<T>` in a crate-defined signature                                                                            | the reason for absence                                  | `Maybe<T, R>` with a sealed per-site reason enum; `Option` only at the two external boundaries           |
-| a refactor lowering a return type's information (`Result` → `Maybe` → `Option`, enum → `bool`, wrapper → primitive) | information the caller already had                      | never correct; a review-blocking finding in that direction                                               |
+| Weaker signature | What it drops | What the rule requires |
+| ---------------- | ------------- | ---------------------- |
+| `Option<T>` for a fallible operation | which failure occurred, and why | `Result<T, E>` with a named error enum; a non-failure absence goes to `Maybe<T, R>` rather than `Option` |
+| `bool` for a classification | which of more than two states, and the names of the two | an enum, even where there are exactly two states |
+| a bare primitive across a boundary | the domain meaning of the value | the nominal wrapper required by **Crate-defined signatures preserve semantic information** below |
+| `Option<T>` in a crate-defined signature | the reason for absence | `Maybe<T, R>` with a sealed per-site reason enum; `Option` only at the two external boundaries |
+| a refactor lowering a return type's information (`Result` → `Maybe` → `Option`, enum → `bool`, wrapper → primitive) | information the caller already had | never correct; a review-blocking finding in that direction |
 
 **`Option` is disallowed in crate-defined signatures, under the same rule as bare primitives.** The same two exceptions — a method implementing a trait from a non-stdlib external dependency, and a method implementing a standard-library trait, each only where that trait's required signature contains it — the same isolation to maximally local scope, and the same escape-hatch comment where no trait applies. `None` is a unit: it cannot say whether a value was not in the map, not computed, filtered out, or lost to a swallowed error. Three shapes carry an empty arm, and which one a signature uses is the instruction:
 
-| Shape          | The empty arm carries                                            | The reviewer reads                                                     |
-| -------------- | ---------------------------------------------------------------- | ---------------------------------------------------------------------- |
-| `Result<T, E>` | a failure                                                        | the failure is handled or propagated                                   |
-| `Maybe<T, R>`  | evidence of a non-failure absence: a sealed per-site reason enum | whether `R` is the right reason at this site                           |
-| `Option<T>`    | nothing                                                          | permitted only at the two external boundaries; a finding anywhere else |
+| Shape | The empty arm carries | The reviewer reads |
+| ----- | --------------------- | ------------------ |
+| `Result<T, E>` | a failure | the failure is handled or propagated |
+| `Maybe<T, R>` | evidence of a non-failure absence: a sealed per-site reason enum | whether `R` is the right reason at this site |
+| `Option<T>` | nothing | permitted only at the two external boundaries; a finding anywhere else |
 
 `Maybe<T, R>` is a nominal enum (`Present(T)` / `Absent(R)`), not an alias: no `?`, no `From<Maybe<T, R>> for Result<T, E>`, no `impl Try` — an absence is matched, never propagated on the error channel, which is what "not a failure" means to the type checker. `R` is a sealed reason enum defined per site (`Exhausted`, `Unbound`, `NotCached`, `OutOfRange`), never a shared catch-all, because the reason is the evidence and a generic reason erases it again. A `Result` whose error type is not a failure — no `Error` implementation, matched as evidence — is a `Maybe` misfiled. The item's `# Specification` `- provides:` clause names the reason enum and what each variant means. Where a site both fails and can be absent the shapes compose rather than merge — `Result<Maybe<T, R>, E>` — and a failure is never an `R` variant. Refactor direction is fixed: `Result` → `Maybe` → `Option` lowers information and is a review-blocking finding, while `Option` → `Maybe` and `Maybe` → `Result` are the correcting direction.
 
 The `Iterator` case, worked. `impl Iterator` for a crate type unpacks to `Option<Item>` in its `next` implementation and nowhere else: that is the standard-library-trait exception, and that implementation is the border. The crate's own API over the same sequence returns `Maybe<Item, Exhausted>` when exhaustion is the only non-failure absence. A site that can also filter or miss uses a sealed per-site reason enum with those non-failure variants; a site that can fail returns `Result<Maybe<Item, R>, E>`, and a failure is never an `R` variant. The difference is what a reviewer does with it: an `Option` makes the reviewer stop, because `None` says nothing, while `Maybe<Item, Exhausted>` makes the reviewer read the reason and ask whether it is the right one at this site. The reason enum is the review prompt.
 
-`Maybe<T, R>` has no shared home yet: the `rust-shape` crate that would carry it does not exist, so a project builds or vendors the shape at its first use and the rule binds by review. No dylint check enforces it either — planned as one more type in the primitives predicate's list — so review reads for it.
+`Maybe<T, R>` lives in `quenchant-shape` from `gandr-lang/quenchant`; a project takes it from there rather than building its own. No dylint check enforces it either — planned as one more type in the primitives predicate's list — so review reads for it.
 
 Two corollaries. `.ok()` on a `Result` at a boundary is the same defect in method form: the `# Specification` `- fails:` clause then describes what the signature no longer carries. `Option<bool>` and `Result<bool, E>` combine the rules above: use `Result<State, Error>` for a fallible classification, use `Maybe<State, R>` where the empty arm is a non-failure absence carrying its reason, and otherwise model the complete closed state set directly as one enum. `Option<State>` is not available as the compromise — the rule above disallows it in a crate-defined signature, so it survives only at the two external boundaries.
 
@@ -125,6 +126,35 @@ Two corollaries. `.ok()` on a `Result` at a boundary is the same defect in metho
 - **Boring control flow and explicit state transitions.** An early return keeps the successful path flat.
 - **Name types by role.** NEVER a `Data`, `Info`, or `Manager` suffix without a semantic need.
 - **Comments explain a constraint, an invariant, or a surprising tradeoff** — never a restatement of what the code says.
+
+## Assembly
+
+Scope: every `asm!`, `naked_asm!`, and `global_asm!` block. The compiler checks none of a template's meaning, so these rules put the routine's specification, its register use, and its control flow where a reviewer reads them.
+
+- **Each routine is a named Rust item with its own documentation.** Code that owns every instruction — an entry point, a trap entry, anything that runs before a stack exists — is a naked function (`#[unsafe(naked)]` with `naked_asm!`). Everything else is `asm!` inside an ordinary function, so the compiler allocates registers and keeps its frame. `global_asm!` holds only what cannot be a function. Why: a function has a signature, a linkable name, and rustdoc the gates check; a `global_asm!` block has none of these, so its specification lives in a free comment no gate reads. One exception: a second entry that needs an alignment Rust cannot give a function (a trap vector; stable Rust has no function alignment attribute) stays a label inside the naked function that owns it, and that function's documentation specifies both entries.
+- **The rustdoc uses the Documentation by specification sections, read for machine state.** `# Specification`: `- requires:` is the state the routine assumes on entry — privilege mode, whether a stack exists, which units are on, what another agent wrote first — and `- ensures:` is the state it leaves, or where it transfers control for a routine that never returns. `# Registers`: a table of every register the template writes out by name and what it holds; a choice forced by encoding size, the calling convention, or the hardware is explained above the table, so a later edit does not undo it for readability. `# Safety` with `- unsafe invariants:`: who may enter the routine, and in what state. An `asm!` block whose registers are all compiler-allocated operands needs no table: its operand list is the table.
+
+  ```rust
+  /// # Registers
+  ///
+  /// The routine fills its whole size budget, so the hart id lives in `a2`,
+  /// where `bnez` has a 2-byte encoding.
+  ///
+  /// | Register | Holds |
+  /// | -------- | ----- |
+  /// | `a2` | this hart's `mhartid` |
+  /// | `a3` | the ready value, for signalling and for comparing |
+  ```
+
+- **The template reads as steps.** Each logical step opens with a `//` comment on its own line saying what the step achieves; an instruction whose purpose the mnemonic does not show carries a trailing comment (`"vsetvli t2, zero, e8, m1, ta, ma", // t2 = VLMAX bytes`). A comment states intent or a constraint, never the mnemonic spelled out (Style).
+- **Names, never bare registers or numbers, wherever Rust allows them.**
+  - In `asm!`, every register is a named operand (`"csrr {cause}, mcause"` with `cause = out(reg) cause`) and the compiler chooses it; an explicit register only where the instruction or the ABI fixes one.
+  - Naked and global assembly take no register operands, so registers are written out, and the `# Registers` table names each one's role. A symbol-aliasing directive (`.equ`) is no substitute: the RISC-V assembler, for one, rejects it in register position.
+  - A register class Rust accepts only as a clobber (the RISC-V vector registers, for one) is written out in every form of assembly and, in `asm!`, declared as a clobber.
+  - Labels in a naked function are descriptive (`prime_lim:`) and unique across the crate, since the compiler may place any two of the crate's naked functions in one object file. `asm!` rejects named labels (`named_asm_labels`, because the compiler may emit a block more than once), so there labels are numeric (`2:`, `2b`), each with a comment saying what it marks. A numeric label never consists only of the digits 0 and 1: on x86 those read as binary literals, and `binary_asm_labels` rejects them, so numbering starts at 2.
+  - Every constant is a named `const` operand (`primed = const PRIMED`), never a literal in the template, and a derived value is computed in the operand expression (`page = const BASE >> 12_u32`): a bare number carries no provenance and does not follow the Rust definition when it changes.
+
+Reversal: each workaround above retires when stable Rust removes its cause — function alignment for the in-function trap entry, register operands in naked assembly or an accepted register alias for the written-out registers and their table, vector register operands for the clobber-only rule.
 
 ## Lints and enforcement
 
