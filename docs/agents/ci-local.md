@@ -101,9 +101,9 @@ A library producer runs `mise run toolchain:bump <stable>` to move its nightly a
 
 ## External workflow consumer
 
-Load `rust_workflow_dylint` from the workspace's Git metadata with `CARGO_INCREMENTAL=0`. Cache `target/dylint` only by an exact key containing the metadata file, `rust-toolchain.toml`, the Dylint version, and runner OS/architecture; never supply restore prefixes. A restored library from another revision is another policy even when Cargo considers its artifact fresh.
+Load `quenchant_dylints` from the workspace's Git metadata with `CARGO_INCREMENTAL=0`. Cache `target/dylint` only by an exact key containing the metadata file, `rust-toolchain.toml`, the Dylint version, and runner OS/architecture; never supply restore prefixes. A restored library from another revision is another policy even when Cargo considers its artifact fresh.
 
-Install `rust-workflow-gates` with the metadata revision through `cargo install --git --rev --locked --bin rust-workflow-gates rust-workflow-gates`. Both `contracts` and `witnesses` require the consumer's `--manifest-path`. Prove discovery and both commands from an unrelated working directory. Consumer build, nextest, Clippy, rustdoc, and cross-target commands cover every local workspace member; plugin unit/UI tests belong to the producer.
+Install `quenchant-gates` with the metadata revision through `cargo install --git --rev --locked --bin quenchant-gates quenchant-gates`. Both `anodized` and `witnesses` require the consumer's `--manifest-path`. Prove discovery and both commands from an unrelated working directory. Consumer build, nextest, Clippy, rustdoc, and cross-target commands cover every local workspace member; plugin unit/UI tests belong to the producer.
 
 A cold hosted run needs access to the Git source. An authenticated local pass does not prove public-source access: while the source remains private, a consumer PR stays draft and states that hosted CI and landing wait for public access. No consumer Actions secret is added for a dependency intended to be public.
 
@@ -134,6 +134,8 @@ The image workflow builds each platform natively: `ubuntu-latest` for amd64 and 
 
 `ci-image-ref` relays the workflow-level image switch through `needs` into every Rust job's `container:` field, where the `env` context is unavailable. An empty switch selects the bare runner and the shared `setup-rust` action installs the pinned toolchain; a published pin-file tag selects the image and skips installation while retaining caches. Empty is the bootstrap or measured rollback state, not a second permanent CI design.
 
+Private GHCR job images require `packages: read` on the consuming jobs and package access for the workflow repository. Define `permissions: &image-read-permissions { contents: read, packages: read }` in the disabled template; image-consuming jobs MUST reuse `permissions: *image-read-permissions`. Keep unrelated jobs at their existing permissions. The runner authenticates repository-linked GHCR pulls with its existing `GITHUB_TOKEN`; NEVER add a PAT or change package visibility to repair a missing job permission. Verify an actual hosted container pull: local Docker credentials have a separate access boundary. Failed activation MUST restore the prior image-switch value while the source fix awaits landing.
+
 Gandr uses `GANDR_CI_IMAGE` for `ghcr.io/gandr-lang/gandr-ci`. Quenchant uses `QUENCHANT_CI_IMAGE` for `ghcr.io/gandr-lang/quenchant-ci`, supplied by the repository variable of that name. The first `main` push builds the image; activate its published tag before measuring the second `main` run. The same selection applies to act. Authenticate package reads through `docker login ghcr.io`; for quenchant, pass the tag without changing the workflow:
 
 ```sh
@@ -149,12 +151,12 @@ Omit gandr's big-endian, Miri and cross-OS lanes only when absent from the adopt
 
 These observations retain their execution boundary; cross-platform and cross-event rows are not speedup ratios.
 
-| Adopter and observation                                    | Elapsed                                         | Scope and evidence                                                                                                                                                        |
-| ---------------------------------------------------------- | ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Quenchant before the image port, hosted `main`, 2026-09-09 | 16m49s overall; Dylint 16m38s; build/test 4m21s | [Run 34402774193](https://github.com/gandr-lang/quenchant/actions/runs/34402774193), creation to last job completion; full hosted gate set.                               |
-| Quenchant after the port, native arm64 act, 2026-09-10     | Build/test 71.07s; Dylint 126.03s               | [Eight-job acceptance](https://github.com/gandr-lang/quenchant/pull/3#issuecomment-5611148612), with the image already local; each invocation includes prerequisite jobs. |
-| Gandr reference, hosted `main`, 2026-09-08                 | 13m54s overall; Dylint 13m44s                   | [Run 34248970279](https://github.com/gandr-lang/gandr/actions/runs/34248970279), including heavy and cross-OS lanes.                                                      |
-| Gandr reference, hosted pull request, 2026-09-08           | 2m39s overall                                   | [Run 34249391296](https://github.com/gandr-lang/gandr/actions/runs/34249391296), with both heavy jobs skipped; this is not a full-CI timing.                              |
+| Adopter and observation | Elapsed | Scope and evidence |
+| ----------------------- | ------- | ------------------ |
+| Quenchant before the image port, hosted `main`, 2026-09-09 | 16m49s overall; Dylint 16m38s; build/test 4m21s | [Run 34402774193](https://github.com/gandr-lang/quenchant/actions/runs/34402774193), creation to last job completion; full hosted gate set. |
+| Quenchant after the port, native arm64 act, 2026-09-10 | Build/test 71.07s; Dylint 126.03s | [Eight-job acceptance](https://github.com/gandr-lang/quenchant/pull/3#issuecomment-5611148612), with the image already local; each invocation includes prerequisite jobs. |
+| Gandr reference, hosted `main`, 2026-09-08 | 13m54s overall; Dylint 13m44s | [Run 34248970279](https://github.com/gandr-lang/gandr/actions/runs/34248970279), including heavy and cross-OS lanes. |
+| Gandr reference, hosted pull request, 2026-09-08 | 2m39s overall | [Run 34249391296](https://github.com/gandr-lang/gandr/actions/runs/34249391296), with both heavy jobs skipped; this is not a full-CI timing. |
 
 Quenchant's local acceptance verifies every applicable `ci.yml` job. Its post-port hosted timing remains a separate measurement; neither the local numbers nor gandr's short PR run establishes the five-minute hosted target.
 

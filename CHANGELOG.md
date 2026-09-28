@@ -10,10 +10,18 @@ All notable changes to quenchant are documented here.
 - *(dylints)* Enforce arithmetic and absence policy (#11)
 - *(dylints)* Require unsafe invariants (#15)
 
+### Unreleased Documentation
+
+- *(agents)* Align shared guidance copies
+
 ### Unreleased Configuration
 
 - *(github)* Enable CodeRabbit reviews (#7)
-- *(config)* Require semicolons inside blocks
+- *(config)* Require semicolons inside blocks (#16)
+
+### Unreleased Style
+
+- *(config)* Adopt compact Markdown tables
 
 ### Unreleased Maintenance
 

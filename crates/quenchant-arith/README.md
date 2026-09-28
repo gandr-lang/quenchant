@@ -34,14 +34,14 @@ The error preserves both the operation and the cause. Division and remainder dis
 
 Each family provides addition, subtraction, multiplication, division, and remainder:
 
-| Entry points                                 | Overflow                           | Zero divisor                   | Safety |
-| -------------------------------------------- | ---------------------------------- | ------------------------------ | ------ |
-| `strict_*`                                   | Panic in debug and release         | Panic                          | Safe   |
-| `checked_*`                                  | `ArithmeticError::Overflow`        | `ArithmeticError::ZeroDivisor` | Safe   |
-| `wrapping_*`                                 | Width-modular result               | Panic                          | Safe   |
-| `saturating_*`                               | Clamp to the representation bounds | Panic                          | Safe   |
-| Unprefixed operations, default configuration | Strict behavior                    | Panic                          | Safe   |
-| Unprefixed operations with `fast`            | Caller must exclude it             | Caller must exclude it         | Unsafe |
+| Entry points | Overflow | Zero divisor | Safety |
+| ------------ | -------- | ------------ | ------ |
+| `strict_*` | Panic in debug and release | Panic | Safe |
+| `checked_*` | `ArithmeticError::Overflow` | `ArithmeticError::ZeroDivisor` | Safe |
+| `wrapping_*` | Width-modular result | Panic | Safe |
+| `saturating_*` | Clamp to the representation bounds | Panic | Safe |
+| Unprefixed operations, default configuration | Strict behavior | Panic | Safe |
+| Unprefixed operations with `fast` | Caller must exclude it | Caller must exclude it | Unsafe |
 
 Signed division truncates toward zero. Signed `MIN / -1` and `MIN % -1` violate the unchecked precondition even though the mathematical remainder is zero. Wrapping division returns the width-modular result for the signed overflow pair; saturation clamps division and uses the representable remainder for every nonzero divisor.
 

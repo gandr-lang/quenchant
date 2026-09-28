@@ -52,20 +52,20 @@ The attribute resolves through this package because the expansion writes `::quen
 
 ## What the namespace contains
 
-| Path               | Package              | Contents                                                                       |
-| ------------------ | -------------------- | ------------------------------------------------------------------------------ |
-| `quenchant::arith` | `quenchant-arith`    | Nominal integers and the named arithmetic families                             |
-| `quenchant::shape` | `quenchant-shape`    | Reason-preserving absence and transparent domain types                         |
-| `quenchant::spec`  | `quenchant-anodized` | The specification attribute and its expansion helpers                          |
-| Crate-root macros  | `quenchant-shape`    | `reason_enum!`, `nominal_type!`, and `delegate_ops!`                           |
-| `quenchant::gates` | `quenchant-gates`    | Invocation-state and adequacy-witness reporting, behind the `gates` feature    |
+| Path | Package | Contents |
+| ---- | ------- | -------- |
+| `quenchant::arith` | `quenchant-arith` | Nominal integers and the named arithmetic families |
+| `quenchant::shape` | `quenchant-shape` | Reason-preserving absence and transparent domain types |
+| `quenchant::spec` | `quenchant-anodized` | The specification attribute and its expansion helpers |
+| Crate-root macros | `quenchant-shape` | `reason_enum!`, `nominal_type!`, and `delegate_ops!` |
+| `quenchant::gates` | `quenchant-gates` | Invocation-state and adequacy-witness reporting, behind the `gates` feature |
 
 ## Features
 
-| Feature    | Effect                                                                                   |
-| ---------- | ---------------------------------------------------------------------------------------- |
+| Feature | Effect |
+| ------- | ------ |
 | `anodized` | Selects the published specification backend in every re-exported library; requires `std` |
-| `gates`    | Adds `quenchant::gates`; that library reads Cargo and nextest output and requires `std`  |
+| `gates` | Adds `quenchant::gates`; that library reads Cargo and nextest output and requires `std` |
 
 The `anodized` feature must also be declared in the consuming crate: the expansion tests a consumer-side condition, and enabling a dependency feature is not a substitute for it.
 
