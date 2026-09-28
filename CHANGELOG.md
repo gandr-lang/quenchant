@@ -8,11 +8,12 @@ All notable changes to quenchant are documented here.
 
 - *(repo)* Seed the quenchant workspace
 - *(dylints)* Enforce arithmetic and absence policy (#11)
-- *(dylints)* Require unsafe invariants
+- *(dylints)* Require unsafe invariants (#15)
 
 ### Unreleased Configuration
 
 - *(github)* Enable CodeRabbit reviews (#7)
+- *(config)* Require semicolons inside blocks
 
 ### Unreleased Maintenance
 
