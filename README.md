@@ -73,6 +73,8 @@ path = "crates/quenchant-dylints"
 
 External consumers select the plugin through [Git-based Dylint metadata](crates/quenchant-dylints/README.md#git-distribution), pairing a reviewed revision with its matching compiler and gate binary. The [version-pair selection procedure](crates/quenchant-dylints/README.md#selecting-compiler-and-utility-versions) explains the stable-release anchor, source identity, nearby-nightly checks, and future bumps.
 
+Co-author trailers credit people only. Commit validation rejects known assistant identities even without session trailers, while accepting human names and personal email addresses.
+
 ## Distribution and licensing
 
 Publication is manual. Six library/macro/gate packages are eligible for crates.io; `quenchant-dylints` is Git-distributed and the fixture package is internal, both with `publish = false`. All eight remain workspace members under the normal gate wall. Cargo can package and dry-run the interdependent registry family together using its temporary packaging registry without uploading anything; eligibility alone is not evidence of a completed release.
