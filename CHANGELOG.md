@@ -12,16 +12,13 @@ All notable changes to quenchant are documented here.
 
 ### Unreleased Documentation
 
-- *(agents)* Align shared guidance copies
+- *(agents)* Align shared guidance and tables (#17)
 
 ### Unreleased Configuration
 
 - *(github)* Enable CodeRabbit reviews (#7)
 - *(config)* Require semicolons inside blocks (#16)
-
-### Unreleased Style
-
-- *(config)* Adopt compact Markdown tables
+- *(review)* Disable automatic reviews
 
 ### Unreleased Maintenance
 
