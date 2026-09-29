@@ -62,6 +62,8 @@ mise exec -- prek run --all-files
 
 The Dylint package's own tests and Clippy invocation run from its package directory for linker configuration. Repository tasks arrange that boundary; a root command that ignores it is not an equivalent verification run. [AGENTS.md](AGENTS.md) maps the shared guidance's source examples to the actual local commands and packages.
 
+CI installs mise-managed tools in both workspace-test and Dylint jobs so witness inventory uses the consumer-selected nextest. Tool setup retains Rustup proxies on `PATH`, preserving compiler-plugin toolchain selection. Nested consumer fixtures clear the parent nextest profile because that profile belongs to the test workspace, not the fixture.
+
 The compiler plugin loads locally:
 
 ```toml

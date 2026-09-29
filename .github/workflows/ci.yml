@@ -74,6 +74,8 @@ jobs:
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
           version: 2026.8.15
+          # Keep Rustup proxies supplying RUSTUP_TOOLCHAIN to compiler plugins.
+          export_path: false
 
       # Exact policy hits only: stale path-crate mtimes can load wrong policy.
       # Save in the job body, before rust-cache's post-job pruning.
@@ -177,6 +179,7 @@ jobs:
       - *git-checkout
       - *setup-rust
       - *install-tools
+      - *install-policy-tools
       - name: build workspace targets
         run: cargo build --workspace --all-targets
       - name: build workspace targets in fast arithmetic mode
@@ -226,6 +229,7 @@ jobs:
       - *restore-dylint-drivers
       - *restore-dylint-library
       - *install-tools
+      - *install-policy-tools
       - name: test Dylint package
         working-directory: &dylint-package crates/quenchant-dylints
         env:
