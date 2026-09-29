@@ -6,7 +6,7 @@ Read [the shared baseline](docs/agents/baseline.md), then every matching route b
 | ---- | ---- |
 | Author or review Rust | [Rust specifications and engineering](docs/agents/rust.md) |
 | Author specifications, tests, or evidence claims | [Testing and adequacy](docs/agents/testing-contracts.md) |
-| Build, format, test, or commit | [Source workflow](docs/agents/source-workflow.md) |
+| Build, format, test, commit, or land a PR | [Source workflow](docs/agents/source-workflow.md) |
 | Change CI, pins, or task coverage | [Local CI](docs/agents/ci-local.md) |
 | Publish repository text or prepare a release | [Publication](docs/agents/publication.md) |
 
@@ -29,6 +29,7 @@ The package map and consumer APIs belong in [README.md](README.md) and the linke
 | Recursive code and layouts | The Dylint call graph, ownership graph, and per-item termination grammar enforce different obligations. | A finding-free analysis is not a termination proof or a proof of implicit drop behavior. |
 | Source workflow producer/consumer examples | This repository builds its own `quenchant-gates` and loads its local `quenchant-dylints` path. No separate workflow-source installation step is used. | A tool MUST inspect the named consumer manifest, not the checkout from which it was installed. |
 | Pinned build and commands | `rust-toolchain.toml`, `mise.toml`, and `.config/mise/tasks/` select the toolchain and commands. | Use `mise run check` and `mise exec -- prek run --all-files`; NEVER substitute an ambient toolchain. |
+| Release history | `cliff.toml` renders authored-commit links through `mise run changelog` in release PRs only, after fetching full history and tags. Treefmt formats Markdown without generating history. | Ordinary PRs do not regenerate release history. |
 | Gate mapping | The root gate includes pins, metadata, publication eligibility, private rustdoc, invocation state, enforcement witnesses, tests, bare-metal builds, Miri, Dylint, Clippy, witness resolution, public boundaries, and formatting. | Source-workspace gate names are interpreted through the actual tasks, not introduced as aliases. |
 | Dylint working directory | Its Clippy and native-test tasks enter `crates/quenchant-dylints`; other workspace checks run at the root. | Cargo's configuration lookup follows the working directory, not merely a manifest argument. |
 | Miri and profiles | The `dev` and `test` profiles both keep assertions and overflow checks. Miri enables its matching library cfg through the Miri task environment. | A test-only profile setting does not establish the same behavior for the first Miri pass. |

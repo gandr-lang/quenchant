@@ -41,7 +41,7 @@ jobs:
     needs: &rust-needs [changes, ci-image-ref]
     runs-on: &linux ubuntu-latest
     steps:
-      # Checkout stays shallow except where changelog and publication need history.
+      # Checkout stays shallow except where commit lint and publication need history.
       - &git-checkout
         name: git checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -314,6 +314,13 @@ jobs:
         run: mise run check:action-pins
       - name: check publication metadata
         run: mise run check:publish
+      - name: lint authored commits
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        shell: bash
+        env:
+          COMMITLINT_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          MISE_DISABLE_TOOLS: "cargo:cargo-mutants,github:nektos/act,github:j178/prek"
+        run: git rev-list --reverse --no-merges "$COMMITLINT_BASE..HEAD" | xargs -I{} env COMMITLINT_COMMIT={} mise exec -- commitlint --from {}~1 --to {}
 
   workflow-lint:
     name: check workflow lints (zizmor)

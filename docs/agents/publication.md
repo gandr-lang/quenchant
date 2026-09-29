@@ -6,7 +6,7 @@ Public-facing files and messages MUST be independently usable. Keep workstation 
 
 ## Provenance
 
-Commit validation is defined by `commitlint.config.mjs`: an accepted type and scope, a nonempty purpose, and the required provenance trailers. No project hook supplies the trailer block automatically. The author types the externally supplied role, opaque session token, and owner co-author fields; credentials and plaintext session identities never enter the message.
+Commit validation is defined by `commitlint.config.mjs`: an accepted type and scope, a nonempty purpose, and the required provenance trailers. No project hook supplies the trailer block automatically. The author types the externally supplied role, opaque session token, owner co-author, and `Assisted-by: LLM` fields; credentials and plaintext session identities never enter the message.
 
 Repository discussions use the corresponding role/token frontmatter. NEVER add a second identity trailer or place routing aliases in the artifact. Commit prose explains the change and its constraint; it is not a session transcript.
 
