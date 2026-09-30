@@ -233,14 +233,14 @@ jobs:
       - name: test Dylint package
         working-directory: &dylint-package crates/quenchant-dylints
         env:
-          CARGO_TARGET_DIR: ../../target/dylint-tests
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/dylint-tests
         run: cargo nextest run --profile ci
       - name: exercise enforcing specification exits
         working-directory: *dylint-package
         env:
           # Environment flags replace Cargo configuration; retain the linker.
           RUSTFLAGS: --cfg anodized_panic -C linker=dylint-link
-          CARGO_TARGET_DIR: ../../target/dylint-tests-enforcing
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target/dylint-tests-enforcing
         run: cargo nextest run --profile ci --features anodized -E 'test(specification_tests::)'
       - name: lint Dylint package
         working-directory: *dylint-package
