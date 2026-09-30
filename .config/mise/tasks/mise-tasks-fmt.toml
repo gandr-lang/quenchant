@@ -3,8 +3,12 @@
 
 [treefmt]
 description = "Run treefmt"
-run = "treefmt --no-cache"
+run = "treefmt"
 
 ["treefmt:check"]
 description = "Run treefmt in CI mode"
 run = "treefmt --ci"
+
+[changelog]
+description = "Render committed release history after fetching full history and tags"
+run = "git-cliff --config cliff.toml --output CHANGELOG.md"

@@ -259,6 +259,8 @@ fn main() {
         .args(["witnesses", "--manifest-path"])
         .arg(consumer.join("Cargo.toml"))
         .current_dir(&launch)
+        // The parent test profile belongs to this workspace, not the consumer.
+        .env_remove("NEXTEST_PROFILE")
         .env("CARGO_HOME", &cargo_home)
         .env("CARGO", fixture.0.join("unselected-cargo"))
         .env("RUSTUP_TOOLCHAIN", "nightly-1900-01-02")

@@ -41,7 +41,7 @@ jobs:
     needs: &rust-needs [changes, ci-image-ref]
     runs-on: &linux ubuntu-latest
     steps:
-      # Checkout stays shallow except where changelog and publication need history.
+      # Checkout stays shallow except where commit lint and publication need history.
       - &git-checkout
         name: git checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -74,6 +74,8 @@ jobs:
         uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
         with:
           version: 2026.8.15
+          # Keep Rustup proxies supplying RUSTUP_TOOLCHAIN to compiler plugins.
+          export_path: false
 
       # Exact policy hits only: stale path-crate mtimes can load wrong policy.
       # Save in the job body, before rust-cache's post-job pruning.
@@ -177,6 +179,7 @@ jobs:
       - *git-checkout
       - *setup-rust
       - *install-tools
+      - *install-policy-tools
       - name: build workspace targets
         run: cargo build --workspace --all-targets
       - name: build workspace targets in fast arithmetic mode
@@ -226,6 +229,7 @@ jobs:
       - *restore-dylint-drivers
       - *restore-dylint-library
       - *install-tools
+      - *install-policy-tools
       - name: test Dylint package
         working-directory: &dylint-package crates/quenchant-dylints
         env:
@@ -314,6 +318,13 @@ jobs:
         run: mise run check:action-pins
       - name: check publication metadata
         run: mise run check:publish
+      - name: lint authored commits
+        if: github.event_name == 'pull_request' || github.event_name == 'merge_group'
+        shell: bash
+        env:
+          COMMITLINT_BASE: ${{ github.event.pull_request.base.sha || github.event.merge_group.base_sha }}
+          MISE_DISABLE_TOOLS: "cargo:cargo-mutants,github:nektos/act,github:j178/prek"
+        run: git rev-list --reverse --no-merges "$COMMITLINT_BASE..HEAD" | xargs -I{} env COMMITLINT_COMMIT={} mise exec -- commitlint --from {}~1 --to {}
 
   workflow-lint:
     name: check workflow lints (zizmor)
