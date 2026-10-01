@@ -80,6 +80,9 @@ fn constructors()
     let unsized_pointer = core::ptr::from_ref::<[u32]>(&words);
     let mut buffer = [0_u32; 2];
     let unsized_length = ptr::from_mut::<[u32]>(&mut buffer).len();
+    // The fix must point into the box the type parameter dereferenced, not at it.
+    let owned = Box::new(17_u32);
+    let through_box = core::ptr::from_ref::<u32>(&owned);
 }
 
 // Accepted: receivers and arguments that are already reference values.
@@ -101,6 +104,8 @@ fn accepted(
     let mut vector = vec![0_u32; 4];
     let element = vector.as_mut_ptr();
     let indexed = vector[0 .. 2].as_ptr();
+    // An overloaded dereference in the constructor's coercion is unavoidable too.
+    let through_vector = ptr::from_ref::<[u32]>(&vector);
 }
 
 // Accepted: the raw forms the suggestions produce.

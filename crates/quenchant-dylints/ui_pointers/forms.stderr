@@ -225,5 +225,17 @@ LL -     let unsized_length = ptr::from_mut::<[u32]>(&mut buffer).len();
 LL +     let unsized_length = (&raw mut buffer as *mut [u32]).len();
    |
 
-error: aborting due to 19 previous errors
+error: this borrow only feeds a pointer constructor
+  --> $DIR/forms.rs:85:23
+   |
+LL |     let through_box = core::ptr::from_ref::<u32>(&owned);
+   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: take the pointer without a reference
+   |
+LL -     let through_box = core::ptr::from_ref::<u32>(&owned);
+LL +     let through_box = &raw const *owned;
+   |
+
+error: aborting due to 20 previous errors
 

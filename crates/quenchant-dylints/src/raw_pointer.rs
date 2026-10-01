@@ -36,6 +36,7 @@ use rustc_middle::ty::adjustment::Adjust;
 use rustc_middle::ty::adjustment::Adjustment;
 use rustc_middle::ty::adjustment::AutoBorrow;
 use rustc_middle::ty::adjustment::DerefAdjustKind;
+use rustc_middle::ty::adjustment::PointerCoercion;
 use rustc_session::declare_lint;
 use rustc_session::impl_lint_pass;
 use rustc_span::Span;
@@ -483,9 +484,13 @@ fn autoref<'tcx>(
 /// - ensures: a call to `core::ptr::from_ref` or `core::ptr::from_mut`, under
 ///   any path, whose argument borrows a non-temporary place is reported with a
 ///   `&raw` replacement.
-/// - ensures: when the constructor's type parameter unsizes the borrow, the
-///   replacement casts to the call's pointer type, since `&raw` keeps the
-///   place's own type and `cast` cannot unsize.
+/// - ensures: when the constructor's type parameter coerces the borrow, the
+///   replacement repeats the coercion: each builtin dereference after the one
+///   undoing the borrow becomes a `*` of the place, and an unsizing step casts
+///   to the call's pointer type, since `&raw` keeps the place's own type and
+///   `cast` cannot unsize.
+/// - ensures: a borrow coerced through an overloaded dereference is not
+///   reported, since `&raw` cannot avoid the reference `Deref::deref` creates.
 /// - ensures: the replacement is parenthesized where its parent expression
 ///   would otherwise bind to the place: a method receiver, a field or index
 ///   base, and, for a cast replacement, a unary or borrow operand.
@@ -512,13 +517,10 @@ fn check_pointer_constructor<'tcx>(
         return;
     };
     let path = cx.get_def_path(function);
-    let mutability = match path
-        .iter()
-        .map(rustc_span::Symbol::as_str)
-        .collect::<Vec<_>>()[..]
-    {
-        | ["core", "ptr", "from_ref"] => Mutability::Not,
-        | ["core", "ptr", "from_mut"] => Mutability::Mut,
+    let mut names = path.iter().map(rustc_span::Symbol::as_str);
+    let mutability = match (names.next(), names.next(), names.next(), names.next()) {
+        | (Some("core"), Some("ptr"), Some("from_ref"), None) => Mutability::Not,
+        | (Some("core"), Some("ptr"), Some("from_mut"), None) => Mutability::Mut,
         | _ => return,
     };
     let ExprKind::AddrOf(BorrowKind::Ref, _, place) = argument.kind
@@ -529,6 +531,25 @@ fn check_pointer_constructor<'tcx>(
         return;
     }
     let typeck = cx.typeck_results();
+    // The type parameter may coerce the borrow: dereferences reach the
+    // pointee, then an unsizing step may follow. The first dereference only
+    // undoes the explicit borrow; a cast can neither dereference nor reach
+    // through an overloaded `Deref`.
+    let adjustments = typeck.expr_adjustments(argument);
+    let steps = adjustments
+        .iter()
+        .take_while(|adjustment| matches!(adjustment.kind, Adjust::Deref(_)));
+    if steps
+        .clone()
+        .skip(1)
+        .any(|adjustment| !matches!(adjustment.kind, Adjust::Deref(DerefAdjustKind::Builtin)))
+    {
+        return;
+    }
+    let derefs = steps.count().saturating_sub(1);
+    let unsized_by_call = adjustments
+        .iter()
+        .any(|adjustment| matches!(adjustment.kind, Adjust::Pointer(PointerCoercion::Unsize)));
     let mut applicability = Applicability::MachineApplicable;
     let place_text = snippet_with_context(
         cx,
@@ -538,10 +559,13 @@ fn check_pointer_constructor<'tcx>(
         &mut applicability,
     )
     .0;
-    let mut replacement = format!("&raw {} {place_text}", mutability.ptr_str());
-    let pointer = typeck.expr_ty(call);
-    let unsized_by_call = pointer.builtin_deref(true) != Some(typeck.expr_ty(place));
+    let mut replacement = format!(
+        "&raw {} {}{place_text}",
+        mutability.ptr_str(),
+        "*".repeat(derefs)
+    );
     if unsized_by_call {
+        let pointer = typeck.expr_ty(call);
         // A named type may not be in scope at the call site as printed.
         let names_items = pointer.walk().any(|argument| {
             argument.as_type().is_some_and(|nested| {
