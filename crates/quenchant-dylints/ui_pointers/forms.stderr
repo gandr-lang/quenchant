@@ -1,0 +1,181 @@
+error: this borrow becomes a raw pointer
+  --> $DIR/forms.rs:26:33
+   |
+LL |     let pointer: *const [u32] = &words;
+   |                                 ^^^^^^
+   |
+   = note: requested on the command line with `-D raw-pointer-through-reference`
+help: take the pointer without a reference
+   |
+LL |     let pointer: *const [u32] = &raw const words;
+   |                                  +++++++++
+
+error: this borrow becomes a raw pointer
+  --> $DIR/forms.rs:27:17
+   |
+LL |     takes_slice(&words);
+   |                 ^^^^^^
+   |
+help: take the pointer without a reference
+   |
+LL |     takes_slice(&raw const words);
+   |                  +++++++++
+
+error: this reference becomes a raw pointer by coercion
+  --> $DIR/forms.rs:36:29
+   |
+LL |     let mutable: *mut u32 = value;
+   |                             ^^^^^
+   |
+help: convert the reference explicitly
+   |
+LL -     let mutable: *mut u32 = value;
+LL +     let mutable: *mut u32 = std::ptr::from_mut(value);
+   |
+
+error: this reference becomes a raw pointer by coercion
+  --> $DIR/forms.rs:37:32
+   |
+LL |     let constant: *const u32 = shared;
+   |                                ^^^^^^
+   |
+help: convert the reference explicitly
+   |
+LL -     let constant: *const u32 = shared;
+LL +     let constant: *const u32 = std::ptr::from_ref(shared);
+   |
+
+error: this reference becomes a raw pointer by coercion
+  --> $DIR/forms.rs:38:32
+   |
+LL |     let narrowed: *const u32 = value;
+   |                                ^^^^^
+   |
+help: convert the reference explicitly
+   |
+LL -     let narrowed: *const u32 = value;
+LL +     let narrowed: *const u32 = std::ptr::from_mut(value).cast_const();
+   |
+
+error: this reference becomes a raw pointer by coercion
+  --> $DIR/forms.rs:39:15
+   |
+LL |     takes_mut(value);
+   |               ^^^^^
+   |
+help: convert the reference explicitly
+   |
+LL -     takes_mut(value);
+LL +     takes_mut(std::ptr::from_mut(value));
+   |
+
+error: this method borrows the whole place before taking its pointer
+  --> $DIR/forms.rs:46:17
+   |
+LL |     let first = words.as_mut_ptr();
+   |                 ^^^^^^^^^^^^^^^^^^
+   |
+help: take the pointer without a reference
+   |
+LL -     let first = words.as_mut_ptr();
+LL +     let first = (&raw mut words).cast::<u32>();
+   |
+
+error: this method borrows the whole place before taking its pointer
+  --> $DIR/forms.rs:47:16
+   |
+LL |     let read = words.as_ptr();
+   |                ^^^^^^^^^^^^^^
+   |
+help: take the pointer without a reference
+   |
+LL -     let read = words.as_ptr();
+LL +     let read = (&raw const words).cast::<u32>();
+   |
+
+error: this method borrows the whole place before taking its pointer
+  --> $DIR/forms.rs:49:23
+   |
+LL |     let boxed_first = boxed.as_mut_ptr();
+   |                       ^^^^^^^^^^^^^^^^^^
+   |
+help: take the pointer without a reference
+   |
+LL -     let boxed_first = boxed.as_mut_ptr();
+LL +     let boxed_first = (&raw mut *boxed).cast::<u32>();
+   |
+
+error: this method borrows the whole place before taking its pointer
+  --> $DIR/forms.rs:54:17
+   |
+LL |     let field = frame.words.as_mut_ptr();
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: take the pointer without a reference
+   |
+LL -     let field = frame.words.as_mut_ptr();
+LL +     let field = (&raw mut frame.words).cast::<u32>();
+   |
+
+error: this method borrows the whole place before taking its pointer
+  --> $DIR/forms.rs:63:29
+   |
+LL |     let explicit = unsafe { (&mut *raw).as_mut_ptr() };
+   |                             ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: take the pointer without a reference
+   |
+LL -     let explicit = unsafe { (&mut *raw).as_mut_ptr() };
+LL +     let explicit = unsafe { (&raw mut *raw).cast::<u32>() };
+   |
+
+error: this method borrows the whole place before taking its pointer
+  --> $DIR/forms.rs:64:29
+   |
+LL |     let implicit = unsafe { (*raw).as_mut_ptr() };
+   |                             ^^^^^^^^^^^^^^^^^^^
+   |
+help: take the pointer without a reference
+   |
+LL -     let implicit = unsafe { (*raw).as_mut_ptr() };
+LL +     let implicit = unsafe { (&raw mut *raw).cast::<u32>() };
+   |
+
+error: this method borrows the whole place before taking its pointer
+  --> $DIR/forms.rs:65:26
+   |
+LL |     let field = unsafe { (*frame).words.as_ptr() };
+   |                          ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: take the pointer without a reference
+   |
+LL -     let field = unsafe { (*frame).words.as_ptr() };
+LL +     let field = unsafe { (&raw const (*frame).words).cast::<u32>() };
+   |
+
+error: this borrow only feeds a pointer constructor
+  --> $DIR/forms.rs:72:19
+   |
+LL |     let mutable = ptr::from_mut(&mut word);
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: take the pointer without a reference
+   |
+LL -     let mutable = ptr::from_mut(&mut word);
+LL +     let mutable = &raw mut word;
+   |
+
+error: this borrow only feeds a pointer constructor
+  --> $DIR/forms.rs:73:20
+   |
+LL |     let constant = core::ptr::from_ref(&word);
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+help: take the pointer without a reference
+   |
+LL -     let constant = core::ptr::from_ref(&word);
+LL +     let constant = &raw const word;
+   |
+
+error: aborting due to 15 previous errors
+

@@ -30,6 +30,7 @@
 extern crate alloc;
 extern crate rustc_ast;
 
+extern crate rustc_errors;
 extern crate rustc_hir;
 extern crate rustc_lint;
 extern crate rustc_middle;
@@ -43,6 +44,7 @@ mod graph;
 mod judgement;
 mod option_signature;
 mod ownership;
+mod raw_pointer;
 mod rustdoc;
 mod safety;
 mod semantic;
@@ -317,6 +319,7 @@ pub fn register_lints(
         SPECIFICATION_PRESENT,
         arithmetic::PRIMITIVE_ARITHMETIC,
         option_signature::OPTION_SIGNATURE,
+        raw_pointer::RAW_POINTER_THROUGH_REFERENCE,
         safety::UNSAFE_SAFETY_DOCUMENTATION,
     ]);
     lint_store.register_pre_expansion_pass(Box::new(|| {
@@ -330,6 +333,9 @@ pub fn register_lints(
     lint_store.register_late_pass(Box::new(|_| Box::new(WorkflowSpecification)));
     lint_store.register_late_pass(Box::new(|_| Box::new(arithmetic::PrimitiveArithmetic)));
     lint_store.register_late_pass(Box::new(|_| Box::new(option_signature::OptionSignature)));
+    lint_store.register_late_pass(Box::new(|_| {
+        Box::new(raw_pointer::RawPointerThroughReference)
+    }));
 }
 
 /// Every member of a recovered call cycle receives this denial.
@@ -895,6 +901,20 @@ non_owning_generics = [
         ]);
         dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_safety")
             .rustc_flags(flags)
+            .run();
+    }
+
+    #[test]
+    fn ui_pointers()
+    {
+        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_pointers")
+            .rustc_flags([
+                "--edition=2024",
+                "-Dunknown-lints",
+                "-Draw_pointer_through_reference",
+                "-Aprimitive_signature",
+                "-Aspecification_present",
+            ])
             .run();
     }
 
