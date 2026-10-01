@@ -80,6 +80,8 @@ The plugin is a policy floor, not a proof of totality or complete semantics. Cal
 
 The primitive-signature rule does not establish a wrapper's meaning, visibility, conversions, or absence policy. `option_signature` checks absence exposure separately; neither rule proves that a chosen wrapper or reason enum models the domain correctly.
 
+The primitive-signature rule reads authorship from the item's name: a declaration under a name the author wrote is the author's, and one under a name a foreign macro made up is not. `cxx` gives the shims behind a shared struct carried in a `Vec`, behind a `SharedPtr`, and behind each `extern "Rust"` function the author's spans, but names them itself, so their `usize` lengths and primitive wire shapes stay outside the rule. A bridge's own declarations keep the author's names and stay under it, including those whose signature `cxx` writes out itself, as it does for a function returning a `Result`. A crate-local `macro_rules!` expansion stays under it too.
+
 ### Arithmetic and absence activation
 
 `primitive_arithmetic` and `option_signature` are opt-in lints; the nine other rules retain their default levels. Select both explicitly in the consumer's Dylint invocation or through `cfg_attr(dylint_lib = "quenchant_dylints", deny(primitive_arithmetic, option_signature))` on its crate roots. Registration alone does not enable either policy. The producer's UI suites deny both the selected predicate and unknown lint names; a missing predicate cannot satisfy their expected diagnostics.

@@ -380,6 +380,39 @@ fn authored(
     if declaration.in_external_macro(cx.tcx.sess.source_map()) {
         return AuthoredItem(false);
     }
+    name_authored(cx, def_id)
+}
+
+/// Name provenance alone separates the author's declaration from a sibling a
+/// foreign macro manufactures under a name of its own.
+///
+/// # Specification
+/// - requires: `def_id` identifies a crate-local item.
+/// - ensures: answers affirmatively exactly when the item has a name span that
+///   rustc does not treat as belonging to an external macro and whose source
+///   text is the item's own identifier. A declaration a foreign macro re-emits
+///   under the author's identifier answers affirmatively even where the macro
+///   wrote the rest of the signature itself, as `cxx` writes the signature of a
+///   bridge function that returns a `Result`; a declaration under a name the
+///   macro made up, such as `cxx`'s `Vec` and `SharedPtr` shims, does not.
+/// - provides: the name half of [`authored`], and on its own the authorship the
+///   primitive-signature rule reads: a signature the author declared stays
+///   under that rule whichever macro wrote out its tokens.
+/// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the signature matrix separates a `cxx` bridge's
+///   manufactured `Vec` and `SharedPtr` glue (exempt) from the bridge's own
+///   declarations, with and without a `Result`, and an ordinary function in the
+///   same file (all reported); the presence matrices reach it through
+///   [`authored`].
+/// - witness: `tests::ui_signatures`
+/// - witness: `tests::ui_specifications`
+pub fn name_authored(
+    cx: &LateContext<'_>,
+    def_id: LocalDefId,
+) -> AuthoredItem
+{
     let Some(name) = cx.tcx.def_ident_span(def_id)
     else {
         return AuthoredItem(false);
