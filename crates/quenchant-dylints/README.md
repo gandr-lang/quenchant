@@ -70,6 +70,7 @@ For normal work, prefer the repository's `mise run check:tests` task, which sele
 | `recursive_owned_pointer` | A local data type cannot own a path back to itself through the analyzed field graph |
 | `specification_present` | Authored functions and methods carry a specification section; `trivial` cannot sit beside substantive clauses |
 | `unsafe_safety_documentation` | Unsafe declarations carry a `# Safety` section with a nonempty `- unsafe invariants:` clause, including C++ bridge extern blocks |
+| `raw_pointer_through_reference` | A raw pointer is taken with `&raw`, not through a reference created only to become it |
 | `adequacy_block_grammar` | An authored adequacy section has the required hypothesis and witness shape |
 | `mode_dispatch_wildcard` | A declared judgment scrutinee cannot be hidden behind a fallback match arm |
 | `primitive_arithmetic` | Primitive integer operators and resolved inherent arithmetic families use the nominal arithmetic surface |
@@ -81,7 +82,7 @@ The primitive-signature rule does not establish a wrapper's meaning, visibility,
 
 ### Arithmetic and absence activation
 
-`primitive_arithmetic` and `option_signature` are opt-in lints; the eight other rules retain their default levels. Select both explicitly in the consumer's Dylint invocation or through `cfg_attr(dylint_lib = "quenchant_dylints", deny(primitive_arithmetic, option_signature))` on its crate roots. Registration alone does not enable either policy. The producer's UI suites deny both the selected predicate and unknown lint names; a missing predicate cannot satisfy their expected diagnostics.
+`primitive_arithmetic` and `option_signature` are opt-in lints; the nine other rules retain their default levels. Select both explicitly in the consumer's Dylint invocation or through `cfg_attr(dylint_lib = "quenchant_dylints", deny(primitive_arithmetic, option_signature))` on its crate roots. Registration alone does not enable either policy. The producer's UI suites deny both the selected predicate and unknown lint names; a missing predicate cannot satisfy their expected diagnostics.
 
 ### Primitive arithmetic
 
@@ -94,6 +95,17 @@ Method definition identity and primitive operand types are both checked. The com
 The representation boundary is an implementation of the local `quenchant_arith::arith::Integer` trait for the local `quenchant_arith::arith::Int<primitive integer>` type. Those methods implement the library's explicit arithmetic families and therefore must reach primitive operations. Closures within the method retain that boundary; nested functions, unrelated producer helpers, different traits, and different nominal self types do not. This is canonical definition-path recognition, not a crate-wide exemption or an authenticity check on a package bearing that name.
 
 Resolved function items remain visible, including before pointer coercion. An already-erased function pointer has no recoverable method identity. Generic operator inputs that remain unresolved during body type checking are not treated as primitive; this pass does not recheck generic bodies at monomorphization. Rustc's external-expansion diagnostic filtering remains a reporting boundary. Passing this lint is not a proof that overflow is unreachable or that a strict operation cannot panic.
+
+### Raw pointers
+
+A reference asserts alignment, a valid value and, for `&mut`, uniqueness, and a pointer derived from it inherits those assertions. Beside `unsafe` code the memory may be uninitialized, shared with a device, or aliased by another raw pointer that the new reference invalidates. `raw_pointer_through_reference` refuses four origins:
+
+- a borrow coerced to a raw pointer through an unsizing step, such as `&words` passed as `*const [u32]`; the suggestion is `&raw const words`;
+- a reference value coerced to a raw pointer; the suggestion is `ptr::from_ref(r)`, `ptr::from_mut(r)`, or `ptr::from_mut(r).cast_const()`;
+- a slice's `as_ptr` or `as_mut_ptr` whose receiver borrows an owned place, a place behind owned boxes, or a place behind a raw pointer, with or without an explicit `&mut`; the suggestion is `(&raw mut place).cast::<T>()`, dereferencing through each box method resolution passed, so `(&mut boxed).as_mut_ptr()` becomes `(&raw mut *boxed).cast::<T>()`;
+- a fresh borrow passed to `ptr::from_ref` or `ptr::from_mut`; the suggestion is `&raw const place` or `&raw mut place`. When the constructor's type parameter unsizes the borrow, as in `ptr::from_ref::<[u32]>(&words)`, the suggestion casts to the call's pointer type, `&raw const words as *const [u32]`, because `&raw` keeps the place's own type and `cast` cannot unsize. The replacement is parenthesized where it is a method receiver or a field or index base.
+
+Every suggestion is machine-applicable except a constructor cast whose pointee names an item, such as `dyn Trait` or a struct, which may not be in scope as printed; the UI suite applies the machine-applicable ones and recompiles the result. A receiver or argument that is already a reference value, or a place reached through one or through an overloaded dereference such as `Rc`'s, creates no new borrow `&raw` could avoid and is accepted. Vectors' own `as_ptr` and `as_mut_ptr` are accepted because they take no reference to the elements. The plain implicit coercion `let p: *mut T = &mut x;` is Clippy's `borrow_as_ptr`, which this lint leaves to it; a consumer relying on that form needs Clippy's `pedantic` group or that lint. Macro-expanded code and borrows of temporaries are not inspected.
 
 ### Absence signatures
 
