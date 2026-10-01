@@ -24,6 +24,7 @@ use rustc_hir::BorrowKind;
 use rustc_hir::Expr;
 use rustc_hir::ExprKind;
 use rustc_hir::Mutability;
+use rustc_hir::Node;
 use rustc_hir::QPath;
 use rustc_hir::UnOp;
 use rustc_hir::def::DefKind;
@@ -256,7 +257,7 @@ fn check_coercion<'tcx>(
         if is_expr_temporary_value(cx, place) || adjustments.len() == 2 {
             return;
         }
-        emit_raw_borrow(cx, expr.span, expr, place, target, BorrowUse::Coercion);
+        emit_raw_borrow(cx, expr.span, expr, place, target);
         return;
     }
     let Some(std_or_core) = std_or_core(cx)
@@ -369,10 +370,28 @@ fn check_pointer_method<'tcx>(
     else {
         return;
     };
-    // An autoref'd receiver may first be dereferenced through owned boxes; the
-    // place the method borrows is then that many dereferences of the receiver.
+    // Method resolution may dereference the receiver, through owned boxes, to
+    // reach its slice; the place the method borrows is then that many
+    // dereferences of the receiver. Under an explicit borrow the first step
+    // only undoes that borrow, and an overloaded step goes through a reference
+    // `&raw` cannot avoid.
     let (place, derefs) = if let ExprKind::AddrOf(BorrowKind::Ref, _, place) = receiver.kind {
-        (place, 0)
+        let steps: Vec<DerefAdjustKind> = typeck
+            .expr_adjustments(receiver)
+            .iter()
+            .map_while(|adjustment| match adjustment.kind {
+                | Adjust::Deref(kind) => Some(kind),
+                | _ => None,
+            })
+            .collect();
+        if steps
+            .iter()
+            .skip(1)
+            .any(|kind| !matches!(kind, DerefAdjustKind::Builtin))
+        {
+            return;
+        }
+        (place, steps.len().saturating_sub(1))
     }
     else if autoref(cx, receiver) == Receiver::Autoref {
         let derefs = typeck
@@ -464,6 +483,12 @@ fn autoref<'tcx>(
 /// - ensures: a call to `core::ptr::from_ref` or `core::ptr::from_mut`, under
 ///   any path, whose argument borrows a non-temporary place is reported with a
 ///   `&raw` replacement.
+/// - ensures: when the constructor's type parameter unsizes the borrow, the
+///   replacement casts to the call's pointer type, since `&raw` keeps the
+///   place's own type and `cast` cannot unsize.
+/// - ensures: the replacement is parenthesized where its parent expression
+///   would otherwise bind to the place: a method receiver, a field or index
+///   base, and, for a cast replacement, a unary or borrow operand.
 /// - ensures: an argument that is an existing reference value is not reported.
 /// - panics: none.
 ///
@@ -503,31 +528,67 @@ fn check_pointer_constructor<'tcx>(
     if is_expr_temporary_value(cx, place) {
         return;
     }
-    emit_raw_borrow(
+    let typeck = cx.typeck_results();
+    let mut applicability = Applicability::MachineApplicable;
+    let place_text = snippet_with_context(
         cx,
+        place.span,
+        argument.span.ctxt(),
+        "..",
+        &mut applicability,
+    )
+    .0;
+    let mut replacement = format!("&raw {} {place_text}", mutability.ptr_str());
+    let pointer = typeck.expr_ty(call);
+    let unsized_by_call = pointer.builtin_deref(true) != Some(typeck.expr_ty(place));
+    if unsized_by_call {
+        // A named type may not be in scope at the call site as printed.
+        let names_items = pointer.walk().any(|argument| {
+            argument.as_type().is_some_and(|nested| {
+                matches!(
+                    nested.kind(),
+                    ty::Adt(..) | ty::Dynamic(..) | ty::Param(..) | ty::Alias(..)
+                )
+            })
+        });
+        if names_items {
+            applicability = Applicability::MaybeIncorrect;
+        }
+        replacement = format!("{replacement} as {pointer}");
+    }
+    let parenthesize = match cx.tcx.parent_hir_node(call.hir_id) {
+        | Node::Expr(parent) => match parent.kind {
+            | ExprKind::MethodCall(_, receiver, ..) => receiver.hir_id == call.hir_id,
+            | ExprKind::Field(base, _) | ExprKind::Index(base, ..) => base.hir_id == call.hir_id,
+            | ExprKind::Unary(..) | ExprKind::AddrOf(..) => unsized_by_call,
+            | _ => false,
+        },
+        | _ => false,
+    };
+    if parenthesize {
+        replacement = format!("({replacement})");
+    }
+    span_lint_and_then(
+        cx,
+        RAW_POINTER_THROUGH_REFERENCE,
         call.span,
-        argument,
-        place,
-        mutability,
-        BorrowUse::Constructor,
+        "this borrow only feeds a pointer constructor",
+        |diagnostic| {
+            diagnostic.span_suggestion_verbose(
+                call.span,
+                "take the pointer without a reference",
+                replacement,
+                applicability,
+            );
+        },
     );
 }
 
-/// What a refused fresh borrow is used for.
-#[derive(Clone, Copy)]
-enum BorrowUse
-{
-    /// Coerced to a raw pointer.
-    Coercion,
-    /// Passed to `ptr::from_ref` or `ptr::from_mut`.
-    Constructor,
-}
-
-/// Report a borrow whose `&raw` form replaces the reported span.
+/// Report a borrow coerced to a raw pointer, suggesting its `&raw` form.
 ///
 /// # Specification
-/// - ensures: one diagnostic at `span`, worded for `usage`, suggesting `&raw
-///   const` or `&raw mut` of `place`.
+/// - ensures: one diagnostic at `span`, suggesting `&raw const` or `&raw mut`
+///   of `place` in the borrow's own position, so the coercion still applies.
 /// - panics: none.
 fn emit_raw_borrow<'tcx>(
     cx: &LateContext<'tcx>,
@@ -535,13 +596,8 @@ fn emit_raw_borrow<'tcx>(
     borrow: &'tcx Expr<'tcx>,
     place: &'tcx Expr<'tcx>,
     mutability: Mutability,
-    usage: BorrowUse,
 )
 {
-    let message = match usage {
-        | BorrowUse::Coercion => "this borrow becomes a raw pointer",
-        | BorrowUse::Constructor => "this borrow only feeds a pointer constructor",
-    };
     let mut applicability = Applicability::MachineApplicable;
     let place_text =
         snippet_with_context(cx, place.span, borrow.span.ctxt(), "..", &mut applicability).0;
@@ -549,7 +605,7 @@ fn emit_raw_borrow<'tcx>(
         cx,
         RAW_POINTER_THROUGH_REFERENCE,
         span,
-        message,
+        "this borrow becomes a raw pointer",
         |diagnostic| {
             diagnostic.span_suggestion_verbose(
                 span,
