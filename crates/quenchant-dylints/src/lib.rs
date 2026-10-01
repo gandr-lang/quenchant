@@ -106,6 +106,7 @@ use crate::semantic::TransparentReprDeclared;
 use crate::signature::check_fn_decl;
 use crate::specification::SPECIFICATION_PRESENT;
 use crate::specification::WorkflowSpecification;
+use crate::specification::name_authored;
 use crate::termination::termination_defect;
 
 dylint_linting::dylint_library!();
@@ -468,9 +469,9 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
     ///
     /// # Specification
     /// - ensures: checks the declaration unless the function implements a
-    ///   non-local trait, and records the function's node and outgoing call
-    ///   edges for the recursion search at crate end; a closure is neither
-    ///   checked nor recorded.
+    ///   non-local trait or its name is not the workspace's own, and records
+    ///   the function's node and outgoing call edges for the recursion search
+    ///   at crate end; a closure is neither checked nor recorded.
     /// - panics: none.
     fn check_fn(
         &mut self,
@@ -486,7 +487,7 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
             return;
         }
 
-        if !implements_non_local_trait(cx, def_id).0 {
+        if !implements_non_local_trait(cx, def_id).0 && name_authored(cx, def_id).0 {
             let semantic_sig = cx
                 .tcx
                 .fn_sig(def_id)
@@ -508,8 +509,9 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
     /// Body-free trait methods still own their authored signature boundary.
     ///
     /// # Specification
-    /// - ensures: checks the declaration of a method declared without a body; a
-    ///   provided one reaches `check_fn` instead.
+    /// - ensures: checks the declaration of a method declared without a body
+    ///   whose name is the workspace's own; a provided one reaches `check_fn`
+    ///   instead.
     /// - panics: none.
     fn check_trait_item(
         &mut self,
@@ -517,7 +519,9 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
         trait_item: &'tcx TraitItem<'tcx>,
     )
     {
-        if let TraitItemKind::Fn(fn_sig, TraitFn::Required(_)) = trait_item.kind {
+        if let TraitItemKind::Fn(fn_sig, TraitFn::Required(_)) = trait_item.kind
+            && name_authored(cx, trait_item.owner_id.def_id).0
+        {
             let semantic_sig = cx
                 .tcx
                 .fn_sig(trait_item.owner_id.def_id)
@@ -531,8 +535,8 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
     /// Foreign function declarations still expose an authored signature.
     ///
     /// # Specification
-    /// - ensures: checks the declaration of a foreign function, and ignores
-    ///   every other foreign item kind.
+    /// - ensures: checks the declaration of a foreign function whose name is
+    ///   the workspace's own, and ignores every other foreign item kind.
     /// - panics: none.
     fn check_foreign_item(
         &mut self,
@@ -540,7 +544,9 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
         item: &'tcx ForeignItem<'tcx>,
     )
     {
-        if let ForeignItemKind::Fn(fn_sig, ..) = item.kind {
+        if let ForeignItemKind::Fn(fn_sig, ..) = item.kind
+            && name_authored(cx, item.owner_id.def_id).0
+        {
             let semantic_sig = cx
                 .tcx
                 .fn_sig(item.owner_id.def_id)
@@ -900,6 +906,22 @@ non_owning_generics = [
             "-Aprimitive_signature".to_owned(),
         ]);
         dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_safety")
+            .rustc_flags(flags)
+            .run();
+    }
+
+    #[test]
+    fn ui_signatures()
+    {
+        let mut flags = fixture_extern_flags();
+        flags.extend([
+            "-Dunknown-lints".to_owned(),
+            "-Dprimitive_signature".to_owned(),
+            "-Aspecification_present".to_owned(),
+            "-Aunsafe_safety_documentation".to_owned(),
+            "-Asingle_field_struct_needs_transparent_repr".to_owned(),
+        ]);
+        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_signatures")
             .rustc_flags(flags)
             .run();
     }

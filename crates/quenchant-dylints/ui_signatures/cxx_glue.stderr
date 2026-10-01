@@ -1,0 +1,34 @@
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/cxx_glue.rs:21:25
+   |
+LL |         fn count(value: i32) -> u64;
+   |                         ^^^
+   |
+   = note: requested on the command line with `-D primitive-signature`
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/cxx_glue.rs:21:33
+   |
+LL |         fn count(value: i32) -> u64;
+   |                                 ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/cxx_glue.rs:22:28
+   |
+LL |         fn fallible(value: i32) -> Result<u64>;
+   |                            ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/cxx_glue.rs:22:43
+   |
+LL |         fn fallible(value: i32) -> Result<u64>;
+   |                                           ^^^
+
+error: signature exposes a Rust primitive before a semantic wrapper boundary
+  --> $DIR/cxx_glue.rs:26:20
+   |
+LL | fn authored(value: i32) -> Count
+   |                    ^^^
+
+error: aborting due to 5 previous errors
+
