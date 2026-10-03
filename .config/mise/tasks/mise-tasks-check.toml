@@ -79,7 +79,11 @@ description = "Load the workspace's own Dylint library over the workspace"
 env.CARGO_INCREMENTAL = "0"
 # The plugin must link through dylint-link even when cargo dylint builds it
 # from the workspace root, where its crate-local Cargo configuration is absent.
+# Cargo's linker variable is per target, so each host the wall runs on is
+# named: the Linux CI image and the Apple Silicon and Intel developer hosts.
 env.CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER = "dylint-link"
+env.CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER = "dylint-link"
+env.CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER = "dylint-link"
 # Cargo's encoded flags win even when empty. Otherwise encode the ordinary
 # whitespace-separated flags before appending this policy-only cfg. Dylint's
 # workspace wrapper alone does not configure external dependencies.

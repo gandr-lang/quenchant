@@ -11,6 +11,8 @@ fn callback(value: fn(Value) -> Option<Value>) { let _ = value; }
 async fn asynchronous() -> Missing<Value> { None }
 fn future() -> impl core::future::Future<Output = Missing<Value>> { async { None } }
 fn dynamic(value: &dyn Iterator<Item = Missing<Value>>) { let _ = value; }
+fn borrowed<'a>(value: &'a Value) -> impl core::future::Future<Output = Missing<&'a Value>> + 'a { async move { Some(value) } }
+fn borrowed_clean<'a>(value: &'a [Value]) -> impl Iterator<Item = &'a Value> + 'a { value.iter() }
 
 trait Local {
     fn required(value: Missing<Value>);

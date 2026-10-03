@@ -43,40 +43,46 @@ LL | fn dynamic(value: &dyn Iterator<Item = Missing<Value>>) { let _ = value; }
    |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 error: crate-defined signatures must preserve the reason for absence instead of exposing Option
-  --> $DIR/structural.rs:16:24
+  --> $DIR/structural.rs:14:38
+   |
+LL | fn borrowed<'a>(value: &'a Value) -> impl core::future::Future<Output = Missing<&'a Value>> + 'a { async move { Some(value) } }
+   |                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: crate-defined signatures must preserve the reason for absence instead of exposing Option
+  --> $DIR/structural.rs:18:24
    |
 LL |     fn required(value: Missing<Value>);
    |                        ^^^^^^^^^^^^^^
 
 error: crate-defined signatures must preserve the reason for absence instead of exposing Option
-  --> $DIR/structural.rs:17:22
+  --> $DIR/structural.rs:19:22
    |
 LL |     fn provided() -> Option<Value> { None }
    |                      ^^^^^^^^^^^^^
 
 error: crate-defined signatures must preserve the reason for absence instead of exposing Option
-  --> $DIR/structural.rs:20:24
+  --> $DIR/structural.rs:22:24
    |
 LL |     fn required(value: Missing<Value>) { let _ = value; }
    |                        ^^^^^^^^^^^^^^
 
 error: crate-defined signatures must preserve the reason for absence instead of exposing Option
-  --> $DIR/structural.rs:23:32
+  --> $DIR/structural.rs:25:32
    |
 LL |     const fn inherent(self) -> Option<Self> { Some(self) }
    |                                ^^^^^^^^^^^^
 
 error: crate-defined signatures must preserve the reason for absence instead of exposing Option
-  --> $DIR/structural.rs:27:23
+  --> $DIR/structural.rs:29:23
    |
 LL |     fn foreign(value: Option<core::num::NonZeroU8>) -> Option<core::num::NonZeroU8>;
    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 error: crate-defined signatures must preserve the reason for absence instead of exposing Option
-  --> $DIR/structural.rs:27:56
+  --> $DIR/structural.rs:29:56
    |
 LL |     fn foreign(value: Option<core::num::NonZeroU8>) -> Option<core::num::NonZeroU8>;
    |                                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-error: aborting due to 13 previous errors
+error: aborting due to 14 previous errors
 

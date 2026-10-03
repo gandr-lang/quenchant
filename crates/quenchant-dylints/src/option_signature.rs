@@ -96,7 +96,7 @@ impl<'tcx> LateLintPass<'tcx> for OptionSignature
 /// The foreign declaration supplies a structural layer, never a substituted
 /// one.
 #[derive(Clone, Copy)]
-enum Required<'tcx>
+pub enum Required<'tcx>
 {
     /// This layer is authored locally or introduced by substitution.
     Authored,
@@ -108,7 +108,7 @@ enum Required<'tcx>
 /// Type traversal reports a semantic absence exposure once per signature
 /// position.
 #[derive(Clone, Copy)]
-enum Exposure
+pub enum Exposure
 {
     /// A non-required Option is reachable before the nominal boundary.
     Option,
@@ -186,14 +186,18 @@ fn check_declaration<'tcx>(
 ///   terminate traversal; other ADT arguments and function signatures are
 ///   inspected.
 /// - ensures: opaque bounds expose associated output types when rustc retains
-///   them.
+///   them, and the non-self arguments of their trait bounds; the opaque is
+///   never re-entered through its own bounds' `Self`.
+/// - ensures: terminates: each type is inspected once up to region identity, so
+///   the fresh regions rustc mints when it instantiates an opaque's bounds
+///   cannot make the same structure look new.
 /// - panics: none.
 ///
 /// # Adequacy
 /// - hypothesis: L3 UI contrasts aliases and structural nesting with nominal
 ///   leaves, foreign generic substitution, and future output bounds.
 /// - witness: `tests::ui_options`
-fn exposure<'tcx>(
+pub fn exposure<'tcx>(
     cx: &LateContext<'tcx>,
     actual: ty::Ty<'tcx>,
     required: Required<'tcx>,
@@ -201,13 +205,20 @@ fn exposure<'tcx>(
 {
     let mut pending = vec![(actual, required)];
     let mut visited = std::collections::HashSet::new();
+    // Keyed on region-erased types: instantiating an opaque's item bounds
+    // interns fresh regions each time, and identity on those would never
+    // repeat.
     while let Some((actual, required)) = pending.pop() {
         let actual = normalize_middle_ty(cx, actual);
         let required_ty = match required {
             | Required::Foreign(required) => Some(required),
             | Required::Authored => None,
         };
-        if !visited.insert((actual, required_ty)) {
+        let key = (
+            cx.tcx.erase_and_anonymize_regions(actual),
+            required_ty.map(|ty| cx.tcx.erase_and_anonymize_regions(ty)),
+        );
+        if !visited.insert(key) {
             continue;
         }
         match *actual.kind() {
@@ -228,8 +239,9 @@ fn exposure<'tcx>(
                 push_arguments(
                     &mut pending,
                     arguments,
-                    required_arguments
-                        .map_or(RequiredArguments::Authored, RequiredArguments::Foreign),
+                    required_arguments.map_or(RequiredArguments::Authored, |args| {
+                        RequiredArguments::Foreign(args)
+                    }),
                 );
             },
             | ty::Ref(_, inner, _)
@@ -295,7 +307,9 @@ fn exposure<'tcx>(
                     if let Some(bound) = clause.as_trait_clause() {
                         let bound = bound.skip_binder().trait_ref;
                         let required = required_trait(cx, required, bound.def_id);
-                        push_arguments(&mut pending, bound.args, required);
+                        // `args[0]` is `Self`: this opaque. Only the trait's own
+                        // parameters can carry absence.
+                        push_arguments(&mut pending, &bound.args[1 ..], required);
                     }
                 }
             },
@@ -309,6 +323,7 @@ fn exposure<'tcx>(
                         pending.push((output, required));
                     }
                     if let ty::ExistentialPredicate::Trait(bound) = predicate.skip_binder() {
+                        // Existential refs already omit `Self`.
                         let required = required_trait(cx, required, bound.def_id);
                         push_arguments(&mut pending, bound.args, required);
                     }
@@ -377,14 +392,15 @@ fn required_projection<'tcx>(
     Required::Authored
 }
 
-/// Generic arguments retained from an unsubstituted foreign bound.
+/// Generic arguments retained from an unsubstituted foreign bound, without a
+/// trait's `Self` position.
 #[derive(Clone, Copy)]
 enum RequiredArguments<'tcx>
 {
     /// No corresponding foreign type constructor exists.
     Authored,
     /// The foreign constructor supplies these argument positions.
-    Foreign(ty::GenericArgsRef<'tcx>),
+    Foreign(&'tcx [ty::GenericArg<'tcx>]),
 }
 
 /// Pair generic arguments by position within the same resolved constructor.
@@ -395,7 +411,7 @@ enum RequiredArguments<'tcx>
 /// - panics: none.
 fn push_arguments<'tcx>(
     pending: &mut Vec<(ty::Ty<'tcx>, Required<'tcx>)>,
-    actual: ty::GenericArgsRef<'tcx>,
+    actual: &[ty::GenericArg<'tcx>],
     required: RequiredArguments<'tcx>,
 )
 {
@@ -457,7 +473,7 @@ fn required_trait<'tcx>(
                 if let Some(bound) = clause.as_trait_clause()
                     && bound.skip_binder().trait_ref.def_id == trait_id
                 {
-                    return RequiredArguments::Foreign(bound.skip_binder().trait_ref.args);
+                    return RequiredArguments::Foreign(&bound.skip_binder().trait_ref.args[1 ..]);
                 }
             }
         },

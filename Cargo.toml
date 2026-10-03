@@ -31,6 +31,14 @@ publish = ["crates-io"]
 [workspace.dependencies.anodized-macros]
 version = "=0.6.0"
 
+# Argument-parser derives the field absence rule recognizes as wire form
+# through `FromArgMatches`; the UI matrix links the real crate.
+# consumers:
+# - quenchant-dylints (dev)
+[workspace.dependencies.clap]
+version = "4.6.7"
+features = ["derive"]
+
 # Clippy's internal lint-authoring utilities. The tag is the stable release the
 # pinned nightly matches: rust-clippy's rust-<stable> tag names that nightly in
 # its own rust-toolchain.toml, so the tag and the root toolchain file move
@@ -139,6 +147,14 @@ default-features = false
 version = "1.13.1"
 default-features = false
 features = ["perf", "std"]
+
+# Serialization traits and derives the field absence rule recognizes as wire
+# form; the UI matrix links the real crate.
+# consumers:
+# - quenchant-dylints (dev)
+[workspace.dependencies.serde]
+version = "1.0.229"
+features = ["derive"]
 
 # JSON reader for Cargo and nextest machine output.
 # consumers:

@@ -75,6 +75,7 @@ For normal work, prefer the repository's `mise run check:tests` task, which sele
 | `mode_dispatch_wildcard` | A declared judgment scrutinee cannot be hidden behind a fallback match arm |
 | `primitive_arithmetic` | Primitive integer operators and resolved inherent arithmetic families use the nominal arithmetic surface |
 | `option_signature` | Authored signatures preserve absence reasons; foreign methods admit only the `Option` layers their declarations require |
+| `option_field` | Fields of authored structs and enum variants preserve absence reasons unless the item is a serde or clap target, where `Option` is wire form |
 
 The plugin is a policy floor, not a proof of totality or complete semantics. Call edges erased by function-pointer coercion, compiler-generated drop behavior, and unresolved type relationships require the corresponding review or evidence boundary. The ownership and call analyses address different mechanisms; neither subsumes the other.
 
@@ -84,7 +85,7 @@ The primitive-signature rule reads authorship from the item's name: a declaratio
 
 ### Arithmetic and absence activation
 
-`primitive_arithmetic` and `option_signature` are opt-in lints; the nine other rules retain their default levels. Select both explicitly in the consumer's Dylint invocation or through `cfg_attr(dylint_lib = "quenchant_dylints", deny(primitive_arithmetic, option_signature))` on its crate roots. Registration alone does not enable either policy. The producer's UI suites deny both the selected predicate and unknown lint names; a missing predicate cannot satisfy their expected diagnostics.
+`primitive_arithmetic`, `option_signature`, and `option_field` are opt-in lints; the nine other rules retain their default levels. Select them explicitly in the consumer's Dylint invocation or through `cfg_attr(dylint_lib = "quenchant_dylints", deny(primitive_arithmetic, option_signature, option_field))` on its crate roots. Registration alone does not enable any of the three. The producer's UI suites deny both the selected predicate and unknown lint names; a missing predicate cannot satisfy their expected diagnostics.
 
 ### Primitive arithmetic
 
@@ -122,6 +123,10 @@ Policy builds must pass `--cfg=quenchant_compiler_policy` through Cargo's whole-
 Later consumer activation must adopt that flag composition alongside the reviewed plugin and shape revisions, then explicitly enable `option_signature` and `primitive_arithmetic`. Enabling only the lint does not identify a prebuilt unmarked shape library. Ordinary and `--all-features` runtime-library builds need no compiler attributes or nightly-only Cargo feature. This separation is revisited only if the selected compiler or invocation cannot propagate the cfg reliably without changing those ordinary builds; no name fallback or global bootstrap substitutes for identity.
 
 A foreign trait implementation is paired with the foreign method's unsubstituted signature. Only corresponding required `Option` layers are admitted. `Iterator::next` may return its required `Option<Item>`, but substituting `Option<Value>` for `Item` introduces another refused layer. `From<Option<Value>>::from` likewise introduces absence where the foreign declaration has a generic parameter and remains refused. Required callback, dynamic, and future shapes follow the same rule. A comment justifying primitive unpacking does not waive a prohibited signature.
+
+`option_field` applies the same traversal to the fields of crate-defined structs and enum variants. A field is wire form, and keeps its `Option`, when its item implements serde's `Serialize` or `Deserialize` or clap's `FromArgMatches`: a serialized `Option` is a value the writer has not supplied and a parsed `Option` is an argument the user did not pass, so the protocol is the reason. The compiler's implementation index decides, so a hand-written implementation counts and a derive on a neighbouring type does not. A `#[repr(transparent)]` wrapper over `Option` is a nominal boundary for `option_signature` and still answers to `option_field` for its own field: the wrapper's author names the reason, or the wrapper is a `Maybe`.
+
+The signature walker instantiates an opaque type's item bounds to reach its associated outputs and the trait's own arguments; the opaque itself, the bound's `Self`, is never re-entered, and visited types are compared up to regions, so the fresh regions rustc mints on each instantiation cannot make the same structure look new. Both rules terminate on any signature.
 
 ## Structured documentation
 

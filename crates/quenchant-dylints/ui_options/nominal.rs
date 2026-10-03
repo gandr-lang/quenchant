@@ -5,6 +5,9 @@ enum Option<T> { Present(T), Empty }
 
 fn nominal_spelling(value: Option<Value>) -> Option<Value> { value }
 
+// A transparent wrapper is a signature boundary; its own field still answers
+// to `option_field`, which this fixture does not demonstrate.
+#[allow(option_field)]
 #[repr(transparent)]
 struct Hidden(std::option::Option<Value>);
 fn nominal_boundary(value: Hidden) -> Hidden { value }
