@@ -42,6 +42,7 @@ mod arithmetic;
 mod callgraph;
 mod graph;
 mod judgement;
+mod option_field;
 mod option_signature;
 mod ownership;
 mod raw_pointer;
@@ -320,6 +321,7 @@ pub fn register_lints(
         SPECIFICATION_PRESENT,
         arithmetic::PRIMITIVE_ARITHMETIC,
         option_signature::OPTION_SIGNATURE,
+        option_field::OPTION_FIELD,
         raw_pointer::RAW_POINTER_THROUGH_REFERENCE,
         safety::UNSAFE_SAFETY_DOCUMENTATION,
     ]);
@@ -334,6 +336,7 @@ pub fn register_lints(
     lint_store.register_late_pass(Box::new(|_| Box::new(WorkflowSpecification)));
     lint_store.register_late_pass(Box::new(|_| Box::new(arithmetic::PrimitiveArithmetic)));
     lint_store.register_late_pass(Box::new(|_| Box::new(option_signature::OptionSignature)));
+    lint_store.register_late_pass(Box::new(|_| Box::new(option_field::OptionField::default())));
     lint_store.register_late_pass(Box::new(|_| {
         Box::new(raw_pointer::RawPointerThroughReference)
     }));
@@ -848,6 +851,7 @@ non_owning_generics = [
         flags.extend([
             "-Dunknown-lints".to_owned(),
             "-Doption_signature".to_owned(),
+            "-Doption_field".to_owned(),
             "-Aprimitive_signature".to_owned(),
             "-Aspecification_present".to_owned(),
             "-Adead_code".to_owned(),
@@ -1030,6 +1034,8 @@ non_owning_generics = [
         let mut shape = None;
         let mut directories = alloc::collections::BTreeSet::new();
         let mut cxx = None;
+        let mut serde = None;
+        let mut clap = None;
         for message in
             serde_json::Deserializer::from_slice(&output.stdout).into_iter::<serde_json::Value>()
         {
@@ -1069,6 +1075,12 @@ non_owning_generics = [
                     | (Some("cxx"), Some("rlib")) => {
                         cxx = Some(path.to_path_buf());
                     },
+                    | (Some("serde"), Some("rlib")) => {
+                        serde = Some(path.to_path_buf());
+                    },
+                    | (Some("clap"), Some("rlib")) => {
+                        clap = Some(path.to_path_buf());
+                    },
                     | (Some("quenchant_anodized"), Some("rlib")) if instrumented => {
                         anodized = Some(path.to_path_buf());
                     },
@@ -1092,6 +1104,8 @@ non_owning_generics = [
         let arithmetic = arithmetic.expect("Cargo reported the arithmetic library");
         let shape = shape.expect("Cargo reported the reason-bearing shape library");
         let cxx = cxx.expect("Cargo reported the real C++ bridge library");
+        let serde = serde.expect("Cargo reported the serde library");
+        let clap = clap.expect("Cargo reported the clap library");
         let mut flags = vec!["--edition=2024".to_owned()];
         for directory in directories {
             flags.push("-L".to_owned());
@@ -1108,6 +1122,10 @@ non_owning_generics = [
             format!("quenchant_shape={}", shape.display()),
             "--extern".to_owned(),
             format!("cxx={}", cxx.display()),
+            "--extern".to_owned(),
+            format!("serde={}", serde.display()),
+            "--extern".to_owned(),
+            format!("clap={}", clap.display()),
             "--cfg".to_owned(),
             r#"feature="anodized""#.to_owned(),
         ]);

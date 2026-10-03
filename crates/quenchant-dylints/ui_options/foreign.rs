@@ -21,6 +21,9 @@ impl From<Option<Value>> for Value {
     }
 }
 
+// A transparent wrapper is a signature boundary; its own field still answers
+// to `option_field`, which this fixture does not demonstrate.
+#[allow(option_field)]
 #[repr(transparent)]
 struct Hidden(Option<Value>);
 fn nominal(value: Hidden) -> Hidden { value }

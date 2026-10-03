@@ -214,6 +214,11 @@ semantic_copy!(
     /// macro.
     struct NameSpanCarriesIdentifier(bool);
 );
+semantic_copy!(
+    /// The item is a serialization or argument-parsing target, so its
+    /// `Option` fields are wire form.
+    struct WireFormItem(bool);
+);
 semantic_borrowed_str!(
     /// Diagnostic wording selected by a compiler-policy decision.
     struct DiagnosticText;

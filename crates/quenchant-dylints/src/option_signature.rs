@@ -96,7 +96,7 @@ impl<'tcx> LateLintPass<'tcx> for OptionSignature
 /// The foreign declaration supplies a structural layer, never a substituted
 /// one.
 #[derive(Clone, Copy)]
-enum Required<'tcx>
+pub enum Required<'tcx>
 {
     /// This layer is authored locally or introduced by substitution.
     Authored,
@@ -108,7 +108,7 @@ enum Required<'tcx>
 /// Type traversal reports a semantic absence exposure once per signature
 /// position.
 #[derive(Clone, Copy)]
-enum Exposure
+pub enum Exposure
 {
     /// A non-required Option is reachable before the nominal boundary.
     Option,
@@ -197,7 +197,7 @@ fn check_declaration<'tcx>(
 /// - hypothesis: L3 UI contrasts aliases and structural nesting with nominal
 ///   leaves, foreign generic substitution, and future output bounds.
 /// - witness: `tests::ui_options`
-fn exposure<'tcx>(
+pub fn exposure<'tcx>(
     cx: &LateContext<'tcx>,
     actual: ty::Ty<'tcx>,
     required: Required<'tcx>,
