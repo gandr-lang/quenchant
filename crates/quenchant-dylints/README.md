@@ -76,6 +76,8 @@ For normal work, prefer the repository's `mise run check:tests` task, which sele
 | `primitive_arithmetic` | Primitive integer operators and resolved inherent arithmetic families use the nominal arithmetic surface |
 | `option_signature` | Authored signatures preserve absence reasons; foreign methods admit only the `Option` layers their declarations require |
 | `option_field` | Fields of authored structs and enum variants preserve absence reasons unless the item is a serde or clap target, where `Option` is wire form |
+| `spec_attribute_present` | A clause-bearing specification carries a `#[spec]` predicate that can fail, or a reasoned exemption; opt-in |
+| `adequacy_present` | A clause-bearing specification carries an `# Adequacy` section; opt-in |
 
 The plugin is a policy floor, not a proof of totality or complete semantics. Call edges erased by function-pointer coercion, compiler-generated drop behavior, and unresolved type relationships require the corresponding review or evidence boundary. The ownership and call analyses address different mechanisms; neither subsumes the other.
 
@@ -85,7 +87,7 @@ The primitive-signature rule reads authorship from the item's name: a declaratio
 
 ### Arithmetic and absence activation
 
-`primitive_arithmetic`, `option_signature`, and `option_field` are opt-in lints; the nine other rules retain their default levels. Select them explicitly in the consumer's Dylint invocation or through `cfg_attr(dylint_lib = "quenchant_dylints", deny(primitive_arithmetic, option_signature, option_field))` on its crate roots. Registration alone does not enable any of the three. The producer's UI suites deny both the selected predicate and unknown lint names; a missing predicate cannot satisfy their expected diagnostics.
+`primitive_arithmetic`, `option_signature`, and `option_field` are opt-in lints; the nine rules without an activation section retain their default levels. Select them explicitly in the consumer's Dylint invocation or through `cfg_attr(dylint_lib = "quenchant_dylints", deny(primitive_arithmetic, option_signature, option_field))` on its crate roots. Registration alone does not enable any of the three. The producer's UI suites deny both the selected predicate and unknown lint names; a missing predicate cannot satisfy their expected diagnostics.
 
 ### Primitive arithmetic
 
@@ -137,6 +139,42 @@ A generated sibling can reuse an author's identifier token without becoming an a
 `# Termination` accompanies an approved recursive exception. Its reason, measure, boundedness, and input-recursion statements are independent obligations. Inherited lint configuration is not inherited approval. The analysis can refute some claims against discovered argument flow, but a well-shaped block is not a termination proof.
 
 `# Safety` and its `- unsafe invariants:` clause apply to every authored unsafe function, trait, implementation, and extern block. The pre-expansion pass sees extern blocks inside `#[cxx::bridge]` before cxx consumes them. Cxx rejects doc attributes on those blocks, so their bridge module carries the section instead. The pass does not inspect unsafe items introduced after expansion or prove the stated invariants; one module section can cover multiple C++ blocks.
+
+### Executable predicates and adequacy presence
+
+`spec_attribute_present` and `adequacy_present` apply to the items `specification_present` checks, once the block is well formed and states a clause: anything but `trivial.`. Such a block owes two things:
+
+- an executable predicate: a `#[spec(...)]` attribute with at least one `requires:`, `maintains:`, or `ensures:` clause, or an exemption in the block. The attribute is matched by its path's last segment, so `quenchant::spec`, a `cfg_attr`-applied attribute, and a nested marker inside a `#[spec]` trait count.
+- an `# Adequacy` section naming the tests that distinguish a violation of the clauses. `adequacy_block_grammar` checks its shape; `quenchant-gates` resolves its witnesses.
+
+The proposed exemption is one clause, the block's last before an optional `- intension:`:
+
+```text
+/// - executable: none — <why no runtime predicate expresses the obligation>
+```
+
+`none`, the em dash, and a nonempty reason are required. A second exemption, a clause after it, or an exemption beside a `#[spec]` that states a predicate is refused. The exemption sits in the block rather than in a lint `allow` so that it travels with the clauses it excuses and renders in rustdoc; review weighs the reason, and the gate checks only that one is stated.
+
+A predicate that cannot fail checks nothing, and is refused at its span:
+
+- a literal `true`, also as `!false`, behind parentheses, or as an output closure's body;
+- an expression compared with itself by `==`, `<=`, or `>=`;
+- a type check: `matches!` against a wildcard or against every variant of `Option` or `Result`, or a disjunction of complementary queries such as `is_ok() || is_err()`;
+- a predicate repeated token for token under the same clause key.
+
+The gate reads attributes before expansion, because expansion consumes `#[spec]`, and decides in the late pass, which owns authorship and the test and derive classes. Items a crate-local `macro_rules!` expands carry no recorded attribute, because the pre-expansion pass sees the macro's tokens rather than its items; such an item states the exemption in its template.
+
+Neither gate decides whether a predicate expresses the clause beside it, whether it holds for a reason its syntax does not show (`count >= 0` on an unsigned count), whether an exemption's reason is true, or whether a named witness distinguishes anything. The enforcing build, the witness resolver, and review own those. Identity with the signature is read syntactically, within one clause key: a predicate that restates what the parameter types already guarantee needs type information and stays a review question.
+
+### Specification gate activation
+
+Both gates are `allow` by default. A consumer crate opts in at its root once its backlog is cleared:
+
+```rust
+#![cfg_attr(dylint_lib = "quenchant_dylints", deny(spec_attribute_present, adequacy_present))]
+```
+
+A module not yet brought up allows both with the same `cfg_attr` form. The opt-in is a rollout, not the steady state: once every consumer crate has opted in, both defaults move to `deny` and the crate-root attributes are removed. If a consumer cannot opt in because the exemption grammar cannot state its obligations, the grammar is revised before the default moves.
 
 ## Ownership exceptions
 

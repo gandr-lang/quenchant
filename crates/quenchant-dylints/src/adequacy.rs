@@ -6,10 +6,12 @@
 //! relevant fault, whether a property class was omitted, or whether the
 //! selected observations can expose the implementation effect under discussion.
 //!
-//! Which new or substantially changed items require a block remains a review
-//! question. Required trait declarations may state their reasoned
-//! declaration-only boundary; an implementation cannot use that boundary to
-//! excuse its behavior.
+//! A function or method whose `# Specification` block carries clauses owes the
+//! section; [`ADEQUACY_PRESENT`] reports one that lacks it, in the crates that
+//! opt into that lint. Whether the item is new or substantially changed, which
+//! the discipline asks, is outside what a lint can see. Required trait
+//! declarations may state their reasoned declaration-only boundary; an
+//! implementation cannot use that boundary to excuse its behavior.
 //!
 //! Runnable resolution needs a package/target inventory and belongs to
 //! `quenchant-gates`. Here, the shared section reader stops at the next heading
@@ -62,6 +64,7 @@ use rustc_session::impl_lint_pass;
 use rustc_span::Span;
 
 use crate::rustdoc::indented_rustdoc_lines;
+use crate::rustdoc::section_body;
 use crate::rustdoc::section_lines;
 use crate::semantic::DiagnosticText;
 use crate::semantic::HypothesisValue;
@@ -81,7 +84,7 @@ declare_lint! {
     ///
     /// ### What this gate does not decide
     ///
-    /// Review determines which items owe an adequacy section. Runnable-path resolution requires package and target inventory and belongs to the `quenchant-gates witnesses` command.
+    /// Which items owe an adequacy section is [`ADEQUACY_PRESENT`]'s question, in the crates that opt into it, and review's elsewhere. Runnable-path resolution requires package and target inventory and belongs to the `quenchant-gates witnesses` command.
     ///
     /// ### Example
     ///
@@ -103,6 +106,50 @@ declare_lint! {
     pub ADEQUACY_BLOCK_GRAMMAR,
     Deny,
     "# Adequacy sections must state one ladder hypothesis and name their witnesses"
+}
+
+declare_lint! {
+    /// ### What it does
+    ///
+    /// An authored function or method whose `# Specification` block carries clauses must carry an `# Adequacy` section. The item class is the one `spec_attribute_present` decides: inside the specification presence rule, with a well-formed block that is not `trivial.`.
+    ///
+    /// ### Why is this bad?
+    ///
+    /// A clause states an obligation; the adequacy section states which tests distinguish its violations and names them. Without it the clause has no addressable evidence, and the witness gate has nothing to resolve.
+    ///
+    /// ### What it does not decide
+    ///
+    /// Presence only. [`ADEQUACY_BLOCK_GRAMMAR`] judges the section's grammar, and the `quenchant-gates witnesses` command resolves its witnesses. The discipline asks the section of new or substantially changed items; a lint sees no history, so it asks every clause-bearing item, and the per-crate opt-in below is where a crate's existing items are brought up to it.
+    ///
+    /// ### Activation
+    ///
+    /// The lint is `allow` by default. A crate opts in at its root with `#![cfg_attr(dylint_lib = "quenchant_dylints", deny(adequacy_present))]` once its items satisfy it.
+    ///
+    /// ### Example
+    ///
+    /// ```rust
+    /// /// # Specification
+    /// /// - requires: `count` is positive.
+    /// /// - panics: none.
+    /// fn halve(count: Count) -> Count { count.halved() }
+    /// ```
+    ///
+    /// The section stating the evidence:
+    ///
+    /// ```rust
+    /// /// # Specification
+    /// /// - requires: `count` is positive.
+    /// /// - panics: none.
+    /// ///
+    /// /// # Adequacy
+    /// /// - hypothesis: L3 — the smallest positive count and an ordinary one are
+    /// ///   halved exactly.
+    /// /// - witness: `count::tests::halving_is_exact`
+    /// fn halve(count: Count) -> Count { count.halved() }
+    /// ```
+    pub ADEQUACY_PRESENT,
+    Allow,
+    "a clause-bearing # Specification block needs an # Adequacy section"
 }
 
 impl_lint_pass!(WorkflowAdequacy => [ADEQUACY_BLOCK_GRAMMAR]);
@@ -298,6 +345,41 @@ fn check_block(
         return;
     };
     clippy_utils::diagnostics::span_lint(cx, ADEQUACY_BLOCK_GRAMMAR, span, defect.message().0);
+}
+
+/// A clause-bearing item's documentation must open an adequacy section.
+///
+/// # Specification
+/// - requires: the item is inside the specification presence rule with a
+///   well-formed, clause-bearing `# Specification` block, `name` is its own
+///   name span, and `lines` are its rustdoc lines with their indentation.
+/// - ensures: reports [`ADEQUACY_PRESENT`] at `name` exactly when no line is
+///   the `# Adequacy` heading; the section's content is
+///   [`ADEQUACY_BLOCK_GRAMMAR`]'s to judge.
+/// - panics: none.
+pub fn require_section(
+    cx: &LateContext<'_>,
+    name: Span,
+    lines: &[String],
+)
+{
+    if matches!(
+        section_body(lines, SectionHeading::from(HEADING)),
+        Maybe::Present(_)
+    ) {
+        return;
+    }
+    clippy_utils::diagnostics::span_lint_and_help(
+        cx,
+        ADEQUACY_PRESENT,
+        name,
+        "this function's `# Specification` states clauses but it carries no `# Adequacy` section; \
+         the section names the tests that distinguish a violation of those clauses",
+        None,
+        "add `# Adequacy` with one `- hypothesis:` naming a ladder rung (`L0`–`L3`) and a \
+         `- witness: `path`` bullet per witnessing test, or — on a required trait method only — \
+         `- declaration-only:` with a reason",
+    );
 }
 
 /// Exact section label used to discover an authored adequacy claim.

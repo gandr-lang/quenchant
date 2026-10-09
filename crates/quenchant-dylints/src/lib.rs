@@ -6,10 +6,11 @@
 //! useful refutations within those analyses, not general termination proofs.
 //!
 //! The remaining rules read authored rustdoc: specification presence, adequacy
-//! grammar, and declared judgment scrutinees. A correctly shaped statement has
-//! not thereby been satisfied. Runnable witness resolution belongs to
-//! `quenchant-gates`, which can inspect the workspace inventory that a lint
-//! pass cannot see.
+//! grammar, and declared judgment scrutinees; and, opted into per crate, the
+//! executable predicate and adequacy section a clause-bearing specification
+//! owes. A correctly shaped statement has not thereby been satisfied. Runnable
+//! witness resolution belongs to `quenchant-gates`, which can inspect the
+//! workspace inventory that a lint pass cannot see.
 //!
 //! Authorship is determined from both the declaration and its name. A foreign
 //! macro can manufacture a method while reusing an author's identifier; that
@@ -40,6 +41,7 @@ extern crate rustc_span;
 mod adequacy;
 mod arithmetic;
 mod callgraph;
+mod executable;
 mod graph;
 mod judgement;
 mod option_field;
@@ -88,12 +90,16 @@ use rustc_session::impl_lint_pass;
 use rustc_span::Span;
 
 use crate::adequacy::ADEQUACY_BLOCK_GRAMMAR;
+use crate::adequacy::ADEQUACY_PRESENT;
 use crate::adequacy::WorkflowAdequacy;
 use crate::callgraph::CallEdge;
 use crate::callgraph::FunctionNode;
 use crate::callgraph::local_call_edges;
 use crate::callgraph::parameter_binding_ids;
 use crate::callgraph::recursive_sccs;
+use crate::executable::AttributeCollector;
+use crate::executable::AttributeIndex;
+use crate::executable::SPEC_ATTRIBUTE_PRESENT;
 use crate::judgement::MODE_DISPATCH_WILDCARD;
 use crate::judgement::WorkflowJudgement;
 use crate::ownership::AdtNode;
@@ -295,8 +301,8 @@ impl_lint_pass!(WorkflowBoundaries => [
 /// - requires: the driver calls this once per compilation, before any pass
 ///   runs.
 /// - ensures: reads the workspace configuration, registers every lint this
-///   library declares, then registers its pre-expansion and late passes.
-/// - provides: the entry point dylint's driver resolves by symbol name.
+///   library declares, then registers its pre-expansion and late passes; the
+///   attribute collector and the specification pass share one record index.
 /// - panics: none.
 #[expect(
     clippy::no_mangle_with_rust_abi,
@@ -311,14 +317,18 @@ pub fn register_lints(
 {
     dylint_linting::init_config(sess);
     let allow_list = non_owning_allow_list();
+    let attributes = AttributeIndex::default();
+    let collected = attributes.clone();
     lint_store.register_lints(&[
         SINGLE_FIELD_STRUCT_NEEDS_TRANSPARENT_REPR,
         PRIMITIVE_SIGNATURE,
         RECURSION_FORBIDDEN,
         RECURSIVE_OWNED_POINTER,
         ADEQUACY_BLOCK_GRAMMAR,
+        ADEQUACY_PRESENT,
         MODE_DISPATCH_WILDCARD,
         SPECIFICATION_PRESENT,
+        SPEC_ATTRIBUTE_PRESENT,
         arithmetic::PRIMITIVE_ARITHMETIC,
         option_signature::OPTION_SIGNATURE,
         option_field::OPTION_FIELD,
@@ -328,12 +338,17 @@ pub fn register_lints(
     lint_store.register_pre_expansion_pass(Box::new(|| {
         Box::new(safety::SafetyDocumentation::default())
     }));
+    lint_store.register_pre_expansion_pass(Box::new(move || {
+        Box::new(AttributeCollector::new(collected.clone()))
+    }));
     lint_store.register_late_pass(Box::new(move |_| {
         Box::new(WorkflowBoundaries::new(allow_list.clone()))
     }));
     lint_store.register_late_pass(Box::new(|_| Box::new(WorkflowAdequacy)));
     lint_store.register_late_pass(Box::new(|_| Box::new(WorkflowJudgement)));
-    lint_store.register_late_pass(Box::new(|_| Box::new(WorkflowSpecification)));
+    lint_store.register_late_pass(Box::new(move |_| {
+        Box::new(WorkflowSpecification::new(attributes.clone()))
+    }));
     lint_store.register_late_pass(Box::new(|_| Box::new(arithmetic::PrimitiveArithmetic)));
     lint_store.register_late_pass(Box::new(|_| Box::new(option_signature::OptionSignature)));
     lint_store.register_late_pass(Box::new(|_| Box::new(option_field::OptionField::default())));
@@ -888,6 +903,16 @@ non_owning_generics = [
             ]);
         }
         dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_options")
+            .rustc_flags(flags)
+            .run();
+    }
+
+    #[test]
+    fn ui_spec_gates()
+    {
+        let mut flags = fixture_extern_flags();
+        flags.push("-Dunknown-lints".to_owned());
+        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_spec_gates")
             .rustc_flags(flags)
             .run();
     }
