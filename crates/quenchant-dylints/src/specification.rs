@@ -40,9 +40,14 @@ use rustc_session::declare_lint;
 use rustc_session::impl_lint_pass;
 use rustc_span::Span;
 
+use crate::adequacy::ADEQUACY_PRESENT;
+use crate::executable::AttributeIndex;
+use crate::executable::SPEC_ATTRIBUTE_PRESENT;
 use crate::rustdoc::indented_rustdoc_lines;
 use crate::rustdoc::section_body;
+use crate::rustdoc::section_lines;
 use crate::semantic::AuthoredItem;
+use crate::semantic::ClauseBearing;
 use crate::semantic::DiagnosticText;
 use crate::semantic::MarkerBesideClause;
 use crate::semantic::MarkerWrittenAsBullet;
@@ -115,11 +120,33 @@ declare_lint! {
     "every authored function and method must carry a # Specification block"
 }
 
-impl_lint_pass!(WorkflowSpecification => [SPECIFICATION_PRESENT]);
+impl_lint_pass!(WorkflowSpecification => [
+    SPECIFICATION_PRESENT,
+    SPEC_ATTRIBUTE_PRESENT,
+    ADEQUACY_PRESENT,
+]);
 
-/// Compiler-side enforcement of specification presence and trivial-marker
-/// shape.
-pub struct WorkflowSpecification;
+/// Compiler-side enforcement of specification presence, trivial-marker shape,
+/// and the executable and adequacy obligations of a clause-bearing block.
+#[repr(transparent)]
+pub struct WorkflowSpecification
+{
+    /// The authored `spec` attributes the pre-expansion pass recorded.
+    attributes: AttributeIndex,
+}
+
+impl WorkflowSpecification
+{
+    /// The pass reads the records its pre-expansion collector writes.
+    ///
+    /// # Specification
+    /// trivial.
+    #[must_use]
+    pub const fn new(attributes: AttributeIndex) -> Self
+    {
+        Self { attributes }
+    }
+}
 
 impl<'tcx> LateLintPass<'tcx> for WorkflowSpecification
 {
@@ -140,7 +167,7 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowSpecification
             return;
         };
         let span = item.kind.ident().map_or(item.span, |ident| ident.span);
-        check_presence(cx, item.owner_id.def_id, span, sig.span);
+        check_presence(cx, item.owner_id.def_id, span, sig.span, &self.attributes);
     }
 
     /// Implementation methods retain their own specification obligations.
@@ -163,6 +190,7 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowSpecification
             impl_item.owner_id.def_id,
             impl_item.ident.span,
             signature.span,
+            &self.attributes,
         );
     }
 
@@ -187,6 +215,7 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowSpecification
             trait_item.owner_id.def_id,
             trait_item.ident.span,
             signature.span,
+            &self.attributes,
         );
     }
 
@@ -207,7 +236,13 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowSpecification
         else {
             return;
         };
-        check_presence(cx, item.owner_id.def_id, item.ident.span, signature.span);
+        check_presence(
+            cx,
+            item.owner_id.def_id,
+            item.ident.span,
+            signature.span,
+            &self.attributes,
+        );
     }
 }
 
@@ -268,12 +303,14 @@ const ACCEPTED_SHAPES: &str = concat!(
 );
 
 /// Authorship and section shape determine whether this function receives a
-/// presence diagnostic.
+/// presence diagnostic, and whether its clause-bearing block owes an
+/// executable predicate and an adequacy section.
 ///
 /// # Specification
 /// - requires: `def_id` identifies a crate-local function, method, or foreign
-///   function declaration, `span` is the item's own name span, and
-///   `declaration` is its own signature span.
+///   function declaration, `span` is the item's own name span, `declaration` is
+///   its own signature span, and `attributes` holds the pre-expansion records
+///   of this compilation.
 /// - ensures: reports nothing for an item outside the rule — a `#[test]`
 ///   function, an `#[automatically_derived]` item, or an item whose name is not
 ///   this crate's own syntax — and otherwise reports
@@ -281,23 +318,30 @@ const ACCEPTED_SHAPES: &str = concat!(
 ///   present, [`SpecificationDefect::MarkerNotAlone`] when the section holds
 ///   the trivial marker beside another line, and
 ///   [`SpecificationDefect::MarkerAsBullet`] when it writes the marker as a
-///   bullet.
-/// - provides: the denial [`SPECIFICATION_PRESENT`] reports.
+///   bullet. A well-formed block that [`carries_clauses`] is then checked for
+///   [`SPEC_ATTRIBUTE_PRESENT`] and [`ADEQUACY_PRESENT`]; a trivial or empty
+///   block owes neither.
+/// - provides: the denial [`SPECIFICATION_PRESENT`] reports, and the item class
+///   the two clause-bearing gates decide.
 /// - panics: none.
 ///
 /// # Adequacy
-/// - hypothesis: L3 — the UI matrix separates each firing shape and each
+/// - hypothesis: L3 — the UI matrices separate each firing shape and each
 ///   exclusion one at a time: an undocumented function, a documented function
 ///   with no block, the marker beside a clause, the marker as a bullet, a
 ///   clause block, a marker-only block, a `#[test]` function, a derive
-///   expansion, a closure, and every declaration form the rule decides.
+///   expansion, a closure, and every declaration form the rule decides; the
+///   clause-bearing gates fire on a clause block and stay silent on a trivial
+///   one.
 /// - witness: `tests::ui`
 /// - witness: `tests::ui_specifications`
+/// - witness: `tests::ui_spec_gates`
 fn check_presence(
     cx: &LateContext<'_>,
     def_id: LocalDefId,
     span: Span,
     declaration: Span,
+    attributes: &AttributeIndex,
 )
 {
     if !authored(cx, def_id, declaration).0 {
@@ -308,7 +352,8 @@ fn check_presence(
         return;
     }
     let lines = indented_rustdoc_lines(cx, def_id);
-    let defect = match section_body(&lines, SectionHeading::from(HEADING)) {
+    let heading = SectionHeading::from(HEADING);
+    let defect = match section_body(&lines, heading) {
         | Maybe::Absent(_) => SpecificationDefect::BlockAbsent,
         | Maybe::Present(body) => {
             if marker_beside_clause(&body).0 {
@@ -316,6 +361,15 @@ fn check_presence(
             }
             else if marker_written_as_bullet(&body).0 {
                 SpecificationDefect::MarkerAsBullet
+            }
+            else if carries_clauses(&body).0 {
+                let bullets = match section_lines(&lines, heading) {
+                    | Maybe::Present(bullets) => bullets,
+                    | Maybe::Absent(_) => Vec::new(),
+                };
+                crate::executable::check(cx, span, &bullets, attributes);
+                crate::adequacy::require_section(cx, span, &lines);
+                return;
             }
             else {
                 return;
@@ -330,6 +384,33 @@ fn check_presence(
         None,
         ACCEPTED_SHAPES,
     );
+}
+
+/// A block states clauses when some line is not the trivial marker.
+///
+/// # Specification
+/// - requires: `body` is the unfolded body of a `# Specification` section that
+///   neither writes the marker beside a clause nor as a bullet.
+/// - ensures: answers affirmatively exactly when some nonblank line is not the
+///   trivial marker; the marker alone and an empty body answer negatively.
+/// - provides: the item class [`SPEC_ATTRIBUTE_PRESENT`] and
+///   [`ADEQUACY_PRESENT`] decide.
+/// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the tests separate a clause block, the marker alone with
+///   and without its period, a blank-padded marker, and an empty body.
+/// - witness: `specification::tests::only_a_clause_makes_a_block_clause_bearing`
+fn carries_clauses(body: &[String]) -> ClauseBearing
+{
+    ClauseBearing(body.iter().any(|line| {
+        let trimmed = line.trim();
+        !trimmed.is_empty()
+            && matches!(
+                marker_spelling(RustdocLine::from(trimmed)),
+                MarkerSpelling::NotTheMarker
+            )
+    }))
 }
 
 /// Name and signature provenance jointly determine recognized declaration
@@ -588,6 +669,7 @@ mod tests
     use quenchant_shape::shape::Maybe;
 
     use super::HEADING;
+    use super::carries_clauses;
     use super::marker_beside_clause;
     use super::marker_written_as_bullet;
     use crate::rustdoc::section_body;
@@ -780,5 +862,32 @@ mod tests
             marker_beside_clause(&beside).0,
             "and that prose conflicts with the marker like any clause"
         );
+    }
+
+    #[test]
+    fn only_a_clause_makes_a_block_clause_bearing()
+    {
+        let clauses = specification_body(&[
+            RustdocLine("# Specification"),
+            RustdocLine("- panics: none."),
+        ]);
+        assert!(
+            carries_clauses(&clauses).0,
+            "a clause is something to check"
+        );
+        for marker in ["trivial", "trivial."] {
+            let body = specification_body(&[
+                RustdocLine("# Specification"),
+                RustdocLine(""),
+                RustdocLine(marker),
+                RustdocLine(""),
+            ]);
+            assert!(
+                !carries_clauses(&body).0,
+                "and the marker, blank lines around it or not, is nothing to check: {marker}"
+            );
+        }
+        let empty = specification_body(&[RustdocLine("# Specification")]);
+        assert!(!carries_clauses(&empty).0, "and neither is an empty body");
     }
 }

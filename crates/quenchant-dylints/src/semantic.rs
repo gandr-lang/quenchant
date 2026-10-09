@@ -219,6 +219,18 @@ semantic_copy!(
     /// `Option` fields are wire form.
     struct WireFormItem(bool);
 );
+semantic_copy!(
+    /// Two token runs carry the same tokens, spans aside.
+    struct SameTokens(bool);
+);
+semantic_copy!(
+    /// A `# Specification` body states something beyond the trivial marker.
+    struct ClauseBearing(bool);
+);
+semantic_copy!(
+    /// A returned `Result` hides which failure occurred.
+    struct ErasedError(bool);
+);
 semantic_borrowed_str!(
     /// Diagnostic wording selected by a compiler-policy decision.
     struct DiagnosticText;

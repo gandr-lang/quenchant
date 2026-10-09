@@ -1,0 +1,23 @@
+error: this function's `# Specification` states clauses but it carries no `# Adequacy` section; the section names the tests that distinguish a violation of those clauses
+  --> $DIR/adequacy_presence.rs:28:4
+   |
+LL | fn without_section(count: Count) -> Count
+   |    ^^^^^^^^^^^^^^^
+   |
+   = help: add `# Adequacy` with one `- hypothesis:` naming a ladder rung (`L0`–`L3`) and a `- witness: `path`` bullet per witnessing test, or — on a required trait method only — `- declaration-only:` with a reason
+note: the lint level is defined here
+  --> $DIR/adequacy_presence.rs:2:52
+   |
+LL | #![cfg_attr(dylint_lib = "quenchant_dylints", deny(adequacy_present))]
+   |                                                    ^^^^^^^^^^^^^^^^
+
+error: this function's `# Specification` states clauses but it carries no `# Adequacy` section; the section names the tests that distinguish a violation of those clauses
+  --> $DIR/adequacy_presence.rs:61:8
+   |
+LL |     fn next(&self) -> Count;
+   |        ^^^^
+   |
+   = help: add `# Adequacy` with one `- hypothesis:` naming a ladder rung (`L0`–`L3`) and a `- witness: `path`` bullet per witnessing test, or — on a required trait method only — `- declaration-only:` with a reason
+
+error: aborting due to 2 previous errors
+

@@ -76,6 +76,10 @@ For normal work, prefer the repository's `mise run check:tests` task, which sele
 | `primitive_arithmetic` | Primitive integer operators and resolved inherent arithmetic families use the nominal arithmetic surface |
 | `option_signature` | Authored signatures preserve absence reasons; foreign methods admit only the `Option` layers their declarations require |
 | `option_field` | Fields of authored structs and enum variants preserve absence reasons unless the item is a serde or clap target, where `Option` is wire form |
+| `spec_attribute_present` | A clause-bearing specification carries a `#[spec]` predicate that can fail, or a reasoned exemption; opt-in |
+| `adequacy_present` | A clause-bearing specification carries an `# Adequacy` section; opt-in |
+| `maybe_shape` | A crate-defined enum does not reimplement `Maybe`'s shape of two variants over two type parameters; opt-in |
+| `erased_error_signature` | A crate-defined signature does not return a `Result` whose error is erased behind `dyn Error`, `anyhow`, or `eyre`; opt-in |
 
 The plugin is a policy floor, not a proof of totality or complete semantics. Call edges erased by function-pointer coercion, compiler-generated drop behavior, and unresolved type relationships require the corresponding review or evidence boundary. The ownership and call analyses address different mechanisms; neither subsumes the other.
 
@@ -85,7 +89,7 @@ The primitive-signature rule reads authorship from the item's name: a declaratio
 
 ### Arithmetic and absence activation
 
-`primitive_arithmetic`, `option_signature`, and `option_field` are opt-in lints; the nine other rules retain their default levels. Select them explicitly in the consumer's Dylint invocation or through `cfg_attr(dylint_lib = "quenchant_dylints", deny(primitive_arithmetic, option_signature, option_field))` on its crate roots. Registration alone does not enable any of the three. The producer's UI suites deny both the selected predicate and unknown lint names; a missing predicate cannot satisfy their expected diagnostics.
+`primitive_arithmetic`, `option_signature`, and `option_field` are opt-in lints; the nine rules without an activation section retain their default levels. Select them explicitly in the consumer's Dylint invocation or through `cfg_attr(dylint_lib = "quenchant_dylints", deny(primitive_arithmetic, option_signature, option_field))` on its crate roots. Registration alone does not enable any of the three. The producer's UI suites deny both the selected predicate and unknown lint names; a missing predicate cannot satisfy their expected diagnostics.
 
 ### Primitive arithmetic
 
@@ -128,6 +132,18 @@ A foreign trait implementation is paired with the foreign method's unsubstituted
 
 The signature walker instantiates an opaque type's item bounds to reach its associated outputs and the trait's own arguments; the opaque itself, the bound's `Self`, is never re-entered, and visited types are compared up to regions, so the fresh regions rustc mints on each instantiation cannot make the same structure look new. Both rules terminate on any signature.
 
+### Hand-rolled `Maybe` and erased errors
+
+`maybe_shape` reads a crate-authored enum at its definition: exactly two variants, each carrying one value whose type is a type parameter of the enum, the two parameters distinct. That is `Maybe`'s shape, and `Result`'s, under another name. The canonical `Maybe` is excluded by the same `quenchant_maybe` identity the absence rules compare. The rule was planned as one more entry in the signature predicate; it is a definition-site check instead, so a hand-rolled type is reported once rather than at every signature that names it, and the walk needs no shape recognition of its own.
+
+A unit variant beside a type-parameter payload, `Direction<Expected> { Synthesise, Check(Expected) }`, is not reported: the discipline models a closed state set as one enum, and the unit variant's name is its reason. A per-site enum that fixes its reason type, `Found(Value)` beside `Missing(Reason)` with a concrete reason, is a closed state enum by the same reading. A generic two-way choice that is neither absence nor failure has `Maybe`'s shape and is reported; it allows the lint at the item with its reason. If per-site specializations turn out to stand in for `Maybe` in practice, the shape widens to a parameter payload beside a fieldless local reason enum.
+
+`erased_error_signature` reads the output of every crate-authored function and method, through aliases, nested types, and what an `impl Trait` or `async fn` output declares, for a `Result` whose error is a `dyn Error` behind `Box`, `Arc`, `Rc`, or a reference, or is `anyhow::Error` or `eyre::Report`. A named error that carries an erased source is a named error. Parameters are not read: a function that accepts any error in order to report it returns nothing erased. A method implementing a foreign trait answers to that trait. A `--test` compilation is exempt as a whole, because test code reports failures and never matches on them; a library's unit-test build is also checked by its ordinary build, and an integration-test crate has no other. A foreign trait's associated error type, such as `FromStr::Err`, is chosen at the implementation and is not read; if erasure enters that way in practice, associated error types join the rule.
+
+Both are `allow` by default and are selected like the specification gates, at a crate root through `cfg_attr(dylint_lib = "quenchant_dylints", deny(maybe_shape, erased_error_signature))`.
+
+Single-character lifetime names are not a plugin rule: Clippy's `single_char_lifetime_names` already refuses them where a workspace denies it, as this one does.
+
 ## Structured documentation
 
 `# Specification` states an item's behavior. `# Adequacy` states a falsifiable evidence hypothesis and names witnesses. The plugin checks source shape and authorship; [quenchant-gates](../quenchant-gates/README.md) separately resolves witness names against runnable tests in the owning package and target.
@@ -137,6 +153,42 @@ A generated sibling can reuse an author's identifier token without becoming an a
 `# Termination` accompanies an approved recursive exception. Its reason, measure, boundedness, and input-recursion statements are independent obligations. Inherited lint configuration is not inherited approval. The analysis can refute some claims against discovered argument flow, but a well-shaped block is not a termination proof.
 
 `# Safety` and its `- unsafe invariants:` clause apply to every authored unsafe function, trait, implementation, and extern block. The pre-expansion pass sees extern blocks inside `#[cxx::bridge]` before cxx consumes them. Cxx rejects doc attributes on those blocks, so their bridge module carries the section instead. The pass does not inspect unsafe items introduced after expansion or prove the stated invariants; one module section can cover multiple C++ blocks.
+
+### Executable predicates and adequacy presence
+
+`spec_attribute_present` and `adequacy_present` apply to the items `specification_present` checks, once the block is well formed and states a clause: anything but `trivial.`. Such a block owes two things:
+
+- an executable predicate: a `#[spec(...)]` attribute with at least one `requires:`, `maintains:`, or `ensures:` clause, or an exemption in the block. The attribute is matched by its path's last segment, so `quenchant::spec`, a `cfg_attr`-applied attribute, and a nested marker inside a `#[spec]` trait count.
+- an `# Adequacy` section naming the tests that distinguish a violation of the clauses. `adequacy_block_grammar` checks its shape; `quenchant-gates` resolves its witnesses.
+
+The proposed exemption is one clause, the block's last before an optional `- intension:`:
+
+```text
+/// - executable: none — <why no runtime predicate expresses the obligation>
+```
+
+`none`, the em dash, and a nonempty reason are required. A second exemption, a clause after it, or an exemption beside a `#[spec]` that states a predicate is refused. The exemption sits in the block rather than in a lint `allow` so that it travels with the clauses it excuses and renders in rustdoc; review weighs the reason, and the gate checks only that one is stated.
+
+A predicate that cannot fail checks nothing, and is refused at its span:
+
+- a literal `true`, also as `!false`, behind parentheses, or as an output closure's body;
+- an expression compared with itself by `==`, `<=`, or `>=`;
+- a type check: `matches!` against a wildcard or against every variant of `Option` or `Result`, or a disjunction of complementary queries such as `is_ok() || is_err()`;
+- a predicate repeated token for token under the same clause key.
+
+The gate reads attributes before expansion, because expansion consumes `#[spec]`, and decides in the late pass, which owns authorship and the test and derive classes. Items a crate-local `macro_rules!` expands carry no recorded attribute, because the pre-expansion pass sees the macro's tokens rather than its items; such an item states the exemption in its template.
+
+Neither gate decides whether a predicate expresses the clause beside it, whether it holds for a reason its syntax does not show (`count >= 0` on an unsigned count), whether an exemption's reason is true, or whether a named witness distinguishes anything. The enforcing build, the witness resolver, and review own those. Identity with the signature is read syntactically, within one clause key: a predicate that restates what the parameter types already guarantee needs type information and stays a review question.
+
+### Specification gate activation
+
+Both gates are `allow` by default. A consumer crate opts in at its root once its backlog is cleared:
+
+```rust
+#![cfg_attr(dylint_lib = "quenchant_dylints", deny(spec_attribute_present, adequacy_present))]
+```
+
+A module not yet brought up allows both with the same `cfg_attr` form. The opt-in is a rollout, not the steady state: once every consumer crate has opted in, both defaults move to `deny` and the crate-root attributes are removed. If a consumer cannot opt in because the exemption grammar cannot state its obligations, the grammar is revised before the default moves.
 
 ## Ownership exceptions
 

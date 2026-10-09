@@ -1,0 +1,28 @@
+error: this function's `# Specification` states clauses but it carries no `#[spec(...)]` attribute; an executable predicate checks a clause on every enforcing call, and an obligation no runtime predicate can express is exempted in the block
+  --> $DIR/opt_in_scope.rs:18:4
+   |
+LL | fn denied(count: Count) -> Count
+   |    ^^^^^^
+   |
+   = help: state a substantive predicate with `#[spec(requires: ...)]`, `#[spec(maintains: ...)]` or `#[spec(ensures: |output| ...)]`, or end the block's clauses, before any `- intension:`, with `- executable: none — <why no runtime predicate expresses the obligation>`
+note: the lint level is defined here
+  --> $DIR/opt_in_scope.rs:5:10
+   |
+LL |     deny(spec_attribute_present, adequacy_present)
+   |          ^^^^^^^^^^^^^^^^^^^^^^
+
+error: this function's `# Specification` states clauses but it carries no `# Adequacy` section; the section names the tests that distinguish a violation of those clauses
+  --> $DIR/opt_in_scope.rs:18:4
+   |
+LL | fn denied(count: Count) -> Count
+   |    ^^^^^^
+   |
+   = help: add `# Adequacy` with one `- hypothesis:` naming a ladder rung (`L0`–`L3`) and a `- witness: `path`` bullet per witnessing test, or — on a required trait method only — `- declaration-only:` with a reason
+note: the lint level is defined here
+  --> $DIR/opt_in_scope.rs:5:34
+   |
+LL |     deny(spec_attribute_present, adequacy_present)
+   |                                  ^^^^^^^^^^^^^^^^
+
+error: aborting due to 2 previous errors
+
