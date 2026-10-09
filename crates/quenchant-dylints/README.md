@@ -78,6 +78,8 @@ For normal work, prefer the repository's `mise run check:tests` task, which sele
 | `option_field` | Fields of authored structs and enum variants preserve absence reasons unless the item is a serde or clap target, where `Option` is wire form |
 | `spec_attribute_present` | A clause-bearing specification carries a `#[spec]` predicate that can fail, or a reasoned exemption; opt-in |
 | `adequacy_present` | A clause-bearing specification carries an `# Adequacy` section; opt-in |
+| `maybe_shape` | A crate-defined enum does not reimplement `Maybe`'s shape of two variants over two type parameters; opt-in |
+| `erased_error_signature` | A crate-defined signature does not return a `Result` whose error is erased behind `dyn Error`, `anyhow`, or `eyre`; opt-in |
 
 The plugin is a policy floor, not a proof of totality or complete semantics. Call edges erased by function-pointer coercion, compiler-generated drop behavior, and unresolved type relationships require the corresponding review or evidence boundary. The ownership and call analyses address different mechanisms; neither subsumes the other.
 
@@ -129,6 +131,18 @@ A foreign trait implementation is paired with the foreign method's unsubstituted
 `option_field` applies the same traversal to the fields of crate-defined structs and enum variants. A field is wire form, and keeps its `Option`, when its item implements serde's `Serialize` or `Deserialize` or clap's `FromArgMatches`: a serialized `Option` is a value the writer has not supplied and a parsed `Option` is an argument the user did not pass, so the protocol is the reason. The compiler's implementation index decides, so a hand-written implementation counts and a derive on a neighbouring type does not. A `#[repr(transparent)]` wrapper over `Option` is a nominal boundary for `option_signature` and still answers to `option_field` for its own field: the wrapper's author names the reason, or the wrapper is a `Maybe`.
 
 The signature walker instantiates an opaque type's item bounds to reach its associated outputs and the trait's own arguments; the opaque itself, the bound's `Self`, is never re-entered, and visited types are compared up to regions, so the fresh regions rustc mints on each instantiation cannot make the same structure look new. Both rules terminate on any signature.
+
+### Hand-rolled `Maybe` and erased errors
+
+`maybe_shape` reads a crate-authored enum at its definition: exactly two variants, each carrying one value whose type is a type parameter of the enum, the two parameters distinct. That is `Maybe`'s shape, and `Result`'s, under another name. The canonical `Maybe` is excluded by the same `quenchant_maybe` identity the absence rules compare. The rule was planned as one more entry in the signature predicate; it is a definition-site check instead, so a hand-rolled type is reported once rather than at every signature that names it, and the walk needs no shape recognition of its own.
+
+A unit variant beside a type-parameter payload, `Direction<Expected> { Synthesise, Check(Expected) }`, is not reported: the discipline models a closed state set as one enum, and the unit variant's name is its reason. A per-site enum that fixes its reason type, `Found(Value)` beside `Missing(Reason)` with a concrete reason, is a closed state enum by the same reading. A generic two-way choice that is neither absence nor failure has `Maybe`'s shape and is reported; it allows the lint at the item with its reason. If per-site specializations turn out to stand in for `Maybe` in practice, the shape widens to a parameter payload beside a fieldless local reason enum.
+
+`erased_error_signature` reads the output of every crate-authored function and method, through aliases, nested types, and what an `impl Trait` or `async fn` output declares, for a `Result` whose error is a `dyn Error` behind `Box`, `Arc`, `Rc`, or a reference, or is `anyhow::Error` or `eyre::Report`. A named error that carries an erased source is a named error. Parameters are not read: a function that accepts any error in order to report it returns nothing erased. A method implementing a foreign trait answers to that trait. A `--test` compilation is exempt as a whole, because test code reports failures and never matches on them; a library's unit-test build is also checked by its ordinary build, and an integration-test crate has no other. A foreign trait's associated error type, such as `FromStr::Err`, is chosen at the implementation and is not read; if erasure enters that way in practice, associated error types join the rule.
+
+Both are `allow` by default and are selected like the specification gates, at a crate root through `cfg_attr(dylint_lib = "quenchant_dylints", deny(maybe_shape, erased_error_signature))`.
+
+Single-character lifetime names are not a plugin rule: Clippy's `single_char_lifetime_names` already refuses them where a workspace denies it, as this one does.
 
 ## Structured documentation
 

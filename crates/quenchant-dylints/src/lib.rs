@@ -41,9 +41,11 @@ extern crate rustc_span;
 mod adequacy;
 mod arithmetic;
 mod callgraph;
+mod erased_error;
 mod executable;
 mod graph;
 mod judgement;
+mod maybe_shape;
 mod option_field;
 mod option_signature;
 mod ownership;
@@ -330,6 +332,8 @@ pub fn register_lints(
         SPECIFICATION_PRESENT,
         SPEC_ATTRIBUTE_PRESENT,
         arithmetic::PRIMITIVE_ARITHMETIC,
+        erased_error::ERASED_ERROR_SIGNATURE,
+        maybe_shape::MAYBE_SHAPE,
         option_signature::OPTION_SIGNATURE,
         option_field::OPTION_FIELD,
         raw_pointer::RAW_POINTER_THROUGH_REFERENCE,
@@ -352,6 +356,10 @@ pub fn register_lints(
     lint_store.register_late_pass(Box::new(|_| Box::new(arithmetic::PrimitiveArithmetic)));
     lint_store.register_late_pass(Box::new(|_| Box::new(option_signature::OptionSignature)));
     lint_store.register_late_pass(Box::new(|_| Box::new(option_field::OptionField::default())));
+    lint_store.register_late_pass(Box::new(|_| Box::new(maybe_shape::MaybeShape)));
+    lint_store.register_late_pass(Box::new(|_| {
+        Box::new(erased_error::ErasedErrorSignature::default())
+    }));
     lint_store.register_late_pass(Box::new(|_| {
         Box::new(raw_pointer::RawPointerThroughReference)
     }));
@@ -903,6 +911,21 @@ non_owning_generics = [
             ]);
         }
         dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_options")
+            .rustc_flags(flags)
+            .run();
+    }
+
+    #[test]
+    fn ui_shapes()
+    {
+        let mut flags = fixture_extern_flags();
+        flags.extend([
+            "-Dunknown-lints".to_owned(),
+            "-Aprimitive_signature".to_owned(),
+            "-Aspecification_present".to_owned(),
+            "-Adead_code".to_owned(),
+        ]);
+        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_shapes")
             .rustc_flags(flags)
             .run();
     }

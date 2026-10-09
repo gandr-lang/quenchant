@@ -1,0 +1,103 @@
+error: this signature returns a `Result` whose error is erased, so a caller cannot tell which failure occurred
+  --> $DIR/erased_error.rs:56:15
+   |
+LL | fn boxed() -> Result<Count, Box<dyn Error>>
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: return a named error enum whose variants are the failures this function can produce; an erased error belongs in test code
+note: the lint level is defined here
+  --> $DIR/erased_error.rs:3:52
+   |
+LL | #![cfg_attr(dylint_lib = "quenchant_dylints", deny(erased_error_signature))]
+   |                                                    ^^^^^^^^^^^^^^^^^^^^^^
+
+error: this signature returns a `Result` whose error is erased, so a caller cannot tell which failure occurred
+  --> $DIR/erased_error.rs:61:20
+   |
+LL | fn boxed_send() -> Result<Count, Box<dyn Error + Send + Sync>>
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: return a named error enum whose variants are the failures this function can produce; an erased error belongs in test code
+
+error: this signature returns a `Result` whose error is erased, so a caller cannot tell which failure occurred
+  --> $DIR/erased_error.rs:66:16
+   |
+LL | fn shared() -> Result<Count, Arc<dyn Error + Send + Sync>>
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: return a named error enum whose variants are the failures this function can produce; an erased error belongs in test code
+
+error: this signature returns a `Result` whose error is erased, so a caller cannot tell which failure occurred
+  --> $DIR/erased_error.rs:71:17
+   |
+LL | fn counted() -> Result<Count, Rc<dyn Error>>
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: return a named error enum whose variants are the failures this function can produce; an erased error belongs in test code
+
+error: this signature returns a `Result` whose error is erased, so a caller cannot tell which failure occurred
+  --> $DIR/erased_error.rs:76:18
+   |
+LL | fn borrowed() -> Result<Count, &'static dyn Error>
+   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: return a named error enum whose variants are the failures this function can produce; an erased error belongs in test code
+
+error: this signature returns a `Result` whose error is erased, so a caller cannot tell which failure occurred
+  --> $DIR/erased_error.rs:81:17
+   |
+LL | fn aliased() -> Fallible<Count>
+   |                 ^^^^^^^^^^^^^^^
+   |
+   = help: return a named error enum whose variants are the failures this function can produce; an erased error belongs in test code
+
+error: this signature returns a `Result` whose error is erased, so a caller cannot tell which failure occurred
+  --> $DIR/erased_error.rs:86:16
+   |
+LL | fn nested() -> Vec<Result<Count, Box<dyn Error>>>
+   |                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: return a named error enum whose variants are the failures this function can produce; an erased error belongs in test code
+
+error: this signature returns a `Result` whose error is erased, so a caller cannot tell which failure occurred
+  --> $DIR/erased_error.rs:91:21
+   |
+LL | async fn later() -> Result<Count, Box<dyn Error>>
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: return a named error enum whose variants are the failures this function can produce; an erased error belongs in test code
+
+error: this signature returns a `Result` whose error is erased, so a caller cannot tell which failure occurred
+  --> $DIR/erased_error.rs:96:18
+   |
+LL | fn iterated() -> impl Iterator<Item = Result<Count, Box<dyn Error>>>
+   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: return a named error enum whose variants are the failures this function can produce; an erased error belongs in test code
+
+error: this signature returns a `Result` whose error is erased, so a caller cannot tell which failure occurred
+  --> $DIR/erased_error.rs:101:20
+   |
+LL | fn dependency() -> anyhow::Result<Count>
+   |                    ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: return a named error enum whose variants are the failures this function can produce; an erased error belongs in test code
+
+error: this signature returns a `Result` whose error is erased, so a caller cannot tell which failure occurred
+  --> $DIR/erased_error.rs:109:23
+   |
+LL |     fn read(&self) -> Result<Count, Box<dyn Error>>;
+   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: return a named error enum whose variants are the failures this function can produce; an erased error belongs in test code
+
+error: this signature returns a `Result` whose error is erased, so a caller cannot tell which failure occurred
+  --> $DIR/erased_error.rs:116:23
+   |
+LL |     fn read(&self) -> Result<Count, Box<dyn Error>>
+   |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: return a named error enum whose variants are the failures this function can produce; an erased error belongs in test code
+
+error: aborting due to 12 previous errors
+
