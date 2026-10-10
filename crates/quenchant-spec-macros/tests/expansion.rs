@@ -2,6 +2,16 @@
 //! API.
 
 #![cfg_attr(not(anodized_print), no_std)]
+#![cfg_attr(
+    dylint_lib = "quenchant_dylints",
+    deny(
+        spec_attribute_present,
+        adequacy_present,
+        maybe_shape,
+        erased_error_signature,
+        spec_attribute_unqualified
+    )
+)]
 
 extern crate alloc;
 #[cfg(any(anodized_panic, anodized_print))]
@@ -50,6 +60,11 @@ mod tests
     /// - ensures: retains both macro matcher arms and every nested function
     ///   body.
     /// - panics: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — nested bodies and both macro arms preserve their
+    ///   distinct results.
+    /// - witness: `expansion::tests::disabled_preserves_nested_code_and_macro_languages`
     fn without_instrumentation() -> (Receipt, Receipt, Receipt, Receipt)
     {
         #[spec(ensures: false)]
@@ -59,6 +74,11 @@ mod tests
         /// # Specification
         /// - ensures: returns the semantic marker.
         /// - panics: none.
+        ///
+        /// # Adequacy
+        /// - hypothesis: L3 — the nested body returns the preserved marker
+        ///   without enforcing.
+        /// - witness: `expansion::tests::disabled_preserves_nested_code_and_macro_languages`
         fn nested() -> Receipt
         {
             Receipt::Preserved
@@ -120,6 +140,10 @@ mod tests
     /// # Specification
     /// - ensures: returns the supplied receipt at compile time and runtime.
     /// - panics: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — both receipts survive runtime and const evaluation.
+    /// - witness: `expansion::tests::disabled_preserves_types_and_const_evaluation`
     const fn stripped_const(receipt: Receipt) -> Receipt
     {
         receipt
@@ -155,6 +179,10 @@ mod tests
         ///   result.
         /// - panics: the backend rejects a violated postcondition when
         ///   enforcing.
+        ///
+        /// # Adequacy
+        /// - hypothesis: L3 — the altered receipt fails only under enforcement.
+        /// - witness: `expansion::tests::nested_trait_obligations_follow_the_selected_mode`
         fn inspect(&self) -> Receipt;
     }
 
@@ -167,6 +195,12 @@ mod tests
         /// - ensures: the uninstrumented body preserves either semantic
         ///   variant.
         /// - panics: only through enforcing specification instrumentation.
+        ///
+        /// # Adequacy
+        /// - hypothesis: L3 — both receiver variants retain their value without
+        ///   enforcement.
+        /// - witness: `expansion::tests::nested_trait_obligations_follow_the_selected_mode`
+        #[spec(ensures: |output| output == *self)]
         fn inspect(&self) -> Self
         {
             *self
@@ -197,6 +231,11 @@ mod tests
     ///
     /// # Errors
     /// Without enforcement, the input's I/O error is propagated unchanged.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — early errors survive erasure and fail enforcing
+    ///   postconditions.
+    /// - witness: `expansion::tests::early_return_postcondition_follows_the_selected_mode`
     fn checked_exit(value: Result<Receipt, std::io::Error>) -> Result<Receipt, std::io::Error>
     {
         let value = value?;
@@ -209,6 +248,17 @@ mod tests
     /// # Specification
     /// - ensures: requires the backend's postcondition failure diagnostic.
     /// - panics: an unrelated payload fails this test helper.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — the violated postconditions report a backend failure,
+    ///   not a body panic.
+    /// - witness: `expansion::tests::nested_trait_obligations_follow_the_selected_mode`
+    /// - witness: `expansion::tests::early_return_postcondition_follows_the_selected_mode`
+    #[spec(ensures: {
+        let text = failure.downcast_ref::<String>().map(String::as_str)
+            .or_else(|| failure.downcast_ref::<&str>().copied());
+        text.is_some_and(|text| text.contains("postcondition failed"))
+    })]
     fn assert_postcondition_failure(failure: &(dyn core::any::Any + Send))
     {
         let text = failure
@@ -222,30 +272,29 @@ mod tests
         );
     }
 
-    #[cfg(anodized_panic)]
     #[test]
-    fn enforcing_postcondition_observes_early_error_return()
+    fn early_return_postcondition_follows_the_selected_mode()
     {
-        let failure =
-            std::panic::catch_unwind(|| checked_exit(Err(std::io::Error::other("sentinel"))))
-                .expect_err("the postcondition must reject the early error return");
-        assert_postcondition_failure(failure.as_ref());
+        #[cfg(anodized_panic)]
+        {
+            let failure =
+                std::panic::catch_unwind(|| checked_exit(Err(std::io::Error::other("sentinel"))))
+                    .expect_err("the postcondition must reject the early error return");
+            assert_postcondition_failure(failure.as_ref());
+        }
+        #[cfg(not(anodized_panic))]
+        {
+            let result = checked_exit(Err(std::io::Error::other("sentinel")));
+            assert_eq!(
+                result
+                    .expect_err("the body still returns its error")
+                    .to_string(),
+                "sentinel"
+            );
+        }
         assert_eq!(
             checked_exit(Ok(Receipt::Preserved)).expect("valid result"),
             Receipt::Preserved
-        );
-    }
-
-    #[cfg(not(anodized_panic))]
-    #[test]
-    fn backend_selection_does_not_imply_enforcement()
-    {
-        let result = checked_exit(Err(std::io::Error::other("sentinel")));
-        assert_eq!(
-            result
-                .expect_err("the body still returns its error")
-                .to_string(),
-            "sentinel"
         );
     }
 }

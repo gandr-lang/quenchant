@@ -102,6 +102,16 @@ mod canonical
     }
 }
 
+// The same module and item names in another crate are not the producer.
+mod shape
+{
+    pub enum Maybe<Value, Reason>
+    {
+        Present(Value),
+        Absent(Reason),
+    }
+}
+
 fn main()
 {
 }

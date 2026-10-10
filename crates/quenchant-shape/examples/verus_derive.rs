@@ -23,12 +23,23 @@
 //! Source extraction, operational failure, refusal, and accepted obligations
 //! remain distinct. None alone establishes general correspondence to every
 //! production configuration or automatic transfer to another proof backend.
+#![cfg_attr(
+    dylint_lib = "quenchant_dylints",
+    deny(
+        spec_attribute_present,
+        adequacy_present,
+        maybe_shape,
+        erased_error_signature,
+        spec_attribute_unqualified
+    )
+)]
 
 use std::io::Write as _;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
+use anodized::spec;
 use proc_macro2::TokenStream;
 use quote::ToTokens as _;
 use quote::quote;
@@ -57,6 +68,8 @@ impl core::fmt::Display for DerivationError
     ///   unchanged.
     /// - fails: propagates the formatter's own write failure unchanged.
     /// - panics: none.
+    /// - executable: none — the formatter exposes no readable output, and
+    ///   replaying its writes would duplicate effects.
     ///
     /// # Errors
     /// - `core::fmt::Error`: the formatter's sink refused the write.
@@ -144,6 +157,8 @@ impl Parse for SpecEntry
     /// - requires: `input` is positioned at the start of one attribute entry.
     /// - ensures: reads a `captures` binding and an `ensures` closure in the
     ///   spelling the attribute uses, and consumes exactly that entry.
+    /// - ensures: a successful `captures` entry selects `Capture`, while a
+    ///   successful `ensures` entry selects `Ensures`.
     /// - provides: the only reader of the attribute's surface, so an unknown
     ///   clause stops the derivation rather than being dropped unseen.
     /// - fails: any other label, and any entry whose shape does not parse.
@@ -161,6 +176,14 @@ impl Parse for SpecEntry
     /// - witness: `tests::a_capture_entry_carries_its_binding`
     /// - witness: `tests::a_postcondition_entry_carries_its_closure`
     /// - witness: `tests::an_unknown_label_refuses_derivation`
+    #[spec(
+        captures: label = input.fork().parse::<syn::Ident>(),
+        ensures: |ref output| match *output {
+            Ok(Self::Capture { .. }) => label.as_ref().is_ok_and(|name| *name == "captures"),
+            Ok(Self::Ensures(_)) => label.as_ref().is_ok_and(|name| *name == "ensures"),
+            Err(_) => true,
+        },
+    )]
     fn parse(input: ParseStream<'_>) -> syn::Result<Self>
     {
         let label: syn::Ident = input.parse()?;
@@ -223,6 +246,8 @@ struct Derivation
 /// - fails: an absent verifier, an unreadable source file, an unsupported
 ///   attribute shape, and any output failure.
 /// - panics: none.
+/// - executable: none — the result does not expose the emitted files, child
+///   process outcomes, or stdout; re-running those effects is not observation.
 ///
 /// # Errors
 /// Reports the operational failure or the rejected source construct.
@@ -278,6 +303,8 @@ fn main() -> Result<(), DerivationError>
 /// - provides: the verifier's answer, never this adapter's opinion of it.
 /// - fails: the verifier could not be run at all.
 /// - panics: none.
+/// - executable: none — the child process supplies the verdict; the return
+///   value cannot independently recover its exit status and stderr.
 ///
 /// # Errors
 /// Reports a verifier that could not be launched.
@@ -332,6 +359,12 @@ fn verdict(
 ///   unsupported attributes, and emitted unrelated items fail compilation.
 ///   Documentation preservation remains an authored source-review obligation.
 /// - witness: `tests::relocated_nominals_preserve_type_and_seal_boundaries`
+#[spec(ensures: |ref output| output.is_ok() == file.items.iter().all(|item| match *item {
+    syn::Item::Macro(ref invocation)
+        if invocation.mac.path.is_ident("reason_enum") && invocation.ident.is_none() =>
+        reason_site(&invocation.mac.tokens).is_ok(),
+    _ => true,
+}))]
 fn declarations(file: &syn::File) -> Result<TokenStream, DerivationError>
 {
     let mut emitted = TokenStream::new();
@@ -380,6 +413,8 @@ fn declarations(file: &syn::File) -> Result<TokenStream, DerivationError>
 ///   rejected site shapes remain distinguished by the refusal witness.
 /// - witness: `tests::relocated_nominals_preserve_type_and_seal_boundaries`
 /// - witness: `tests::an_unsupported_site_is_refused`
+#[spec(ensures: |ref output| output.is_ok() == syn::parse2::<syn::ItemMod>(tokens.clone())
+    .is_ok_and(|site| site.content.is_some_and(|(_, items)| matches!(items.as_slice(), [syn::Item::Enum(_)]))))]
 fn reason_site(tokens: &TokenStream) -> Result<TokenStream, DerivationError>
 {
     let site: syn::ItemMod = syn::parse2(tokens.clone())?;
@@ -447,6 +482,17 @@ fn is_doc(attribute: &syn::Attribute) -> Answer
 ///   path, a longer path carrying an accepted prefix, and the bare crate
 ///   segment, each asserted as the exact answer.
 /// - witness: `tests::two_attribute_spellings_are_accepted`
+#[spec(ensures: |output| {
+    let mut segments = attribute.path().segments.iter();
+    let first = segments.next();
+    let second = segments.next();
+    let accepted = match (first, second) {
+        (Some(name), None) => name.ident == "spec",
+        (Some(root), Some(name)) => root.ident == "anodized" && name.ident == "spec" && segments.next().is_none(),
+        _ => false,
+    };
+    output.0 == accepted
+})]
 fn is_specification(attribute: &syn::Attribute) -> Answer
 {
     let segments: Vec<String> = attribute
@@ -478,6 +524,29 @@ fn is_specification(attribute: &syn::Attribute) -> Answer
 ///   Specification`, the same bullet under a later heading, the `trivial.`
 ///   body, and a summary with no block, each asserted as the exact answer.
 /// - witness: `tests::a_clause_counts_under_its_heading`
+#[spec(ensures: |output| {
+    let (_, stated) = attrs.iter().filter_map(|attribute| {
+        if !is_doc(attribute).0 { return None; }
+        match attribute.meta {
+            syn::Meta::NameValue(ref pair) => match pair.value {
+                syn::Expr::Lit(ref literal) => match literal.lit {
+                    syn::Lit::Str(ref text) => Some(text.value()),
+                    _ => None,
+                },
+                _ => None,
+            },
+            _ => None,
+        }
+    }).fold((false, false), |(inside, stated), line| {
+        let line = line.trim();
+        if line.starts_with("# ") {
+            (line == "# Specification", stated)
+        } else {
+            (inside, stated || (inside && (line.starts_with("- requires:") || line.starts_with("- ensures:"))))
+        }
+    });
+    output.0 == stated
+})]
 fn declares_clause(attrs: &[syn::Attribute]) -> Answer
 {
     let mut inside = false;
@@ -524,6 +593,8 @@ fn declares_clause(attrs: &[syn::Attribute]) -> Answer
 ///   block, because its expansions are specification-bearing while no top-level
 ///   item is. A function inside a function body is not reached at all: it is
 ///   neither a top-level item nor a macro definition.
+/// - ensures: every emitted target and unreached record names a function,
+///   method, or macro definition in the input file.
 /// - provides: the derivation this run reports.
 /// - fails: an attribute whose argument list does not parse, and a
 ///   postcondition closure that does not bind exactly one plain output name.
@@ -540,6 +611,17 @@ fn declares_clause(attrs: &[syn::Attribute]) -> Answer
 ///   `macro_rules!` definition, so a skipped population or a swapped reason
 ///   diverges.
 /// - witness: `tests::derivation_names_every_population`
+#[spec(ensures: |ref output| output.as_ref().map_or(true, |derivation| {
+    derivation.targets.iter().map(|target| &target.name)
+        .chain(derivation.unreached.iter().map(|record| &record.name))
+        .all(|name| file.items.iter().any(|item| match *item {
+            syn::Item::Fn(ref function) => function.sig.ident == *name,
+            syn::Item::Impl(ref block) => block.items.iter().any(|member| matches!(*member,
+                syn::ImplItem::Fn(ref method) if method.sig.ident == *name)),
+            syn::Item::Macro(ref definition) => definition.ident.as_ref() == Some(name),
+            _ => false,
+        }))
+}))]
 fn derive(
     file: &syn::File,
     declarations: &TokenStream,
@@ -610,6 +692,7 @@ fn derive(
 ///   names a function whose attribute declares none; names a function whose
 ///   block states a specification with no attribute at all; and records nothing
 ///   for a function that states no specification.
+/// - ensures: every record appended by this call retains the signature name.
 /// - provides: the single place a function enters the derivation, so a
 ///   specification-bearing item cannot be skipped unseen.
 /// - fails: an attribute the derivation does not support.
@@ -627,6 +710,14 @@ fn derive(
 ///   its exact record or as no record at all.
 /// - witness: `tests::a_method_unit_carries_its_header`
 /// - witness: `tests::a_specification_without_a_predicate_is_named`
+#[spec(
+    captures: [
+        target_start = derivation.targets.len(),
+        unreached_start = derivation.unreached.len(),
+    ],
+    ensures: derivation.targets.iter().skip(target_start).all(|target| target.name == signature.ident)
+        && derivation.unreached.iter().skip(unreached_start).all(|record| record.name == signature.ident),
+)]
 fn collect(
     derivation: &mut Derivation,
     declarations: &TokenStream,
@@ -723,6 +814,17 @@ fn collect(
 ///   and a closure binding a pattern — each asserted as its exact message.
 /// - witness: `tests::a_predicate_binds_captures_and_output`
 /// - witness: `tests::an_underivable_list_is_refused`
+#[spec(ensures: |ref output| {
+    let mut closures = entries.iter().filter_map(|entry| match *entry {
+        SpecEntry::Ensures(ref closure) => Some(closure),
+        SpecEntry::Capture { .. } => None,
+    });
+    let valid = closures.next().is_some_and(|closure| {
+        let mut inputs = closure.inputs.iter();
+        matches!(inputs.next(), Some(syn::Pat::Ident(_))) && inputs.next().is_none()
+    }) && closures.next().is_none();
+    output.is_ok() == valid
+})]
 fn predicate(
     entries: &Punctuated<SpecEntry, syn::Token![,]>
 ) -> Result<TokenStream, DerivationError>
@@ -785,6 +887,7 @@ mod tests
     use std::path::Path;
     use std::process::Command;
 
+    use anodized::spec;
     use proc_macro2::Span;
     use quote::ToTokens as _;
     use quote::quote;
@@ -855,6 +958,11 @@ mod tests
         ///   mutant is the success value, which the witness separates by the
         ///   propagated refusal it asserts.
         /// - witness: `tests::each_refusal_renders_its_half`
+        #[spec(
+            captures: before = self.attempted.clone(),
+            ensures: |output| output == Err(core::fmt::Error)
+                && self.attempted.strip_prefix(&before) == Some(s),
+        )]
         fn write_str(
             &mut self,
             s: &str,

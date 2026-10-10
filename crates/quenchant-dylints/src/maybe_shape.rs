@@ -49,8 +49,9 @@ declare_lint! {
     ///
     /// Reports, at its name, a crate-authored enum with exactly two variants
     /// that each carry exactly one value, typed by two distinct type
-    /// parameters of the enum. The canonical `Maybe`, identified by its
-    /// `quenchant_maybe` diagnostic item, is not reported.
+    /// parameters of the enum. The canonical `Maybe` is identified by its
+    /// `quenchant_maybe` diagnostic item or, while checking its producer, by
+    /// the exact local definition path `quenchant_shape::shape::Maybe`.
     ///
     /// ### Why is this bad?
     ///
@@ -112,7 +113,9 @@ impl<'tcx> LateLintPass<'tcx> for MaybeShape
     /// - hypothesis: L3 — the shape matrix separates tuple and named payloads
     ///   over two parameters (reported) from a unit variant beside a payload, a
     ///   concrete reason, one parameter twice, a wrapped parameter, a third
-    ///   variant, and a locally declared canonical identity (all accepted).
+    ///   variant, and a locally declared canonical identity (all accepted). The
+    ///   real unmarked producer is accepted; same-name definitions in another
+    ///   crate or outside its root `shape` module remain reported.
     /// - witness: `tests::ui_shapes`
     fn check_item(
         &mut self,
@@ -134,6 +137,16 @@ impl<'tcx> LateLintPass<'tcx> for MaybeShape
             || cx
                 .tcx
                 .is_diagnostic_item(Symbol::intern("quenchant_maybe"), def_id.to_def_id())
+            || {
+                let definition = def_id.to_def_id();
+                cx.tcx.crate_name(definition.krate) == Symbol::intern("quenchant_shape")
+                    && cx.tcx.item_name(definition) == Symbol::intern("Maybe")
+                    && {
+                        let module = cx.tcx.parent(definition);
+                        cx.tcx.opt_item_name(module) == Some(Symbol::intern("shape"))
+                            && cx.tcx.parent(module).is_crate_root()
+                    }
+            }
         {
             return;
         }

@@ -63,6 +63,8 @@ Generated operator methods refer to the `anodized` specification facade. A crate
 
 The build driver selects checking with `anodized_panic` or `anodized_print` and compiles the development backend with `quenchant-anodized/anodized`. Panic enforcement retains `no_std`. Combinator postconditions borrow move-only results through `|ref output|`; they observe variant preservation without replaying a callback or adding equality bounds. Exact payload and callback behavior have separate executable witnesses.
 
+`mise run check:dylint` enforces executable-specification and adequacy coverage for the library and extraction example. The const query, delegated move-only operations, and externally observed effects carry explicit exemptions rather than replaying effects or weakening the API. Extraction predicates check supported syntax, output provenance, and clause recognition; witnesses separately exercise translation and refusal behavior.
+
 `examples/verus_derive.rs` reads authored source and translates its supported predicates into verifier input. Run from `crates/quenchant-shape/` so its source-relative paths select the intended package:
 
 ```sh

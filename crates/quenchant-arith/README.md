@@ -61,6 +61,8 @@ The annotated predicates compare the selected arithmetic relation on executed ca
 
 The workspace gates separately exercise strict/fast and debug/release behavior, boundary relations, real bare-metal compilation, and valid-input unchecked operations under Miri. These are the tested routes, not an unbounded equivalence or mutation-adequacy claim.
 
+`mise run check:dylint` enforces the executable-specification and adequacy lints in this package. Formatter effects and abstract representation operations carry reasoned exemptions. Macro-generated operations retain their enforcing predicates; their exemptions record the lint collector's documented pre-expansion boundary, not an absence of runtime checks.
+
 ## License
 
 `Apache-2.0 WITH LLVM-exception`: the [license](../../LICENSE.Apache-2.0.txt) and its [exception](../../LICENSE.LLVM-exception.txt).

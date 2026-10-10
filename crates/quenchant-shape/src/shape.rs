@@ -195,7 +195,14 @@ macro_rules! delegate_ops {
             /// - provides: the wrapper's own operator, with no arithmetic policy of the
             ///   container's choosing.
             /// - panics: exactly when the selected operation panics.
+            /// - executable: none — a delegate may consume move-only operands or have
+            ///   effects; replaying it is not an independent observation.
             /// - intension: adds no allocation, cloning, or unsafe block.
+            ///
+            /// # Adequacy
+            /// - hypothesis: L3 — permission union, negation, and assignment
+            ///   distinguish ignored operands and unchanged results.
+            /// - witness: `shape::tests::selected_operators_preserve_the_permission_domain`
             #[inline]
             #[anodized::spec]
             fn $method(
@@ -222,7 +229,14 @@ macro_rules! delegate_ops {
             ///   result.
             /// - provides: the wrapper's own unary operator.
             /// - panics: exactly when the selected operation panics.
+            /// - executable: none — a delegate may consume move-only operands or have
+            ///   effects; replaying it is not an independent observation.
             /// - intension: adds no allocation, cloning, or unsafe block.
+            ///
+            /// # Adequacy
+            /// - hypothesis: L3 — permission union, negation, and assignment
+            ///   distinguish ignored operands and unchanged results.
+            /// - witness: `shape::tests::selected_operators_preserve_the_permission_domain`
             #[inline]
             #[anodized::spec]
             fn $method(self) -> Self
@@ -243,7 +257,14 @@ macro_rules! delegate_ops {
             ///   and the right inner value, and returns nothing.
             /// - provides: the wrapper's own assignment operator.
             /// - panics: exactly when the selected operation panics.
+            /// - executable: none — a delegate may consume move-only operands or have
+            ///   effects; replaying it is not an independent observation.
             /// - intension: adds no allocation, cloning, or unsafe block.
+            ///
+            /// # Adequacy
+            /// - hypothesis: L3 — permission union, negation, and assignment
+            ///   distinguish ignored operands and unchanged results.
+            /// - witness: `shape::tests::selected_operators_preserve_the_permission_domain`
             #[inline]
             #[anodized::spec]
             fn $method(
@@ -387,10 +408,9 @@ impl<Value, Reason> Maybe<Value, Reason>
     /// # Specification
     /// - ensures: an absent input exposes its borrowed reason; a present input
     ///   returns the query site's `ValuePresent::Present` reason instead.
-    /// - provides: a const query without executable instrumentation. The
-    ///   selected backend's runtime closure machinery is not a const
-    ///   interpretation, so the authored statement preserves the const API.
     /// - panics: none.
+    /// - executable: none — the backend generates runtime closures, which
+    ///   cannot instrument this const query without removing its const API.
     /// - intension: the query neither clones nor allocates.
     ///
     /// # Adequacy

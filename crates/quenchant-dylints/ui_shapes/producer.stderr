@@ -1,0 +1,23 @@
+error: this enum has the shape of `quenchant_shape::Maybe`: two variants, each carrying one value of its own type parameter
+  --> $DIR/producer.rs:12:6
+   |
+LL | enum Maybe<Value, Reason>
+   |      ^^^^^
+   |
+   = help: a non-failure absence is `quenchant_shape::shape::Maybe<T, R>` with a sealed per-site reason, and a failure is `Result<T, E>`; a two-way choice that is neither allows this lint at the item with its reason
+note: the lint level is defined here
+  --> $DIR/producer.rs:2:52
+   |
+LL | #![cfg_attr(dylint_lib = "quenchant_dylints", deny(maybe_shape))]
+   |                                                    ^^^^^^^^^^^
+
+error: this enum has the shape of `quenchant_shape::Maybe`: two variants, each carrying one value of its own type parameter
+  --> $DIR/producer.rs:23:18
+   |
+LL |         pub enum Maybe<Value, Reason>
+   |                  ^^^^^
+   |
+   = help: a non-failure absence is `quenchant_shape::shape::Maybe<T, R>` with a sealed per-site reason, and a failure is `Result<T, E>`; a two-way choice that is neither allows this lint at the item with its reason
+
+error: aborting due to 2 previous errors
+

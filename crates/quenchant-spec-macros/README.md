@@ -54,6 +54,8 @@ Ordinary tokens keep their order and spans. Rebuilt groups use the original encl
 
 Integration cases run the real host macro API through consumer compilation. They distinguish disabled type and const preservation, nested-code preservation, untouched macro payloads, inherited trait predicates, move-only early returns, and backend selection without enforcement. The library packages also compile for a target without a standard library.
 
+`mise run check:dylint` enforces executable-specification and adequacy coverage for the implementation and integration target. The implementation cannot apply the attribute it defines through a proc-macro self-dependency, so each nontrivial operation records that exemption and names consumer-compilation witnesses. The integration target applies executable predicates where its results can be observed directly.
+
 These witnesses defend the adapter boundary. They do not establish that an arbitrary authored specification is complete, that the backend proves it, or that another verification target has equivalent semantics.
 
 ## License
