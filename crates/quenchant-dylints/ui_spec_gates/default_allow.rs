@@ -29,6 +29,15 @@ fn literal_truth(count: Count) -> Count
     count
 }
 
+/// Qualified spelling is also opt-in.
+///
+/// # Specification
+/// trivial.
+#[anodized::spec]
+fn qualified_default()
+{
+}
+
 /// The fixture's entry point.
 ///
 /// # Specification

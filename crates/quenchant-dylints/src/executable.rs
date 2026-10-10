@@ -185,6 +185,251 @@ declare_lint! {
 
 impl_lint_pass!(AttributeCollector => [SPEC_ATTRIBUTE_PRESENT]);
 
+declare_lint! {
+    /// ### What it does
+    ///
+    /// Requires an imported, single-segment spelling of the resolved anodized
+    /// specification attribute, including its quenchant facade.
+    ///
+    /// ### Why is this bad?
+    ///
+    /// Multiple spellings obscure the shared specification surface. An import
+    /// makes its dependency explicit while every declaration reads `#[spec]`.
+    ///
+    /// ### Limitations
+    ///
+    /// Only expanded, authored attributes are checked. Inactive configurations,
+    /// macro-generated attributes, and nested markers consumed without their
+    /// own macro expansion are not resolved invocations. Renaming a bare import
+    /// is outside this lint's scope. Unrelated macros named `spec` are ignored.
+    ///
+    /// ### Activation
+    ///
+    /// Allow by default; select `spec_attribute_unqualified` at the crate root
+    /// under `cfg_attr(dylint_lib = "quenchant_dylints", deny(...))` or with
+    /// `-D spec_attribute_unqualified`.
+    ///
+    /// ### Example
+    ///
+    /// ```rust,ignore
+    /// use anodized::spec;
+    /// #[spec(requires: count > Count::ZERO)]
+    /// fn consume(count: Count) { /* ... */ }
+    /// ```
+    pub SPEC_ATTRIBUTE_UNQUALIFIED,
+    Allow,
+    "the specification attribute is written #[spec] with an import"
+}
+
+/// Authored qualified paths shared between collection and resolved expansion
+/// checking. Removing a diagnosed invocation avoids duplicate reports for the
+/// several declarations one attribute may produce.
+#[derive(Clone, Default)]
+#[repr(transparent)]
+pub struct SpecificationSpelling(Arc<Mutex<BTreeMap<NameSpan, Span>>>);
+
+impl_lint_pass!(SpecificationSpelling => [SPEC_ATTRIBUTE_UNQUALIFIED]);
+
+impl EarlyLintPass for SpecificationSpelling
+{
+    /// Record authored path qualification before expansion consumes attributes.
+    ///
+    /// # Specification
+    /// - ensures: stores multi-segment attribute paths and qualified paths in
+    ///   conditional attributes; generated attributes are not recorded.
+    /// - panics: none.
+    fn check_attribute(
+        &mut self,
+        _cx: &EarlyContext<'_>,
+        attribute: &Attribute,
+    )
+    {
+        if attribute.span.from_expansion() {
+            return;
+        }
+        let AttrKind::Normal(ref normal) = attribute.kind
+        else {
+            return;
+        };
+        if normal.item.path.segments.len() > 1_usize {
+            self.0
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .insert(NameSpan::from(attribute.span), normal.item.path.span);
+        }
+        if normal.item.path.segments.len() == 1_usize
+            && normal
+                .item
+                .path
+                .segments
+                .first()
+                .is_some_and(|segment| segment.ident.name == rustc_span::sym::cfg_attr)
+            && let AttrItemKind::Unparsed(ref args) = normal.item.args
+            && let AttrArgs::Delimited(ref delimited) = *args
+        {
+            self.collect_conditional(&delimited.tokens);
+        }
+    }
+}
+
+impl SpecificationSpelling
+{
+    /// Collect qualified paths nested in authored conditional attributes.
+    ///
+    /// # Specification
+    /// - ensures: records each qualified applied path, including nested
+    ///   `cfg_attr` lists, without treating paths in predicates or arguments as
+    ///   attribute paths. Resolution later excludes inactive conditions.
+    /// - panics: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — the matrix distinguishes active direct and nested
+    ///   conditions from an inactive condition and imported attributes.
+    /// - witness: `tests::ui_spec_gates`
+    fn collect_conditional(
+        &self,
+        arguments: &TokenStream,
+    )
+    {
+        let mut pending = vec![arguments];
+        while let Some(arguments) = pending.pop() {
+            let trees: Vec<&TokenTree> = arguments.iter().collect();
+            for attribute in split_commas(&trees).into_iter().skip(1_usize) {
+                let path = match *attribute.as_slice() {
+                    | [
+                        ref path @ ..,
+                        &TokenTree::Delimited(_, _, Delimiter::Parenthesis, ref tokens),
+                    ] => {
+                        if matches!(path, [tree] if matches!(ident_name(tree), Maybe::Present(name) if name == rustc_span::sym::cfg_attr))
+                        {
+                            pending.push(tokens);
+                        }
+                        path
+                    },
+                    | ref path => path,
+                };
+                if path.iter().any(|tree| {
+                    matches!(
+                        tree,
+                        TokenTree::Token(
+                            Token {
+                                kind: TokenKind::PathSep,
+                                ..
+                            },
+                            _
+                        )
+                    )
+                }) {
+                    self.0
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .insert(NameSpan::from(trees_span(&attribute)), trees_span(path));
+                }
+            }
+        }
+    }
+
+    /// Join a resolved specification expansion to its authored qualified path.
+    ///
+    /// # Specification
+    /// - ensures: each recorded qualified invocation of the anodized macro or
+    ///   quenchant facade is diagnosed once; unrelated macro identities and
+    ///   unqualified paths are not diagnosed.
+    /// - panics: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — the UI matrix separates direct, absolute, aliased and
+    ///   re-exported paths from bare imports and an unrelated macro named spec.
+    /// - witness: `tests::ui_spec_gates`
+    fn check_definition(
+        &self,
+        cx: &LateContext<'_>,
+        definition: rustc_hir::def_id::LocalDefId,
+    )
+    {
+        let mut expansion = cx.tcx.expn_that_defined(definition);
+        while expansion != rustc_span::hygiene::ExpnId::root() {
+            let data = expansion.expn_data();
+            expansion = data.parent;
+            let Some(macro_id) = data.macro_def_id
+            else {
+                continue;
+            };
+            if cx.tcx.opt_item_name(macro_id) != Some(Symbol::intern("spec"))
+                || !cx.tcx.parent(macro_id).is_crate_root()
+                || !matches!(
+                    cx.tcx.crate_name(macro_id.krate).as_str(),
+                    "anodized_macros" | "quenchant_spec_macros"
+                )
+            {
+                continue;
+            }
+            let path = self
+                .0
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .remove(&NameSpan::from(data.call_site));
+            if let Some(path) = path {
+                span_lint_and_help(
+                    cx,
+                    SPEC_ATTRIBUTE_UNQUALIFIED,
+                    path,
+                    "write #[spec(...)] with use anodized::spec; instead of a path-qualified specification attribute",
+                    None,
+                    "import the specification macro in this scope, then use #[spec(...)]",
+                );
+            }
+        }
+    }
+}
+
+impl<'tcx> rustc_lint::LateLintPass<'tcx> for SpecificationSpelling
+{
+    /// Check resolved specification spelling on a free item.
+    ///
+    /// # Specification
+    /// - ensures: applies [`Self::check_definition`] in this item's lint scope.
+    /// - panics: none.
+    fn check_item(
+        &mut self,
+        cx: &LateContext<'tcx>,
+        item: &'tcx rustc_hir::Item<'tcx>,
+    )
+    {
+        self.check_definition(cx, item.owner_id.def_id);
+    }
+
+    /// Check resolved specification spelling on a trait member.
+    ///
+    /// # Specification
+    /// - ensures: applies [`Self::check_definition`] in this member's lint
+    ///   scope.
+    /// - panics: none.
+    fn check_trait_item(
+        &mut self,
+        cx: &LateContext<'tcx>,
+        item: &'tcx rustc_hir::TraitItem<'tcx>,
+    )
+    {
+        self.check_definition(cx, item.owner_id.def_id);
+    }
+
+    /// Check resolved specification spelling on an implementation member.
+    ///
+    /// # Specification
+    /// - ensures: applies [`Self::check_definition`] in this member's lint
+    ///   scope.
+    /// - panics: none.
+    fn check_impl_item(
+        &mut self,
+        cx: &LateContext<'tcx>,
+        item: &'tcx rustc_hir::ImplItem<'tcx>,
+    )
+    {
+        self.check_definition(cx, item.owner_id.def_id);
+    }
+}
+
 /// A declaration's authored name, located the same way before and after
 /// expansion.
 #[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]

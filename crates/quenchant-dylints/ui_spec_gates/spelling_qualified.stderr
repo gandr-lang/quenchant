@@ -1,0 +1,79 @@
+error: write #[spec(...)] with use anodized::spec; instead of a path-qualified specification attribute
+  --> $DIR/spelling_qualified.rs:11:3
+   |
+LL | #[anodized::spec(requires: !core::mem::needs_drop::<Subject>())]
+   |   ^^^^^^^^^^^^^^
+   |
+   = help: import the specification macro in this scope, then use #[spec(...)]
+note: the lint level is defined here
+  --> $DIR/spelling_qualified.rs:1:52
+   |
+LL | #![cfg_attr(dylint_lib = "quenchant_dylints", deny(spec_attribute_unqualified))]
+   |                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: write #[spec(...)] with use anodized::spec; instead of a path-qualified specification attribute
+  --> $DIR/spelling_qualified.rs:16:3
+   |
+LL | #[::anodized::spec]
+   |   ^^^^^^^^^^^^^^^^
+   |
+   = help: import the specification macro in this scope, then use #[spec(...)]
+
+error: write #[spec(...)] with use anodized::spec; instead of a path-qualified specification attribute
+  --> $DIR/spelling_qualified.rs:21:3
+   |
+LL | #[contracts::spec]
+   |   ^^^^^^^^^^^^^^^
+   |
+   = help: import the specification macro in this scope, then use #[spec(...)]
+
+error: write #[spec(...)] with use anodized::spec; instead of a path-qualified specification attribute
+  --> $DIR/spelling_qualified.rs:26:3
+   |
+LL | #[exported::contract]
+   |   ^^^^^^^^^^^^^^^^^^
+   |
+   = help: import the specification macro in this scope, then use #[spec(...)]
+
+error: write #[spec(...)] with use anodized::spec; instead of a path-qualified specification attribute
+  --> $DIR/spelling_qualified.rs:31:3
+   |
+LL | #[anodized_backend::spec]
+   |   ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: import the specification macro in this scope, then use #[spec(...)]
+
+error: write #[spec(...)] with use anodized::spec; instead of a path-qualified specification attribute
+  --> $DIR/spelling_qualified.rs:36:30
+   |
+LL | #[cfg_attr(debug_assertions, anodized::spec(requires: !core::mem::needs_drop::<Subject>()))]
+   |                              ^^^^^^^^^^^^^^
+   |
+   = help: import the specification macro in this scope, then use #[spec(...)]
+
+error: write #[spec(...)] with use anodized::spec; instead of a path-qualified specification attribute
+  --> $DIR/spelling_qualified.rs:41:57
+   |
+LL | #[cfg_attr(debug_assertions, cfg_attr(debug_assertions, anodized::spec))]
+   |                                                         ^^^^^^^^^^^^^^
+   |
+   = help: import the specification macro in this scope, then use #[spec(...)]
+
+error: write #[spec(...)] with use anodized::spec; instead of a path-qualified specification attribute
+  --> $DIR/spelling_qualified.rs:50:7
+   |
+LL |     #[anodized::spec]
+   |       ^^^^^^^^^^^^^^
+   |
+   = help: import the specification macro in this scope, then use #[spec(...)]
+
+error: write #[spec(...)] with use anodized::spec; instead of a path-qualified specification attribute
+  --> $DIR/spelling_qualified.rs:56:3
+   |
+LL | #[anodized::spec]
+   |   ^^^^^^^^^^^^^^
+   |
+   = help: import the specification macro in this scope, then use #[spec(...)]
+
+error: aborting due to 9 previous errors
+
