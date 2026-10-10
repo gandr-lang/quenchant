@@ -1,6 +1,6 @@
 # quenchant
 
-One namespace over the arithmetic, shape, and optional gate libraries. A consumer adds this package and reaches `quenchant::arith` and `quenchant::shape`. Specification attributes come from the separate `quenchant-anodized` package, whose library is named `anodized`.
+One namespace over the arithmetic and shape libraries. A consumer adds this package and reaches `quenchant::arith` and `quenchant::shape`. Specification attributes come from the separate `quenchant-anodized` package, whose library is named `anodized`.
 
 ## Install
 
@@ -57,16 +57,16 @@ The specification attribute resolves through the `anodized` library. Its [facade
 | `quenchant::arith` | `quenchant-arith` | Nominal integers and the named arithmetic families |
 | `quenchant::shape` | `quenchant-shape` | Reason-preserving absence and transparent domain types |
 | Crate-root macros | `quenchant-shape` | `reason_enum!`, `nominal_type!`, and `delegate_ops!` |
-| `quenchant::gates` | `quenchant-gates` | Invocation-state and adequacy-witness reporting, behind the `gates` feature |
 
 ## Features
 
 | Feature | Effect |
 | ------- | ------ |
 | `anodized` | Compiles the facade's development backend; build cfgs select checking |
-| `gates` | Adds `quenchant::gates`; that library reads Cargo and nextest output and requires `std` |
 
 ## What the namespace omits
+
+`quenchant-gates` is a Git-installed command-line tool, separate from library dependencies. Its [guide](../quenchant-gates/README.md) describes installation and invocation.
 
 `quenchant-dylints` is a compiler plugin. Dylint loads its `cdylib` from a path or a Git revision paired with the matching compiler, so no Rust crate links it and no re-export can stand in for that pairing.
 
