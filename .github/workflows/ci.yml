@@ -8,6 +8,7 @@ name: CI
 
 on:
   pull_request: {}
+  workflow_dispatch: {}
   # Only main can warm caches that subsequent pull requests can restore.
   push:
     branches: [main]
@@ -116,7 +117,7 @@ jobs:
         name: upload test report
         if: always()
         continue-on-error: true
-        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: &upload-artifact actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ env.CI_REPORT_NAME }}
           path: ${{ env.CI_REPORT_PATH }}
@@ -164,12 +165,12 @@ jobs:
         name: resolve the image reference
         run: echo "ref=${QUENCHANT_CI_IMAGE:+ghcr.io/gandr-lang/quenchant-ci:${QUENCHANT_CI_IMAGE}}" >> "$GITHUB_OUTPUT"
 
-  # Heavy jobs gate the merge result and warm main's caches. Pull requests
-  # retain the Clippy, invocation-policy, formatting and workflow-lint lanes.
+  # Rust, test, and workflow changes exercise the full gate before review;
+  # merge groups still check their complete merge result.
   cargo-build-crates:
     name: build and test the workspace
     needs: *rust-needs
-    if: &heavy-lane ${{ needs.changes.outputs.rust == 'true' && (github.event_name == 'merge_group' || github.event_name == 'push') }}
+    if: &heavy-lane ${{ needs.changes.outputs.rust == 'true' }}
     runs-on: *linux
     permissions: *image-read-permissions
     # The relayed tag hashes the three pin files; the base is digest-pinned.
@@ -230,7 +231,7 @@ jobs:
       CI_INSTALL_TOOLS: *without-image
       CI_TOOLS: CI_TOOLS_DYLINT
       CI_REPORT_NAME: junit-dylint
-      CI_REPORT_PATH: target/dylint-tests*/nextest/ci/junit.xml
+      CI_REPORT_PATH: target/nextest/ci/junit.xml
     steps:
       - *git-checkout
       - *setup-rust
@@ -243,6 +244,7 @@ jobs:
         env:
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/dylint-tests
         run: cargo nextest run --profile ci
+      - *upload-test-report
       - name: exercise enforcing specification exits
         working-directory: *dylint-package
         env:
@@ -250,6 +252,14 @@ jobs:
           RUSTFLAGS: --cfg anodized_panic -C linker=dylint-link
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/dylint-tests-enforcing
         run: cargo nextest run --profile ci --features quenchant-anodized/anodized -E 'test(specification_tests::)'
+      - name: upload enforcing test report
+        if: always()
+        continue-on-error: true
+        uses: *upload-artifact
+        with:
+          name: junit-dylint-enforcing
+          path: target/nextest/ci/junit.xml
+          if-no-files-found: error
       - name: lint Dylint package
         working-directory: *dylint-package
         run: cargo clippy --all-targets -- --deny warnings
@@ -259,7 +269,6 @@ jobs:
         run: cargo run -p quenchant-gates -- witnesses --manifest-path Cargo.toml
       - *save-dylint-library
       - *save-dylint-drivers
-      - *upload-test-report
 
   anodized-gate:
     name: check anodized invocation policy

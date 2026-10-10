@@ -64,6 +64,8 @@ The Dylint package's own tests and Clippy invocation run from its package direct
 
 CI installs mise-managed tools in both workspace-test and Dylint jobs so witness inventory uses the consumer-selected nextest. Tool setup retains Rustup proxies on `PATH`, preserving compiler-plugin toolchain selection. Nested consumer fixtures clear the parent nextest profile because that profile belongs to the test workspace, not the fixture. Dylint CI targets use absolute workspace-rooted paths so temporary compiler fixtures retain a writable output location. Image-consuming jobs inherit `contents: read` and `packages: read` through one permissions anchor; GHCR pulls authenticate with the job's `GITHUB_TOKEN`. Jobs without containers retain their existing permissions.
 
+Rust, test, and workflow changes run every hosted lane on pull requests and merge groups. Manual dispatch exercises the same lanes. The Dylint job uploads plain and enforcing JUnit reports separately, before the next invocation replaces `target/nextest/ci/junit.xml`; compiler build directories do not determine that report path.
+
 The compiler plugin loads locally:
 
 ```toml
