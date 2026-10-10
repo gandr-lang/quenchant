@@ -35,6 +35,12 @@ reason_enum! {
 ///   concrete enum, which is what the compile-fail example on `reason_enum!`
 ///   denies to an outside implementer.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — both lookup reasons remain distinct through mapping and
+///   chaining, with no callback on the absent branch.
+/// - witness: `shape::tests::mapping_preserves_absence_and_moves_values`
+/// - witness: `shape::tests::chaining_preserves_both_absence_transitions`
 #[spec(ensures: |ref output| matches!(output, Maybe::Absent(_)))]
 fn unavailable<Reason>(reason: Reason) -> Maybe<Ticket, Reason>
 where
@@ -162,15 +168,20 @@ impl core::fmt::Display for LookupFailure
     /// - ensures: writes one fixed message per variant, selected by the variant
     ///   alone, and writes nothing else.
     /// - provides: the display face `core::error::Error` requires of this
-    ///   boundary failure. The predicate is empty: the text written reaches the
-    ///   formatter's sink rather than the return value, so no declared
-    ///   projection observes it.
+    ///   boundary failure.
     /// - fails: propagates the formatter's own write failure unchanged; this
     ///   method originates none.
     /// - panics: none.
+    /// - executable: none — the formatter exposes no readable output; a second
+    ///   write would duplicate effects rather than observe the first.
     ///
     /// # Errors
     /// - `core::fmt::Error`: the formatter's sink refused the write.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — the two lookup failure variants render distinct
+    ///   diagnostics through the ordinary formatter.
+    /// - witness: `shape::tests::failure_diagnostics_distinguish_lookup_reasons`
     #[spec]
     fn fmt(
         &self,
@@ -186,6 +197,15 @@ impl core::fmt::Display for LookupFailure
 
 impl core::error::Error for LookupFailure
 {
+}
+
+#[test]
+fn failure_diagnostics_distinguish_lookup_reasons()
+{
+    assert_ne!(
+        std::format!("{}", LookupFailure::MissingKey),
+        std::format!("{}", LookupFailure::SearchRequired),
+    );
 }
 
 #[test]

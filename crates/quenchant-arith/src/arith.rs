@@ -58,9 +58,16 @@ impl core::fmt::Display for Operation
     ///   other.
     /// - fails: returns the receiving formatter's write failure unchanged.
     /// - panics: none.
+    /// - executable: none — the formatter exposes no readable output; replaying
+    ///   the write would duplicate effects rather than observe the first write.
     ///
     /// # Errors
     /// - [`core::fmt::Error`]: the receiving formatter refused the write.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — all five operations and both failure classes render
+    ///   distinct diagnostics on the ordinary formatter.
+    /// - witness: `arith::tests::diagnostics_distinguish_operations_and_failure_causes`
     #[inline]
     fn fmt(
         &self,
@@ -88,9 +95,16 @@ impl core::fmt::Display for ArithmeticError
     ///   recoverable from the rendered text.
     /// - fails: returns the receiving formatter's write failure unchanged.
     /// - panics: none.
+    /// - executable: none — the formatter exposes no readable output; replaying
+    ///   the write would duplicate effects rather than observe the first write.
     ///
     /// # Errors
     /// - [`core::fmt::Error`]: the receiving formatter refused the write.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — all five operations and both failure classes render
+    ///   distinct diagnostics on the ordinary formatter.
+    /// - witness: `arith::tests::diagnostics_distinguish_operations_and_failure_causes`
     #[inline]
     fn fmt(
         &self,
@@ -189,6 +203,9 @@ pub trait Integer: sealed::Sealed + Copy + Default + Eq + core::fmt::Debug
     /// - fails: returns [`ArithmeticError::Overflow`] or
     ///   [`ArithmeticError::ZeroDivisor`] naming the operation.
     /// - panics: none.
+    /// - executable: none — the generic trait exposes no representation-level
+    ///   exact-result oracle; the concrete implementations carry those
+    ///   predicates.
     ///
     /// # Errors
     /// Returns overflow when the primitive checked operation has no result; a
@@ -217,6 +234,8 @@ pub trait Integer: sealed::Sealed + Copy + Default + Eq + core::fmt::Debug
     /// - provides: modular predicates on each implementation; the generic trait
     ///   exposes neither representation width nor modular primitives.
     /// - panics: a zero divisor for division or remainder.
+    /// - executable: none — the generic trait exposes no representation-level
+    ///   modular oracle; the concrete implementations carry those predicates.
     ///
     /// # Adequacy
     /// - hypothesis: L2 differential agreement with primitive modular
@@ -241,6 +260,8 @@ pub trait Integer: sealed::Sealed + Copy + Default + Eq + core::fmt::Debug
     /// - provides: clamping predicates on each implementation; the generic
     ///   trait exposes neither representation bounds nor clamping primitives.
     /// - panics: a zero divisor for division or remainder.
+    /// - executable: none — the generic trait exposes no representation-level
+    ///   clamping oracle; the concrete implementations carry those predicates.
     ///
     /// # Adequacy
     /// - hypothesis: L2 differential agreement with the primitive clamp
@@ -331,6 +352,17 @@ macro_rules! integers {
             ///   named operation, renamed back into [`Int`].
             /// - panics: overflow, or a zero divisor for division or remainder,
             ///   in every profile.
+            /// - executable: none — the pre-expansion collector cannot read attributes
+            ///   emitted by this macro; enforcing builds still evaluate its generated
+            ///   and inherited predicates.
+            ///
+            /// # Adequacy
+            /// - hypothesis: L2 — primitive arithmetic on signed and unsigned
+            ///   boundary grids distinguishes wrong operations and families; L3
+            ///   exact error variants and panic boundaries distinguish invalid
+            ///   inputs. Unchecked calls use only checked-valid pairs.
+            /// - witness: `arith::tests::u128_boundaries`
+            /// - witness: `arith::tests::i8_negative_boundaries`
             #[inline]
             fn strict(self, rhs: Self, operation: Operation) -> Self {
                 Self(match operation {
@@ -352,6 +384,9 @@ macro_rules! integers {
             ///   [`ArithmeticError::Overflow`] for every other unrepresentable
             ///   result, each naming the operation.
             /// - panics: none.
+            /// - executable: none — the pre-expansion collector cannot read attributes
+            ///   emitted by this macro; enforcing builds still evaluate its generated
+            ///   and inherited predicates.
             ///
             /// # Errors
             /// - [`ArithmeticError::ZeroDivisor`]: division or remainder
@@ -359,6 +394,14 @@ macro_rules! integers {
             /// - [`ArithmeticError::Overflow`]: the exact result is outside this
             ///   representation's bounds, signed `MIN / -1` and `MIN % -1`
             ///   included.
+            ///
+            /// # Adequacy
+            /// - hypothesis: L2 — primitive arithmetic on signed and unsigned
+            ///   boundary grids distinguishes wrong operations and families; L3
+            ///   exact error variants and panic boundaries distinguish invalid
+            ///   inputs. Unchecked calls use only checked-valid pairs.
+            /// - witness: `arith::tests::u128_boundaries`
+            /// - witness: `arith::tests::i8_negative_boundaries`
             #[spec(ensures: |output| {
                 let left = <$representation>::from(self);
                 let right = <$representation>::from(rhs);
@@ -404,6 +447,17 @@ macro_rules! integers {
             ///   for the named operation, so signed `MIN / -1` yields `MIN` and
             ///   signed `MIN % -1` yields zero.
             /// - panics: a zero divisor for division or remainder.
+            /// - executable: none — the pre-expansion collector cannot read attributes
+            ///   emitted by this macro; enforcing builds still evaluate its generated
+            ///   and inherited predicates.
+            ///
+            /// # Adequacy
+            /// - hypothesis: L2 — primitive arithmetic on signed and unsigned
+            ///   boundary grids distinguishes wrong operations and families; L3
+            ///   exact error variants and panic boundaries distinguish invalid
+            ///   inputs. Unchecked calls use only checked-valid pairs.
+            /// - witness: `arith::tests::u128_boundaries`
+            /// - witness: `arith::tests::i8_negative_boundaries`
             #[spec(ensures: |output| {
                 let left = <$representation>::from(self);
                 let right = <$representation>::from(rhs);
@@ -438,6 +492,17 @@ macro_rules! integers {
             ///   equal the primitive `saturating_*` result, and remainder is
             ///   exact because its mathematical result always fits.
             /// - panics: a zero divisor for division or remainder.
+            /// - executable: none — the pre-expansion collector cannot read attributes
+            ///   emitted by this macro; enforcing builds still evaluate its generated
+            ///   and inherited predicates.
+            ///
+            /// # Adequacy
+            /// - hypothesis: L2 — primitive arithmetic on signed and unsigned
+            ///   boundary grids distinguishes wrong operations and families; L3
+            ///   exact error variants and panic boundaries distinguish invalid
+            ///   inputs. Unchecked calls use only checked-valid pairs.
+            /// - witness: `arith::tests::u128_boundaries`
+            /// - witness: `arith::tests::i8_negative_boundaries`
             #[spec(ensures: |output| {
                 let left = <$representation>::from(self);
                 let right = <$representation>::from(rhs);
@@ -476,11 +541,22 @@ macro_rules! integers {
             /// - unsafe invariants: the corresponding [`Integer::checked`] call
             ///   returns `Ok`, which the caller has established.
             /// - panics: none.
+            /// - executable: none — the pre-expansion collector cannot read attributes
+            ///   emitted by this macro; enforcing builds still evaluate its generated
+            ///   and inherited predicates.
             ///
             /// # Safety
             /// - unsafe invariants: the corresponding [`Integer::checked`] call
             ///   must return `Ok`. Signed `MIN / -1` and `MIN % -1` violate the
             ///   precondition even though the mathematical remainder is zero.
+            ///
+            /// # Adequacy
+            /// - hypothesis: L2 — primitive arithmetic on signed and unsigned
+            ///   boundary grids distinguishes wrong operations and families; L3
+            ///   exact error variants and panic boundaries distinguish invalid
+            ///   inputs. Unchecked calls use only checked-valid pairs.
+            /// - witness: `arith::tests::u128_boundaries`
+            /// - witness: `arith::tests::i8_negative_boundaries`
             #[inline]
             unsafe fn unchecked(self, rhs: Self, operation: Operation) -> Self {
                 Self(match operation {
@@ -520,6 +596,9 @@ macro_rules! binary_family {
         /// # Specification
         /// - ensures: returns the exact representable result.
         /// - panics: overflow or a zero divisor, independent of build profile.
+        /// - executable: none — the pre-expansion collector cannot read attributes
+        ///   emitted by this macro; enforcing builds still evaluate its generated
+        ///   and inherited predicates.
         ///
         /// # Adequacy
         /// - hypothesis: L3 ordinary and boundary pairs distinguish each family and
@@ -542,6 +621,9 @@ macro_rules! binary_family {
         /// # Specification
         /// - ensures: returns the width-modular result, including signed MIN / -1.
         /// - panics: a zero divisor in division or remainder.
+        /// - executable: none — the pre-expansion collector cannot read attributes
+        ///   emitted by this macro; enforcing builds still evaluate its generated
+        ///   and inherited predicates.
         ///
         /// # Adequacy
         /// - hypothesis: L3 overflow boundaries distinguish wrapping from strict and
@@ -564,6 +646,9 @@ macro_rules! binary_family {
         /// # Specification
         /// - ensures: returns the exact result clamped to the representation bounds.
         /// - panics: a zero divisor in division or remainder.
+        /// - executable: none — the pre-expansion collector cannot read attributes
+        ///   emitted by this macro; enforcing builds still evaluate its generated
+        ///   and inherited predicates.
         ///
         /// # Adequacy
         /// - hypothesis: L3 upper and lower boundaries distinguish clamps from
@@ -587,6 +672,9 @@ macro_rules! binary_family {
         /// # Specification
         /// - ensures: returns the exact representable result.
         /// - panics: overflow or a zero divisor in every profile.
+        /// - executable: none — the pre-expansion collector cannot read attributes
+        ///   emitted by this macro; enforcing builds still evaluate its generated
+        ///   and inherited predicates.
         ///
         /// # Adequacy
         /// - hypothesis: L3 ordinary and invalid boundary inputs witness the default
@@ -611,6 +699,9 @@ macro_rules! binary_family {
         /// - requires: the corresponding checked operation succeeds.
         /// - ensures: returns the strict result on every valid input.
         /// - panics: none.
+        /// - executable: none — the pre-expansion collector cannot read attributes
+        ///   emitted by this macro; enforcing builds still evaluate its generated
+        ///   and inherited predicates.
         ///
         /// # Safety
         /// The exact primitive operation must be representable, with a nonzero
@@ -651,6 +742,17 @@ macro_rules! binary_family {
             ///   independent of the `fast` feature.
             /// - panics: overflow, or a zero divisor for division or remainder, in
             ///   every profile.
+            /// - executable: none — the pre-expansion collector cannot read attributes
+            ///   emitted by this macro; enforcing builds still evaluate its generated
+            ///   and inherited predicates.
+            ///
+            /// # Adequacy
+            /// - hypothesis: L2 — primitive arithmetic on signed and unsigned
+            ///   boundary grids distinguishes wrong operations and families; L3
+            ///   exact error variants and panic boundaries distinguish invalid
+            ///   inputs. Unchecked calls use only checked-valid pairs.
+            /// - witness: `arith::tests::u128_boundaries`
+            /// - witness: `arith::tests::i8_negative_boundaries`
             #[inline]
             fn $method(
                 self,

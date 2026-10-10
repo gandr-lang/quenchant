@@ -3,6 +3,16 @@
     not(doc),
     doc = "Conditional specification attributes and token-preserving erasure."
 )]
+#![cfg_attr(
+    dylint_lib = "quenchant_dylints",
+    deny(
+        spec_attribute_present,
+        adequacy_present,
+        maybe_shape,
+        erased_error_signature,
+        spec_attribute_unqualified
+    )
+)]
 
 /// Select instrumentation from the cfg of the build driving the consumer.
 ///
@@ -12,6 +22,9 @@
 /// - provides: original predicate and item tokens to the selected
 ///   interpretation.
 /// - panics: none.
+/// - executable: none — this crate defines the specification attribute; using
+///   it here requires a proc-macro self-dependency. Expansion witnesses check
+///   the emitted program in a consumer crate.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — cfg-separated integration cases distinguish forwarding
@@ -69,6 +82,9 @@ pub fn spec(
 ///   payloads.
 /// - fails: nonempty arguments emit a compiler error.
 /// - panics: none.
+/// - executable: none — this crate defines the specification attribute; using
+///   it here requires a proc-macro self-dependency. Expansion witnesses check
+///   the emitted program in a consumer crate.
 ///
 /// # Errors
 /// Attribute arguments are rejected because this helper does not interpret
@@ -114,6 +130,14 @@ pub fn __erase(
 /// - ensures: the selected helper receives the original argument token stream.
 /// - provides: one `cfg_attr` with the supplied consumer-side condition.
 /// - panics: none.
+/// - executable: none — this crate defines the specification attribute; using
+///   it here requires a proc-macro self-dependency. Expansion witnesses check
+///   the emitted program in a consumer crate.
+///
+/// # Adequacy
+/// - hypothesis: L3 — cfg-selected consumers preserve arguments and distinguish
+///   enforcing instrumentation from disabled erasure.
+/// - witness: `expansion::tests::nested_trait_obligations_follow_the_selected_mode`
 fn conditional_attribute(
     mut condition: proc_macro::TokenStream,
     helper: proc_macro::Ident,
@@ -197,6 +221,15 @@ enum MacroBoundary
 ///   it.
 /// - provides: the unvisited suffix for ordinary traversal to resume.
 /// - panics: none.
+/// - executable: none — this crate defines the specification attribute; using
+///   it here requires a proc-macro self-dependency. Expansion witnesses check
+///   the emitted program in a consumer crate.
+///
+/// # Adequacy
+/// - hypothesis: L3 — macro matcher and invocation payloads keep their own
+///   marker syntax; stripping inside either payload changes the consumer
+///   result.
+/// - witness: `expansion::tests::disabled_preserves_nested_code_and_macro_languages`
 fn preserve_macro(
     frame: &mut Frame,
     boundary: MacroBoundary,
@@ -233,6 +266,14 @@ enum Marker
 /// - ensures: qualified names and unrelated metadata are never classified as
 ///   owned.
 /// - panics: none.
+/// - executable: none — this crate defines the specification attribute; using
+///   it here requires a proc-macro self-dependency. Expansion witnesses check
+///   the emitted program in a consumer crate.
+///
+/// # Adequacy
+/// - hypothesis: L3 — bare markers are erased while unrelated attributes and
+///   macro data remain meaningful to the consumer compiler.
+/// - witness: `expansion::tests::disabled_preserves_nested_code_and_macro_languages`
 fn marker(group: &proc_macro::Group) -> Marker
 {
     let mut tokens = group.stream().into_iter();
@@ -264,6 +305,9 @@ fn marker(group: &proc_macro::Group) -> Marker
 /// - provides: original token spans and original enclosing spans for rebuilt
 ///   groups.
 /// - panics: none.
+/// - executable: none — this crate defines the specification attribute; using
+///   it here requires a proc-macro self-dependency. Expansion witnesses check
+///   the emitted program in a consumer crate.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — nested declarations, other attributes, and macro matcher

@@ -35,5 +35,13 @@ LL | enum Maybe<Value, Reason>
    |
    = help: a non-failure absence is `quenchant_shape::shape::Maybe<T, R>` with a sealed per-site reason, and a failure is `Result<T, E>`; a two-way choice that is neither allows this lint at the item with its reason
 
-error: aborting due to 4 previous errors
+error: this enum has the shape of `quenchant_shape::Maybe`: two variants, each carrying one value of its own type parameter
+  --> $DIR/maybe_shape.rs:108:14
+   |
+LL |     pub enum Maybe<Value, Reason>
+   |              ^^^^^
+   |
+   = help: a non-failure absence is `quenchant_shape::shape::Maybe<T, R>` with a sealed per-site reason, and a failure is `Result<T, E>`; a two-way choice that is neither allows this lint at the item with its reason
+
+error: aborting due to 5 previous errors
 
