@@ -77,6 +77,7 @@ For normal work, prefer the repository's `mise run check:tests` task, which sele
 | `option_signature` | Authored signatures preserve absence reasons; foreign methods admit only the `Option` layers their declarations require |
 | `option_field` | Fields of authored structs and enum variants preserve absence reasons unless the item is a serde or clap target, where `Option` is wire form |
 | `spec_attribute_present` | A clause-bearing specification carries a `#[spec]` predicate that can fail, or a reasoned exemption; opt-in |
+| `spec_attribute_unqualified` | A resolved specification attribute uses an imported, single-segment path rather than a qualified path; opt-in |
 | `adequacy_present` | A clause-bearing specification carries an `# Adequacy` section; opt-in |
 | `maybe_shape` | A crate-defined enum does not reimplement `Maybe`'s shape of two variants over two type parameters; opt-in |
 | `erased_error_signature` | A crate-defined signature does not return a `Result` whose error is erased behind `dyn Error`, `anyhow`, or `eyre`; opt-in |
@@ -180,9 +181,21 @@ The gate reads attributes before expansion, because expansion consumes `#[spec]`
 
 Neither gate decides whether a predicate expresses the clause beside it, whether it holds for a reason its syntax does not show (`count >= 0` on an unsigned count), whether an exemption's reason is true, or whether a named witness distinguishes anything. The enforcing build, the witness resolver, and review own those. Identity with the signature is read syntactically, within one clause key: a predicate that restates what the parameter types already guarantee needs type information and stays a review question.
 
+### Specification attribute spelling
+
+`spec_attribute_unqualified` requires `use anodized::spec;` and `#[spec(...)]` instead of a qualified attribute path. It joins authored paths to the resolved anodized macro or quenchant facade, so leading `::`, crate aliases, and re-exported paths cannot evade it. An unrelated macro named `spec` is not a specification invocation. Active `cfg_attr` paths, including nested conditions, are checked.
+
+The lint is `allow` by default. Select it with `-D spec_attribute_unqualified` or at a crate root:
+
+```rust
+#![cfg_attr(dylint_lib = "quenchant_dylints", deny(spec_attribute_unqualified))]
+```
+
+Item and module lint levels still apply. A bare renamed import is outside the rule: it checks qualification, not import names. Inactive attributes, macro-generated attributes, and nested markers consumed without their own macro expansion are not resolved authored invocations and are not checked. The UI matrix uses the facade as `anodized` and checks the backend macro separately; it covers qualified paths, conditional paths, methods and traits, imports, unrelated macros, default activation, and scoped allowances.
+
 ### Specification gate activation
 
-Both gates are `allow` by default. A consumer crate opts in at its root once its backlog is cleared:
+The predicate and adequacy-presence gates are `allow` by default. A consumer crate opts in at its root once its backlog is cleared:
 
 ```rust
 #![cfg_attr(dylint_lib = "quenchant_dylints", deny(spec_attribute_present, adequacy_present))]

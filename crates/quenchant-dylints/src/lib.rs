@@ -102,6 +102,8 @@ use crate::callgraph::recursive_sccs;
 use crate::executable::AttributeCollector;
 use crate::executable::AttributeIndex;
 use crate::executable::SPEC_ATTRIBUTE_PRESENT;
+use crate::executable::SPEC_ATTRIBUTE_UNQUALIFIED;
+use crate::executable::SpecificationSpelling;
 use crate::judgement::MODE_DISPATCH_WILDCARD;
 use crate::judgement::WorkflowJudgement;
 use crate::ownership::AdtNode;
@@ -321,6 +323,8 @@ pub fn register_lints(
     let allow_list = non_owning_allow_list();
     let attributes = AttributeIndex::default();
     let collected = attributes.clone();
+    let spelling = SpecificationSpelling::default();
+    let collected_spelling = spelling.clone();
     lint_store.register_lints(&[
         SINGLE_FIELD_STRUCT_NEEDS_TRANSPARENT_REPR,
         PRIMITIVE_SIGNATURE,
@@ -331,6 +335,7 @@ pub fn register_lints(
         MODE_DISPATCH_WILDCARD,
         SPECIFICATION_PRESENT,
         SPEC_ATTRIBUTE_PRESENT,
+        SPEC_ATTRIBUTE_UNQUALIFIED,
         arithmetic::PRIMITIVE_ARITHMETIC,
         erased_error::ERASED_ERROR_SIGNATURE,
         maybe_shape::MAYBE_SHAPE,
@@ -345,6 +350,8 @@ pub fn register_lints(
     lint_store.register_pre_expansion_pass(Box::new(move || {
         Box::new(AttributeCollector::new(collected.clone()))
     }));
+    lint_store.register_pre_expansion_pass(Box::new(move || Box::new(collected_spelling.clone())));
+    lint_store.register_late_pass(Box::new(move |_| Box::new(spelling.clone())));
     lint_store.register_late_pass(Box::new(move |_| {
         Box::new(WorkflowBoundaries::new(allow_list.clone()))
     }));
@@ -1077,6 +1084,7 @@ non_owning_generics = [
             String::from_utf8_lossy(&output.stderr)
         );
         let mut anodized = None;
+        let mut upstream_anodized = None;
         let mut fixture_macros = None;
         let mut arithmetic = None;
         let mut shape = None;
@@ -1120,6 +1128,11 @@ non_owning_generics = [
                     directories.insert(parent.to_path_buf());
                 }
                 match (target, extension) {
+                    | (Some("anodized_macros"), Some(extension))
+                        if extension == std::env::consts::DLL_EXTENSION =>
+                    {
+                        upstream_anodized = Some(path.to_path_buf());
+                    },
                     | (Some("cxx"), Some("rlib")) => {
                         cxx = Some(path.to_path_buf());
                     },
@@ -1148,6 +1161,8 @@ non_owning_generics = [
             }
         }
         let anodized = anodized.expect("Cargo reported the instrumented facade rlib");
+        let upstream_anodized =
+            upstream_anodized.expect("Cargo reported the upstream anodized macro library");
         let fixture_macros = fixture_macros.expect("Cargo reported the fixture macro library");
         let arithmetic = arithmetic.expect("Cargo reported the arithmetic library");
         let shape = shape.expect("Cargo reported the reason-bearing shape library");
@@ -1162,6 +1177,8 @@ non_owning_generics = [
         flags.extend([
             "--extern".to_owned(),
             format!("anodized={}", anodized.display()),
+            "--extern".to_owned(),
+            format!("anodized_backend={}", upstream_anodized.display()),
             "--extern".to_owned(),
             format!("quenchant_fixture_macros={}", fixture_macros.display()),
             "--extern".to_owned(),
