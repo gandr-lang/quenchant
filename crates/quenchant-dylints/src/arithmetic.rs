@@ -5,6 +5,7 @@
 //! unrelated producer functions and consumer nominal methods are not
 //! exemptions.
 
+use anodized::spec;
 use rustc_hir::BinOpKind;
 use rustc_hir::Expr;
 use rustc_hir::ExprKind;
@@ -44,6 +45,8 @@ impl<'tcx> LateLintPass<'tcx> for PrimitiveArithmetic
     ///   resolved primitive inherent arithmetic families, partial methods, and
     ///   standard operator traits, including function-item references.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
     ///
     /// # Adequacy
     /// - hypothesis: L3 UI controls distinguish primitive identity, nominal
@@ -145,6 +148,8 @@ enum ArithmeticIdentity
 /// Classify standard arithmetic traits using their instantiated input types.
 ///
 /// # Specification
+/// - ensures: every input of a primitive classification is integral after
+///   peeling references.
 /// - ensures: only the arithmetic operator language items qualify, and every
 ///   instantiated input must be integral after peeling references.
 /// - ensures: nominal RHS overloads, unrelated traits, and unresolved generic
@@ -156,6 +161,8 @@ enum ArithmeticIdentity
 ///   method calls, UFCS, and function items; nominal, borrowed, generic, and
 ///   non-arithmetic controls distinguish identity and input-type boundaries.
 /// - witness: `tests::ui_arithmetic`
+#[spec(ensures: |output| !matches!(output, ArithmeticIdentity::Primitive) || cx.tcx.fn_sig(method)
+    .instantiate(cx.tcx, arguments).skip_norm_wip().skip_binder().inputs().iter().all(|input| input.peel_refs().is_integral()))]
 fn primitive_operator<'tcx>(
     cx: &LateContext<'tcx>,
     method: DefId,
@@ -214,6 +221,8 @@ fn primitive_operator<'tcx>(
 /// Resolve arithmetic through the method's inherent implementation self type.
 ///
 /// # Specification
+/// - ensures: a primitive classification belongs to an inherent integer
+///   implementation.
 /// - ensures: inherent integer arithmetic families and unprefixed partial
 ///   arithmetic methods are classified as primitive; extension traits and
 ///   nominal methods are not. Unsigned square root remains total.
@@ -223,6 +232,9 @@ fn primitive_operator<'tcx>(
 /// - hypothesis: L3 UI fixtures distinguish aliases, UFCS, references, and
 ///   nominal methods from genuine primitive inherent definitions.
 /// - witness: `tests::ui_arithmetic`
+#[spec(ensures: |output| !matches!(output, ArithmeticIdentity::Primitive) || cx.tcx.impl_of_assoc(method).is_some_and(|implementation| {
+    !cx.tcx.impl_is_of_trait(implementation) && cx.tcx.type_of(implementation).instantiate_identity().skip_norm_wip().is_integral()
+}))]
 fn primitive_method(
     cx: &LateContext<'_>,
     method: DefId,
@@ -339,6 +351,19 @@ enum ProducerBoundary
 /// - hypothesis: L3 UI producer and near-miss bodies distinguish exact
 ///   ownership from a same-named trait, unrelated helper, or nested function.
 /// - witness: `tests::ui_arithmetic`
+#[spec(ensures: |output| {
+    let mut owner = expr.hir_id.owner.def_id.to_def_id();
+    while matches!(cx.tcx.def_kind(owner), DefKind::Closure) { owner = cx.tcx.parent(owner); }
+    let canonical = cx.tcx.impl_of_assoc(owner).is_some_and(|implementation| {
+        if !cx.tcx.impl_is_of_trait(implementation) { return false; }
+        let trait_ref = cx.tcx.impl_trait_ref(implementation).instantiate_identity().skip_norm_wip();
+        matches!(*trait_ref.self_ty().kind(), ty::Adt(adt, arguments) if trait_ref.def_id.is_local() && adt.did().is_local()
+            && matches!(producer_item(cx, trait_ref.def_id, Symbol::intern("Integer")), ProducerItem::Canonical)
+            && matches!(producer_item(cx, adt.did(), Symbol::intern("Int")), ProducerItem::Canonical)
+            && arguments.types().any(ty::Ty::is_integral))
+    });
+    matches!(output, ProducerBoundary::IntegerImplementation) == canonical
+})]
 fn producer_boundary(
     cx: &LateContext<'_>,
     expr: &Expr<'_>,
@@ -398,6 +423,14 @@ enum ProducerItem
 /// # Specification
 /// - ensures: recognizes only `quenchant_arith::arith::<name>`.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui_arithmetic`
+#[spec(ensures: |output| matches!(output, ProducerItem::Canonical) == (cx.tcx.crate_name(item.krate) == Symbol::intern("quenchant_arith")
+    && cx.tcx.opt_item_name(item) == Some(name) && cx.tcx.opt_item_name(cx.tcx.parent(item)) == Some(Symbol::intern("arith"))
+    && cx.tcx.parent(cx.tcx.parent(item)).is_crate_root()))]
 fn producer_item(
     cx: &LateContext<'_>,
     item: DefId,

@@ -13,6 +13,7 @@
 //! name is its reason. A per-site enum that fixes the reason type is a closed
 //! state enum by the same reading. Both stay with review.
 
+use anodized::spec;
 use clippy_utils::diagnostics::span_lint_and_help;
 use quenchant_shape::shape::Maybe;
 use rustc_hir::Item;
@@ -104,6 +105,8 @@ impl<'tcx> LateLintPass<'tcx> for MaybeShape
     ///   distinct; every other item, and every enum the lint is allowed for, is
     ///   not inspected.
     /// - panics: none.
+    /// - executable: none — rustc owns diagnostic emission and suppression; no
+    ///   emitted-diagnostic readback is available to this callback.
     ///
     /// # Adequacy
     /// - hypothesis: L3 — the shape matrix separates tuple and named payloads
@@ -165,6 +168,21 @@ impl<'tcx> LateLintPass<'tcx> for MaybeShape
 ///   enclosing enum; a wrapped parameter, a concrete type, a unit variant and a
 ///   variant with several fields yield the reason.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — tuple and named parameter payloads contrast with wrapped,
+///   concrete, unit, and multi-field variants in compiler diagnostics.
+/// - witness: `tests::ui_shapes`
+#[spec(ensures: |output| match (variant.data.fields(), output) {
+    ([field], Maybe::Present(parameter)) => matches!(
+        cx.tcx.type_of(field.def_id).instantiate_identity().skip_norm_wip().kind(),
+        ty::Param(expected) if *expected == parameter),
+    ([field], Maybe::Absent(payload_reading::NotAParameter::Concrete)) => !matches!(
+        cx.tcx.type_of(field.def_id).instantiate_identity().skip_norm_wip().kind(),
+        ty::Param(_)),
+    (fields, Maybe::Absent(payload_reading::NotAParameter::FieldCount)) => fields.len() != 1,
+    _ => false,
+})]
 fn parameter_payload(
     cx: &LateContext<'_>,
     variant: &Variant<'_>,

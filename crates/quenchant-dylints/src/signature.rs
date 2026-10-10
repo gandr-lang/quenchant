@@ -11,6 +11,7 @@
 //! only an opaque future. An explicit worklist bounds traversal by the visited
 //! type structure instead of the host stack's recursion depth.
 
+use anodized::spec;
 use quenchant_shape::shape::Maybe;
 
 quenchant_shape::reason_enum! {
@@ -126,6 +127,8 @@ enum PrimitiveWork<'tcx>
 ///   before a local transparent ADT emits nothing.
 /// - provides: the answer to whether the declaration exposes a primitive.
 /// - panics: none.
+/// - executable: none — rustc emits diagnostics without a queryable per-call
+///   diagnostic result.
 ///
 /// # Termination
 /// - reason: no recursion; the traversal is a loop over an explicit worklist.
@@ -378,6 +381,16 @@ pub fn check_fn_decl<'tcx>(
 /// - provides: `future_bound::Missing::NoTraitBound` means no trait occurs;
 ///   `FirstTraitNotFuture` means the first one has a different identity.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| match opaque.bounds.iter().find_map(|bound| match *bound { GenericBound::Trait(ref poly) => Some(&poly.trait_ref), _ => None }) {
+    None => matches!(output, Maybe::Absent(future_bound::Missing::NoTraitBound)),
+    Some(expected) if expected.trait_def_id() == cx.tcx.lang_items().future_trait() => matches!(output, Maybe::Present(actual) if core::ptr::eq(actual, expected)),
+    Some(_) => matches!(output, Maybe::Absent(future_bound::Missing::FirstTraitNotFuture)),
+})]
 fn future_trait_ref<'tcx>(
     cx: &LateContext<'tcx>,
     opaque: &'tcx OpaqueTy<'tcx>,
@@ -406,6 +419,25 @@ fn future_trait_ref<'tcx>(
 ///   differently named constraint (`NotOutput`), and a non-type one
 ///   (`NotType`).
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| match trait_ref.path.segments.last() {
+    None => matches!(output, Maybe::Absent(future_output::Missing::NoSegment)),
+    Some(segment) => match segment.args {
+        None => matches!(output, Maybe::Absent(future_output::Missing::NoArguments)),
+        Some(args) => match *args.constraints {
+            [ref constraint] if constraint.ident.name == sym::Output => match constraint.ty() {
+                Some(expected) => matches!(output, Maybe::Present(actual) if core::ptr::eq(actual, expected)),
+                None => matches!(output, Maybe::Absent(future_output::Missing::NotType)),
+            },
+            [_] => matches!(output, Maybe::Absent(future_output::Missing::NotOutput)),
+            _ => matches!(output, Maybe::Absent(future_output::Missing::ConstraintCount)),
+        },
+    },
+})]
 fn future_output_ty<'tcx>(
     trait_ref: &'tcx TraitRef<'tcx>
 ) -> Maybe<&'tcx Ty<'tcx>, future_output::Missing>
@@ -438,6 +470,16 @@ fn future_output_ty<'tcx>(
 /// - ensures: returns the type arguments of a normalized ADT and the components
 ///   of a tuple; every other type kind yields none.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| match *normalize_middle_ty(cx, semantic_ty).kind() {
+    rustc_ty::Adt(_, args) => output.iter().copied().eq(args.iter().filter_map(rustc_ty::GenericArg::as_type)),
+    rustc_ty::Tuple(types) => output.iter().copied().eq(types.iter()),
+    _ => output.is_empty(),
+})]
 fn semantic_type_args<'tcx>(
     cx: &LateContext<'tcx>,
     semantic_ty: rustc_ty::Ty<'tcx>,
@@ -463,6 +505,21 @@ fn semantic_type_args<'tcx>(
 /// - provides: `path_arguments::Missing::NoSegment` means a resolved path is
 ///   empty; `NoArguments` means a final segment exists without arguments.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| {
+    let segment = match *qpath { QPath::Resolved(_, path) => path.segments.last(), QPath::TypeRelative(_, segment) => Some(segment) };
+    match segment {
+        None => matches!(output, Maybe::Absent(path_arguments::Missing::NoSegment)),
+        Some(segment) => match segment.args {
+            Some(expected) => matches!(output, Maybe::Present(actual) if core::ptr::eq(actual, expected)),
+            None => matches!(output, Maybe::Absent(path_arguments::Missing::NoArguments)),
+        },
+    }
+})]
 fn last_segment_args<'hir>(
     qpath: &QPath<'hir>
 ) -> Maybe<&'hir GenericArgs<'hir>, path_arguments::Missing>
@@ -491,6 +548,13 @@ fn last_segment_args<'hir>(
 ///   width, and `str`.
 /// - provides: the banned set the whole traversal is keyed on.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| output.0 == matches!(primitive,
+    PrimTy::Bool | PrimTy::Char | PrimTy::Int(_) | PrimTy::Uint(_) | PrimTy::Float(_) | PrimTy::Str))]
 fn is_disallowed_primitive(primitive: PrimTy) -> DisallowedPrimitive
 {
     DisallowedPrimitive(matches!(
@@ -511,6 +575,12 @@ fn is_disallowed_primitive(primitive: PrimTy) -> DisallowedPrimitive
 ///   crate and declares a transparent representation.
 /// - provides: the boundary a signature traversal stops at.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| output.0 == (adt.did().is_local() && adt.repr().transparent()))]
 fn is_semantic_boundary_adt(adt: rustc_ty::AdtDef<'_>) -> SemanticBoundaryAdt
 {
     SemanticBoundaryAdt(adt.did().is_local() && adt.repr().transparent())
@@ -526,6 +596,15 @@ fn is_semantic_boundary_adt(adt: rustc_ty::AdtDef<'_>) -> SemanticBoundaryAdt
 /// - provides: the boundary rule for the async-output traversal, which has no
 ///   substituted type to walk beside it.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| output.0 == match resolution {
+    Res::Def(DefKind::Struct | DefKind::Enum | DefKind::Union, def_id) if def_id.is_local() => is_semantic_boundary_adt(cx.tcx.adt_def(def_id)).0,
+    _ => false,
+})]
 fn resolves_to_semantic_boundary(
     cx: &LateContext<'_>,
     resolution: Res,
@@ -545,6 +624,7 @@ fn resolves_to_semantic_boundary(
 /// boundary.
 ///
 /// # Specification
+/// - ensures: an admitted transparent root exposes no primitive.
 /// - requires: `ty` is a substituted `rustc_middle` type in `cx`'s typing
 ///   environment.
 /// - ensures: answers affirmatively exactly when some structural descendant of
@@ -558,6 +638,12 @@ fn resolves_to_semantic_boundary(
 /// - boundedness: each pop pushes only strict subterms, and middle types are
 ///   finite trees once aliases are normalized.
 /// - input recursion: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| !matches!(*normalize_middle_ty(cx, ty).kind(), rustc_ty::Adt(adt, _) if is_semantic_boundary_adt(adt).0) || !output.0)]
 fn middle_ty_contains_primitive<'tcx>(
     cx: &LateContext<'tcx>,
     ty: rustc_ty::Ty<'tcx>,
@@ -605,6 +691,12 @@ fn middle_ty_contains_primitive<'tcx>(
 /// - ensures: returns the normalized type where rustc can normalize it in this
 ///   context, and the type unchanged otherwise.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| output == cx.tcx.try_normalize_erasing_regions(cx.typing_env(), rustc_ty::Unnormalized::new_wip(ty)).unwrap_or(ty))]
 pub fn normalize_middle_ty<'tcx>(
     cx: &LateContext<'tcx>,
     ty: rustc_ty::Ty<'tcx>,

@@ -8,6 +8,8 @@
 //! Explicit suspended frames preserve Tarjan's parent/child bookkeeping without
 //! recursion over a source-controlled graph depth.
 
+use anodized::spec;
+
 use crate::semantic::Vertex;
 
 /// Explicit continuation state for one active Tarjan vertex.
@@ -49,6 +51,7 @@ struct TarjanFrame
 /// - witness: `graph::tests::nested_cycles_separate_by_reachability`
 /// - witness: `graph::tests::cross_edge_into_a_finished_component_does_not_merge_it`
 /// - witness: `graph::tests::a_later_child_subtree_lowers_the_parent_lowlink`
+#[spec(requires: adjacency.iter().flatten().all(|vertex| vertex.0 < adjacency.len()))]
 pub fn tarjan_components(adjacency: &[Vec<Vertex>]) -> Vec<Vec<Vertex>>
 {
     let node_count = adjacency.len();

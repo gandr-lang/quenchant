@@ -10,6 +10,7 @@
 //! its own fixed prose grammar. No reader may complete an incomplete authored
 //! statement by borrowing the following section's bullets.
 
+use anodized::spec;
 use quenchant_shape::shape::Maybe;
 use rustc_hir::Attribute;
 use rustc_hir::def_id::LocalDefId;
@@ -41,6 +42,20 @@ quenchant_shape::reason_enum! {
 ///   order, with the indentation each line carries in the fragment.
 /// - provides: the input both section readers below take.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — UI sections distinguish preserved continuations from
+///   standalone prose and keep generated headings outside authored sections.
+/// - witness: `tests::ui`
+/// - witness: `tests::ui_specifications`
+#[spec(ensures: |output| {
+    let mut emitted = output.iter();
+    cx.tcx.hir_attrs(cx.tcx.local_def_id_to_hir_id(def_id))
+        .iter().filter_map(Attribute::doc_str)
+        .all(|doc| doc.as_str().lines().all(|line|
+            emitted.next().is_some_and(|actual| actual == line)))
+        && emitted.next().is_none()
+})]
 pub fn indented_rustdoc_lines(
     cx: &LateContext<'_>,
     def_id: LocalDefId,
@@ -65,11 +80,11 @@ pub fn indented_rustdoc_lines(
 /// # Specification
 /// - requires: `lines` are the item's rustdoc lines with their indentation, and
 ///   `heading` is the section's heading exactly as it is written.
-/// - ensures: returns `Absent` when no such heading is present; otherwise the
-///   section runs from the heading to the next heading of any level, an
-///   indented line is appended to the bullet above it, and an unindented
-///   non-bullet line — a paragraph, or a link-reference definition trailing the
-///   block — belongs to neither bullet and is dropped.
+/// - ensures: returns `Absent` exactly when no such heading is present.
+/// - ensures: a present section runs from the heading to the next heading of
+///   any level; an indented line is appended to the bullet above it, and an
+///   unindented non-bullet line — a paragraph, or a link-reference definition
+///   trailing the block — belongs to neither bullet and is dropped.
 /// - provides: the bullet list every fixed-grammar gate in this crate
 ///   validates.
 /// - provides: `section_lookup::Missing::HeadingAbsent` distinguishes an absent
@@ -84,6 +99,8 @@ pub fn indented_rustdoc_lines(
 /// - witness: `adequacy::tests::a_wrapped_bullet_value_stays_one_bullet`
 /// - witness: `adequacy::tests::a_trailing_link_definition_joins_no_bullet`
 /// - witness: `judgement::tests::a_wrapped_direction_value_stays_one_bullet`
+#[spec(ensures: |output| matches!(output, Maybe::Present(_))
+    == lines.iter().any(|line| line.trim() == heading.0))]
 pub fn section_lines(
     lines: &[String],
     heading: SectionHeading<'_>,
@@ -136,6 +153,12 @@ pub fn section_lines(
 ///   would return.
 /// - witness: `specification::tests::the_bare_word_is_the_whole_body`
 /// - witness: `specification::tests::a_later_block_adds_no_clause_to_the_marker`
+#[spec(ensures: |output| match &output {
+    Maybe::Absent(_) => !lines.iter().any(|line| line.trim() == heading.0),
+    Maybe::Present(body) => lines.iter().any(|line| line.trim() == heading.0)
+        && body.iter().eq(lines.iter().skip_while(|line| line.trim() != heading.0)
+            .skip(1).take_while(|line| !opens_heading(RustdocLine::from(line.trim())).0)),
+})]
 pub fn section_body(
     lines: &[String],
     heading: SectionHeading<'_>,
@@ -168,6 +191,14 @@ pub fn section_body(
 ///   beyond that single leading space.
 /// - provides: the rule separating a wrapped bullet value from a new paragraph.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — folded continuations and trailing link definitions
+///   distinguish extra indentation from the doc-comment prefix.
+/// - witness: `adequacy::tests::a_wrapped_bullet_value_stays_one_bullet`
+/// - witness: `adequacy::tests::a_trailing_link_definition_joins_no_bullet`
+#[spec(ensures: |output| output.0 ==
+    line.0.strip_prefix(' ').unwrap_or(line.0).starts_with(char::is_whitespace))]
 fn is_indented_continuation(line: RustdocLine<'_>) -> IndentedContinuation
 {
     let content = line.0.strip_prefix(' ').unwrap_or(line.0);

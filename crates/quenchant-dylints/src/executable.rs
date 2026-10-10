@@ -25,6 +25,7 @@ use alloc::sync::Arc;
 use std::sync::Mutex;
 use std::sync::PoisonError;
 
+use anodized::spec;
 use clippy_utils::diagnostics::span_lint_and_help;
 use quenchant_shape::shape::Maybe;
 use rustc_ast::AssocItem;
@@ -238,6 +239,13 @@ impl EarlyLintPass for SpecificationSpelling
     /// - ensures: stores multi-segment attribute paths and qualified paths in
     ///   conditional attributes; generated attributes are not recorded.
     /// - panics: none.
+    /// - executable: none — the shared compiler-pass index can change before a
+    ///   postcondition reacquires its lock.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — the UI fixtures exercise authored attribute
+    ///   collection and its late-pass lookup through the resulting diagnostics.
+    /// - witness: `tests::ui_spec_gates`
     fn check_attribute(
         &mut self,
         _cx: &EarlyContext<'_>,
@@ -281,6 +289,8 @@ impl SpecificationSpelling
     ///   `cfg_attr` lists, without treating paths in predicates or arguments as
     ///   attribute paths. Resolution later excludes inactive conditions.
     /// - panics: none.
+    /// - executable: none — the shared compiler-pass index can change before a
+    ///   postcondition reacquires its lock.
     ///
     /// # Adequacy
     /// - hypothesis: L3 — the matrix distinguishes active direct and nested
@@ -336,6 +346,8 @@ impl SpecificationSpelling
     ///   quenchant facade is diagnosed once; unrelated macro identities and
     ///   unqualified paths are not diagnosed.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
     ///
     /// # Adequacy
     /// - hypothesis: L3 — the UI matrix separates direct, absolute, aliased and
@@ -390,6 +402,13 @@ impl<'tcx> rustc_lint::LateLintPass<'tcx> for SpecificationSpelling
     /// # Specification
     /// - ensures: applies [`Self::check_definition`] in this item's lint scope.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — the UI fixtures separate qualified specification
+    ///   attributes from imported attributes in each declaration scope.
+    /// - witness: `tests::ui_spec_gates`
     fn check_item(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -405,6 +424,13 @@ impl<'tcx> rustc_lint::LateLintPass<'tcx> for SpecificationSpelling
     /// - ensures: applies [`Self::check_definition`] in this member's lint
     ///   scope.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — the UI fixtures separate qualified specification
+    ///   attributes from imported attributes in each declaration scope.
+    /// - witness: `tests::ui_spec_gates`
     fn check_trait_item(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -420,6 +446,13 @@ impl<'tcx> rustc_lint::LateLintPass<'tcx> for SpecificationSpelling
     /// - ensures: applies [`Self::check_definition`] in this member's lint
     ///   scope.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — the UI fixtures separate qualified specification
+    ///   attributes from imported attributes in each declaration scope.
+    /// - witness: `tests::ui_spec_gates`
     fn check_impl_item(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -496,10 +529,17 @@ impl AttributeIndex
     /// Record what a declaration's authored attributes state.
     ///
     /// # Specification
-    /// - ensures: a later [`Self::lookup`] at the same name span returns
-    ///   `attribute`; a poisoned lock is recovered, since every write leaves
-    ///   the map whole.
+    /// - ensures: until another record replaces it, a later [`Self::lookup`] at
+    ///   the same name span returns `attribute`; a poisoned lock is recovered,
+    ///   since every write leaves the map whole.
     /// - panics: none.
+    /// - executable: none — the shared compiler-pass index can change before a
+    ///   postcondition reacquires its lock.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — the UI fixtures exercise authored attribute
+    ///   collection and its late-pass lookup through the resulting diagnostics.
+    /// - witness: `tests::ui_spec_gates`
     fn record(
         &self,
         name: Span,
@@ -519,6 +559,13 @@ impl AttributeIndex
     /// - ensures: returns the record the pre-expansion pass made at that span,
     ///   and [`ExecutableAttribute::Absent`] where it made none.
     /// - panics: none.
+    /// - executable: none — the shared compiler-pass index can change before a
+    ///   postcondition reacquires its lock.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — the UI fixtures exercise authored attribute
+    ///   collection and its late-pass lookup through the resulting diagnostics.
+    /// - witness: `tests::ui_spec_gates`
     #[must_use]
     pub fn lookup(
         &self,
@@ -561,6 +608,13 @@ impl AttributeCollector
     ///   answer is [`ExecutableAttribute::Absent`], which a lookup returns
     ///   anyway.
     /// - panics: none.
+    /// - executable: none — the shared compiler-pass index can change before a
+    ///   postcondition reacquires its lock.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — the UI fixtures exercise authored attribute
+    ///   collection and its late-pass lookup through the resulting diagnostics.
+    /// - witness: `tests::ui_spec_gates`
     fn collect(
         &self,
         name: Span,
@@ -584,6 +638,13 @@ impl EarlyLintPass for AttributeCollector
     ///   block, and ignores every other item kind; the early pass has no hook
     ///   of its own for foreign items.
     /// - panics: none.
+    /// - executable: none — the shared compiler-pass index can change before a
+    ///   postcondition reacquires its lock.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — the UI fixtures exercise authored attribute
+    ///   collection and its late-pass lookup through the resulting diagnostics.
+    /// - witness: `tests::ui_spec_gates`
     fn check_item(
         &mut self,
         _cx: &EarlyContext<'_>,
@@ -610,6 +671,13 @@ impl EarlyLintPass for AttributeCollector
     /// - ensures: collects a method and ignores every other associated item
     ///   kind.
     /// - panics: none.
+    /// - executable: none — the shared compiler-pass index can change before a
+    ///   postcondition reacquires its lock.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — the UI fixtures exercise authored attribute
+    ///   collection and its late-pass lookup through the resulting diagnostics.
+    /// - witness: `tests::ui_spec_gates`
     fn check_trait_item(
         &mut self,
         _cx: &EarlyContext<'_>,
@@ -627,6 +695,13 @@ impl EarlyLintPass for AttributeCollector
     /// - ensures: collects a method and ignores every other associated item
     ///   kind.
     /// - panics: none.
+    /// - executable: none — the shared compiler-pass index can change before a
+    ///   postcondition reacquires its lock.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — the UI fixtures exercise authored attribute
+    ///   collection and its late-pass lookup through the resulting diagnostics.
+    /// - witness: `tests::ui_spec_gates`
     fn check_impl_item(
         &mut self,
         _cx: &EarlyContext<'_>,
@@ -692,10 +767,10 @@ macro_rules! token_is {
 /// # Specification
 /// - requires: `attrs` are one declaration's outer attributes, read before
 ///   expansion.
-/// - ensures: returns [`ExecutableAttribute::Absent`] when no attribute's path
-///   ends in `spec`, directly or as the attribute a `cfg_attr` applies;
-///   [`ExecutableAttribute::ClauseAbsent`] when the attributes state no
-///   `requires`, `maintains` or `ensures` predicate;
+/// - ensures: returns [`ExecutableAttribute::Absent`] exactly when no attribute
+///   supplies specification arguments through [`spec_arguments`].
+/// - ensures: returns [`ExecutableAttribute::ClauseAbsent`] when the attributes
+///   state no `requires`, `maintains` or `ensures` predicate;
 ///   [`ExecutableAttribute::Vacuous`] at the first predicate, in source order,
 ///   that [`vacuity`] refuses or that repeats an earlier predicate of the same
 ///   clause; and [`ExecutableAttribute::Stated`] otherwise.
@@ -708,6 +783,8 @@ macro_rules! token_is {
 ///   qualified path, a `cfg_attr` route, a nested trait marker, and each
 ///   vacuous form one at a time.
 /// - witness: `tests::ui_spec_gates`
+#[spec(ensures: |output| (output == ExecutableAttribute::Absent)
+    == attrs.iter().all(|attr| spec_arguments(attr).is_empty()))]
 fn read_attributes(attrs: &[Attribute]) -> ExecutableAttribute
 {
     let mut found = false;
@@ -747,12 +824,21 @@ fn read_attributes(attrs: &[Attribute]) -> ExecutableAttribute
 /// Find the `spec` attributes an authored attribute writes.
 ///
 /// # Specification
+/// - ensures: a documentation attribute supplies no specification arguments.
 /// - ensures: returns the attribute's own arguments when its path's last
 ///   segment is `spec`; for a `cfg_attr`, the arguments of each attribute it
 ///   applies whose path ends in `spec`; and nothing for any other attribute.
 ///   The condition of a `cfg_attr` is not evaluated: the authored predicate is
 ///   an obligation whichever configuration checks it.
 /// - panics: none.
+#[spec(ensures: |output| match attr.kind {
+    AttrKind::DocComment(..) => output.is_empty(),
+    AttrKind::Normal(_) => true,
+})]
+/// # Adequacy
+/// - hypothesis: L2 — the compiler fixtures exercise bare, delimited, qualified
+///   and conditional attributes and compare accepted forms with refused forms.
+/// - witness: `tests::ui_spec_gates`
 fn spec_arguments(attr: &Attribute) -> Vec<SpecArguments<'_>>
 {
     let AttrKind::Normal(ref normal) = attr.kind
@@ -812,6 +898,31 @@ fn spec_arguments(attr: &Attribute) -> Vec<SpecArguments<'_>>
 ///   such identifier or to the end; a comma ending the list belongs to no
 ///   clause. Tokens before the first key belong to no clause.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — the compiler fixtures exercise clause boundaries, nested
+///   groups and trailing commas and compare accepted forms with refused forms.
+/// - witness: `tests::ui_spec_gates`
+#[spec(ensures: |output| {
+    let trees: Vec<&TokenTree> = arguments.iter().collect();
+    let starts: Vec<(usize, ClauseKey)> = trees.iter().enumerate().filter_map(|(index, tree)| {
+        let boundary = index == 0_usize || trees.get(index.saturating_sub(1_usize))
+            .is_some_and(|previous| token_is!(previous, TokenKind::Comma));
+        if !boundary { return None; }
+        match clause_key(tree, trees.get(index.saturating_add(1_usize) ..).unwrap_or_default()) {
+            Maybe::Present(key) => Some((index, key)),
+            Maybe::Absent(_) => None,
+        }
+    }).collect();
+    output.len() == starts.len() && output.iter().zip(starts.iter()).enumerate().all(|(index, (clause, &(start, key)))| {
+        let end = starts.get(index.saturating_add(1_usize)).map_or_else(|| {
+            if trees.last().is_some_and(|last| token_is!(last, TokenKind::Comma)) {
+                trees.len().saturating_sub(1_usize)
+            } else { trees.len() }
+        }, |&(next, _)| next.saturating_sub(1_usize));
+        clause.key == key && same_tokens(&clause.value, trees.get(start.saturating_add(2_usize) .. end).unwrap_or_default()).0
+    })
+})]
 fn clauses(arguments: &TokenStream) -> Vec<Clause<'_>>
 {
     let trees: Vec<&TokenTree> = arguments.iter().collect();
@@ -860,6 +971,20 @@ fn clauses(arguments: &TokenStream) -> Vec<Clause<'_>>
 ///   opens with a single colon; `requires`, `maintains` and `ensures` are the
 ///   executable keys, and any other identifier is [`ClauseKey::Other`].
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — the compiler fixtures exercise executable keys and
+///   non-predicate keys and compare accepted forms with refused forms.
+/// - witness: `tests::ui_spec_gates`
+#[spec(ensures: |output| output == match (ident_name(tree), rest.first()) {
+    (Maybe::Present(name), Some(colon)) if token_is!(colon, TokenKind::Colon) => Maybe::Present(match name.as_str() {
+        "requires" => ClauseKey::Requires,
+        "maintains" => ClauseKey::Maintains,
+        "ensures" => ClauseKey::Ensures,
+        _ => ClauseKey::Other,
+    }),
+    _ => Maybe::Absent(clause_reading::NotAKey::NotKeyShaped),
+})]
 fn clause_key(
     tree: &TokenTree,
     rest: &[&TokenTree],
@@ -886,12 +1011,19 @@ fn clause_key(
 /// The predicates one clause states.
 ///
 /// # Specification
-/// - ensures: returns nothing for [`ClauseKey::Other`]. Otherwise a value that
-///   is one bracketed group is a list and each element is read; an `ensures`
-///   element loses its closure head, and a closure body that is one bracketed
-///   group is a list of predicates in turn. Each predicate loses the
-///   parentheses and braces that enclose it whole.
+/// - ensures: returns nothing for [`ClauseKey::Other`].
+/// - ensures: otherwise a value that is one bracketed group is a list and each
+///   element is read; an `ensures` element loses its closure head, and a
+///   closure body that is one bracketed group is a list of predicates in turn.
+///   Each predicate loses the parentheses and braces that enclose it whole.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — the compiler fixtures exercise predicate lists, closure
+///   bodies and non-predicate keys and compare accepted forms with refused
+///   forms.
+/// - witness: `tests::ui_spec_gates`
+#[spec(ensures: |output| clause.key != ClauseKey::Other || output.is_empty())]
 fn clause_predicates<'stream>(clause: &Clause<'stream>) -> Vec<Predicate<'stream>>
 {
     if clause.key == ClauseKey::Other {
@@ -924,6 +1056,18 @@ fn clause_predicates<'stream>(clause: &Clause<'stream>) -> Vec<Predicate<'stream
 /// - ensures: returns the comma-separated elements of a value that is exactly
 ///   one bracketed group, and the value itself as one element otherwise.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — the compiler fixtures exercise single predicates and
+///   bracketed predicate lists and compare accepted forms with refused forms.
+/// - witness: `tests::ui_spec_gates`
+#[spec(ensures: |output| {
+    let expected = match *value {
+        [&TokenTree::Delimited(_, _, Delimiter::Bracket, ref inner)] => split_commas(&inner.iter().collect::<Vec<_>>()),
+        _ => vec![value.to_vec()],
+    };
+    output.len() == expected.len() && output.iter().zip(&expected).all(|(actual, expected)| same_tokens(actual, expected).0)
+})]
 fn list_elements<'stream>(value: &[&'stream TokenTree]) -> Vec<Vec<&'stream TokenTree>>
 {
     if let [&TokenTree::Delimited(_, _, Delimiter::Bracket, ref inner)] = *value {
@@ -940,6 +1084,22 @@ fn list_elements<'stream>(value: &[&'stream TokenTree]) -> Vec<Vec<&'stream Toke
 ///   head, after a leading `||`, or after a leading `move` before either; any
 ///   other value is returned unchanged.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — the compiler fixtures exercise postcondition closure
+///   heads and bodies and compare accepted forms with refused forms.
+/// - witness: `tests::ui_spec_gates`
+#[spec(ensures: |output| {
+    let start = usize::from(value.first().is_some_and(|tree| ident_name(tree) == Maybe::Present(kw::Move)));
+    let after_move = value.get(start ..).unwrap_or_default();
+    let head = match after_move.first() {
+        Some(tree) if token_is!(tree, TokenKind::OrOr) => 1_usize,
+        Some(tree) if token_is!(tree, TokenKind::Or) => after_move.iter().enumerate().skip(1_usize)
+            .find_map(|(index, tree)| token_is!(tree, TokenKind::Or).then_some(index.saturating_add(1_usize))).unwrap_or_default(),
+        _ => 0_usize,
+    };
+    same_tokens(output, after_move.get(head ..).unwrap_or_default()).0
+})]
 fn closure_body<'value, 'stream>(
     value: &'value [&'stream TokenTree]
 ) -> &'value [&'stream TokenTree]
@@ -971,6 +1131,19 @@ fn closure_body<'value, 'stream>(
 ///   replaces it with the group's contents; a bracketed group is a value and
 ///   stays.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — the compiler fixtures exercise nested predicate
+///   parentheses, braces and bracketed values and compare accepted forms with
+///   refused forms.
+/// - witness: `tests::ui_spec_gates`
+#[spec(ensures: |output| {
+    let mut expected = predicate.to_vec();
+    while let [&TokenTree::Delimited(_, _, Delimiter::Parenthesis | Delimiter::Brace, ref inner)] = *expected.as_slice() {
+        expected = inner.iter().collect();
+    }
+    same_tokens(&output, &expected).0
+})]
 fn peeled<'stream>(predicate: &[&'stream TokenTree]) -> Vec<&'stream TokenTree>
 {
     let mut trees = predicate.to_vec();
@@ -1000,6 +1173,15 @@ fn peeled<'stream>(predicate: &[&'stream TokenTree]) -> Vec<&'stream TokenTree>
 ///   pair beside a refutable pattern, and a complementary disjunction beside a
 ///   single query.
 /// - witness: `tests::ui_spec_gates`
+#[spec(ensures: |output| output == if matches!(*trees, [literal] if ident_name(literal) == Maybe::Present(kw::True))
+    || matches!(*trees, [bang, literal] if token_is!(bang, TokenKind::Bang) && ident_name(literal) == Maybe::Present(kw::False)) {
+    Maybe::Present(Vacuity::LiteralTrue)
+} else {
+    match (reflexive(trees), wildcard_match(trees)) {
+        (Maybe::Present(kind), _) | (_, Maybe::Present(kind)) => Maybe::Present(kind),
+        _ => complementary_queries(trees),
+    }
+})]
 fn vacuity(trees: &[&TokenTree]) -> Maybe<Vacuity, predicate_reading::Substantive>
 {
     match *trees {
@@ -1030,6 +1212,20 @@ fn vacuity(trees: &[&TokenTree]) -> Maybe<Vacuity, predicate_reading::Substantiv
 ///   top-level comparison or logical operator is one `==`, `<=` or `>=` whose
 ///   two nonempty sides are token-identical.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — the compiler fixtures exercise reflexive comparisons and
+///   non-reflexive near misses and compare accepted forms with refused forms.
+/// - witness: `tests::ui_spec_gates`
+#[spec(ensures: |output| {
+    let operators: Vec<usize> = trees.iter().enumerate().filter_map(|(index, tree)| token_is!(tree,
+        TokenKind::EqEq | TokenKind::Le | TokenKind::Ge | TokenKind::Ne | TokenKind::Lt | TokenKind::Gt | TokenKind::AndAnd | TokenKind::OrOr
+    ).then_some(index)).collect();
+    let refused = matches!(*operators.as_slice(), [index] if index > 0_usize
+        && trees.get(index).is_some_and(|tree| token_is!(tree, TokenKind::EqEq | TokenKind::Le | TokenKind::Ge))
+        && same_tokens(trees.get(.. index).unwrap_or_default(), trees.get(index.saturating_add(1_usize) ..).unwrap_or_default()).0);
+    (output == Maybe::Present(Vacuity::Reflexive)) == refused
+})]
 fn reflexive(trees: &[&TokenTree]) -> Maybe<Vacuity, predicate_reading::Substantive>
 {
     let substantive = Maybe::Absent(predicate_reading::Substantive::NoVacuousForm);
@@ -1071,11 +1267,22 @@ fn reflexive(trees: &[&TokenTree]) -> Maybe<Vacuity, predicate_reading::Substant
 /// Refuse a `matches!` predicate whose pattern admits every value.
 ///
 /// # Specification
+/// - ensures: a predicate not beginning with `matches!` is substantive.
 /// - ensures: returns [`Vacuity::TypeCheck`] exactly when the predicate is
 ///   `matches!(subject, pattern)` and the pattern is `_` or the two arms of one
 ///   of `Result`, `Option` and `Maybe`, each with no payload or a `_` or `..`
 ///   payload, with no guard.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — the compiler fixtures exercise wildcards, exhaustive
+///   variants and guarded patterns and compare accepted forms with refused
+///   forms.
+/// - witness: `tests::ui_spec_gates`
+#[spec(ensures: |output| {
+    let starts_matches = matches!(*trees, [name, bang, ..] if matches!(ident_name(name), Maybe::Present(called) if called.as_str() == "matches") && token_is!(bang, TokenKind::Bang));
+    starts_matches || output == Maybe::Absent(predicate_reading::Substantive::NoVacuousForm)
+})]
 fn wildcard_match(trees: &[&TokenTree]) -> Maybe<Vacuity, predicate_reading::Substantive>
 {
     let substantive = Maybe::Absent(predicate_reading::Substantive::NoVacuousForm);
@@ -1144,6 +1351,30 @@ fn wildcard_match(trees: &[&TokenTree]) -> Maybe<Vacuity, predicate_reading::Sub
 ///   optionally followed by a parenthesized `_` or `..`; any other arm is
 ///   `Absent`.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — the compiler fixtures exercise wildcard and refutable
+///   variant payloads and compare accepted forms with refused forms.
+/// - witness: `tests::ui_spec_gates`
+#[spec(ensures: |output| {
+    let path = match *arm {
+        [ref path @ .., &TokenTree::Delimited(_, _, Delimiter::Parenthesis, ref payload)] => {
+            let mut tokens = payload.iter();
+            match (tokens.next(), tokens.next()) {
+                (Some(tree), None) if ident_name(tree) == Maybe::Present(kw::Underscore) || token_is!(tree, TokenKind::DotDot) => Some(path),
+                _ => None,
+            }
+        },
+        ref path => Some(path),
+    };
+    output == match path.and_then(|path| path.split_last()) {
+        Some((last, prefix)) if prefix.iter().all(|tree| token_is!(tree, TokenKind::PathSep) || matches!(ident_name(tree), Maybe::Present(_))) => match ident_name(last) {
+            Maybe::Present(name) => Maybe::Present(name),
+            Maybe::Absent(_) => Maybe::Absent(pattern_reading::NotWildcard::Refutable),
+        },
+        _ => Maybe::Absent(pattern_reading::NotWildcard::Refutable),
+    }
+})]
 fn wildcard_variant(arm: &[&TokenTree]) -> Maybe<Symbol, pattern_reading::NotWildcard>
 {
     let refutable = Maybe::Absent(pattern_reading::NotWildcard::Refutable);
@@ -1200,6 +1431,24 @@ struct DiscriminantQuery<'operand, 'stream>
 ///   `.query()`, the receivers token-identical and the queries `is_ok` with
 ///   `is_err` or `is_some` with `is_none` in either order.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — the compiler fixtures exercise complementary discriminant
+///   queries and different receivers and compare accepted forms with refused
+///   forms.
+/// - witness: `tests::ui_spec_gates`
+#[spec(ensures: |output| {
+    let operands = split_on(trees, &TokenKind::OrOr);
+    let refused = match *operands.as_slice() {
+        [ref first, ref second] => match (discriminant_query(first), discriminant_query(second)) {
+            (Maybe::Present(first), Maybe::Present(second)) => same_tokens(first.receiver, second.receiver).0
+                && matches!((first.query.as_str(), second.query.as_str()), ("is_ok", "is_err") | ("is_err", "is_ok") | ("is_some", "is_none") | ("is_none", "is_some")),
+            _ => false,
+        },
+        _ => false,
+    };
+    (output == Maybe::Present(Vacuity::TypeCheck)) == refused
+})]
 fn complementary_queries(trees: &[&TokenTree]) -> Maybe<Vacuity, predicate_reading::Substantive>
 {
     let substantive = Maybe::Absent(predicate_reading::Substantive::NoVacuousForm);
@@ -1229,6 +1478,20 @@ fn complementary_queries(trees: &[&TokenTree]) -> Maybe<Vacuity, predicate_readi
 /// - ensures: returns the receiver and the method of an operand ending in
 ///   `.name()` with a nonempty receiver; any other operand is `Absent`.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — the compiler fixtures exercise nullary queries and other
+///   predicate operands and compare accepted forms with refused forms.
+/// - witness: `tests::ui_spec_gates`
+#[spec(ensures: |output| match *operand {
+    [ref receiver @ .., dot, name, &TokenTree::Delimited(_, _, Delimiter::Parenthesis, ref args)]
+        if !receiver.is_empty() && token_is!(dot, TokenKind::Dot) && args.is_empty() => match (ident_name(name), &output) {
+            (Maybe::Present(name), Maybe::Present(actual)) => actual.query == name && same_tokens(actual.receiver, receiver).0,
+            (Maybe::Absent(_), Maybe::Absent(query_reading::NotAQuery::OtherShape)) => true,
+            _ => false,
+        },
+    _ => matches!(output, Maybe::Absent(query_reading::NotAQuery::OtherShape)),
+})]
 fn discriminant_query<'operand, 'stream>(
     operand: &'operand [&'stream TokenTree]
 ) -> Maybe<DiscriminantQuery<'operand, 'stream>, query_reading::NotAQuery>
@@ -1258,6 +1521,15 @@ fn discriminant_query<'operand, 'stream>(
 /// - ensures: returns the runs between occurrences of `separator`, in order,
 ///   including empty runs; tokens inside groups are never separators.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — the compiler fixtures exercise top-level separators and
+///   grouped tokens and compare accepted forms with refused forms.
+/// - witness: `tests::ui_spec_gates`
+#[spec(ensures: |output| {
+    let mut runs = trees.split(|tree| matches!(*tree, TokenTree::Token(token, _) if token.kind == *separator));
+    output.iter().all(|run| runs.next().is_some_and(|expected| same_tokens(run, expected).0)) && runs.next().is_none()
+})]
 fn split_on<'stream>(
     trees: &[&'stream TokenTree],
     separator: &TokenKind,
@@ -1281,6 +1553,17 @@ fn split_on<'stream>(
 /// - ensures: returns the runs between top-level commas, dropping the empty run
 ///   a trailing comma leaves.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — the compiler fixtures exercise comma-separated lists and
+///   trailing commas and compare accepted forms with refused forms.
+/// - witness: `tests::ui_spec_gates`
+#[spec(ensures: |output| {
+    let count = trees.iter().filter(|tree| token_is!(tree, TokenKind::Comma)).count()
+        .saturating_add(usize::from(trees.last().is_some_and(|last| !token_is!(last, TokenKind::Comma))));
+    let expected = trees.split(|tree| token_is!(tree, TokenKind::Comma));
+    output.len() == count && output.iter().zip(expected).all(|(run, expected)| same_tokens(run, expected).0)
+})]
 fn split_commas<'stream>(trees: &[&'stream TokenTree]) -> Vec<Vec<&'stream TokenTree>>
 {
     let mut runs = split_on(trees, &TokenKind::Comma);
@@ -1314,6 +1597,15 @@ fn same_tokens(
 /// - ensures: returns the span from the first tree's start to the last tree's
 ///   end, and the dummy span for an empty run.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — the compiler fixtures exercise diagnostic spans over
+///   predicate token runs and compare accepted forms with refused forms.
+/// - witness: `tests::ui_spec_gates`
+#[spec(ensures: |output| output == match (trees.first(), trees.last()) {
+    (Some(first), Some(last)) => first.span().to(last.span()),
+    _ => rustc_span::DUMMY_SP,
+})]
 fn trees_span(trees: &[&TokenTree]) -> Span
 {
     match (trees.first(), trees.last()) {
@@ -1328,6 +1620,15 @@ fn trees_span(trees: &[&TokenTree]) -> Span
 /// - ensures: returns the symbol of an identifier token, keywords and raw
 ///   identifiers included, and `Absent` for any other tree.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — the compiler fixtures exercise keyword, identifier and
+///   non-identifier token forms and compare accepted forms with refused forms.
+/// - witness: `tests::ui_spec_gates`
+#[spec(ensures: |output| output == match *tree {
+    TokenTree::Token(Token { kind: TokenKind::Ident(name, _), .. }, _) => Maybe::Present(name),
+    _ => Maybe::Absent(token_reading::NotIdent::OtherTree),
+})]
 fn ident_name(tree: &TokenTree) -> Maybe<Symbol, token_reading::NotIdent>
 {
     match *tree {
@@ -1385,6 +1686,16 @@ const INTENSION: &str = "- intension:";
 /// - witness: `executable::tests::the_exemption_reads_none_and_a_reason`
 /// - witness: `executable::tests::only_an_intension_follows_the_exemption`
 /// - witness: `executable::tests::the_exemption_is_stated_once`
+#[spec(ensures: |output| {
+    let exemptions: Vec<(usize, &str)> = bullets.iter().enumerate().filter_map(|(index, bullet)| bullet.strip_prefix(EXEMPTION).map(|value| (index, value))).collect();
+    output == match *exemptions.as_slice() {
+        [] => Exemption::Absent,
+        [(index, value)] => if bullets.iter().skip(index.saturating_add(1_usize)).any(|bullet| !bullet.starts_with(INTENSION)) {
+            Exemption::NotLast
+        } else { exemption_value(RustdocLine::from(value)) },
+        _ => Exemption::Duplicated,
+    }
+})]
 fn read_exemption(bullets: &[String]) -> Exemption
 {
     let mut seen = 0_usize;
@@ -1415,6 +1726,13 @@ fn read_exemption(bullets: &[String]) -> Exemption
 ///   opens with the word `none`, then an em dash, then a nonempty reason, and
 ///   [`Exemption::Unreasoned`] otherwise.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the exemption cases distinguish a stated reason from an
+///   empty reason and an incorrect separator.
+/// - witness: `executable::tests::the_exemption_reads_none_and_a_reason`
+#[spec(ensures: |output| (output == Exemption::Stated) == value.0.trim().split_once('—')
+    .is_some_and(|(prefix, reason)| prefix.trim_end() == "none" && !reason.trim().is_empty()))]
 fn exemption_value(value: RustdocLine<'_>) -> Exemption
 {
     let reasoned = value
@@ -1524,6 +1842,17 @@ const EXECUTABLE_SHAPES: &str = concat!(
 /// - hypothesis: L3 — the tests take every pair of exemption state and
 ///   attribute record and assert the exact outcome.
 /// - witness: `executable::tests::every_exemption_and_record_pair_has_one_outcome`
+#[spec(ensures: |output| output == match (exemption, attribute) {
+    (Exemption::Duplicated, _) => Maybe::Present(ExecutableDefect::ExemptionDuplicated),
+    (Exemption::NotLast, _) => Maybe::Present(ExecutableDefect::ExemptionNotLast),
+    (Exemption::Unreasoned, _) => Maybe::Present(ExecutableDefect::ExemptionUnreasoned),
+    (_, ExecutableAttribute::Vacuous(kind, span)) => Maybe::Present(ExecutableDefect::Vacuous(kind, span)),
+    (Exemption::Stated, ExecutableAttribute::Stated) => Maybe::Present(ExecutableDefect::ExemptionBesideClause),
+    (Exemption::Stated, _) => Maybe::Absent(executable_check::Satisfied::Exempt),
+    (Exemption::Absent, ExecutableAttribute::Stated) => Maybe::Absent(executable_check::Satisfied::PredicateStated),
+    (Exemption::Absent, ExecutableAttribute::Absent) => Maybe::Present(ExecutableDefect::AttributeAbsent),
+    (Exemption::Absent, ExecutableAttribute::ClauseAbsent) => Maybe::Present(ExecutableDefect::ClauseAbsent),
+})]
 fn executable_defect(
     exemption: Exemption,
     attribute: ExecutableAttribute,
@@ -1566,6 +1895,13 @@ fn executable_defect(
 ///   the obligation is satisfied.
 /// - provides: the reporting half of [`SPEC_ATTRIBUTE_PRESENT`].
 /// - panics: none.
+/// - executable: none — rustc emits diagnostics without a queryable per-call
+///   diagnostic result.
+///
+/// # Adequacy
+/// - hypothesis: L2 — the compiler fixtures exercise missing, exempt, vacuous
+///   and substantive predicates and compare accepted forms with refused forms.
+/// - witness: `tests::ui_spec_gates`
 pub fn check(
     cx: &LateContext<'_>,
     name: Span,

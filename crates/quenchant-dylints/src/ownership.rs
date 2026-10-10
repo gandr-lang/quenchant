@@ -29,6 +29,7 @@ use alloc::collections::VecDeque;
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+use anodized::spec;
 use rustc_hir::HirId;
 use rustc_hir::def_id::DefId;
 use rustc_hir::def_id::LocalDefId;
@@ -91,6 +92,12 @@ impl NonOwningAllowList
     /// - ensures: answers affirmatively exactly when a justified entry names
     ///   that def path; a refused entry admits nothing.
     /// - panics: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui_config`
+    #[spec(ensures: |output| output.0 == self.paths.iter().any(|entry| entry == path.0))]
     fn admits(
         &self,
         path: TypePath<'_>,
@@ -131,6 +138,8 @@ const UNJUSTIFIED_ENTRY: &str = concat!(
 /// - fails: an unreadable or malformed configuration yields an empty list, so
 ///   the gate falls back to denying rather than to admitting.
 /// - panics: none.
+/// - executable: none — the configuration read outcome is not retained; reading
+///   it again is a distinct fallible operation.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — the UI matrix separates a conservative denial with no
@@ -172,6 +181,7 @@ pub fn non_owning_allow_list() -> NonOwningAllowList
 /// Owning cycles produce deterministic type-local denials.
 ///
 /// # Specification
+/// - ensures: denials follow stable definition-path order.
 /// - requires: `adts` holds every crate-local ADT the pass visited.
 /// - ensures: an ADT is returned exactly when it lies on a cycle of the
 ///   ownership-reachability graph — a strongly connected component of more than
@@ -197,6 +207,10 @@ pub fn non_owning_allow_list() -> NonOwningAllowList
 /// - witness: `ownership::tests::a_container_of_cycle_members_is_not_in_the_cycle`
 /// - witness: `ownership::tests::a_self_edge_renders_one_hop`
 /// - witness: `ownership::tests::a_mutual_cycle_renders_both_hops`
+#[spec(ensures: |output| output.iter().all(|denial| adts.contains_key(&denial.adt)) && output.windows(2_usize).all(|pair| match pair {
+    [left, right] => adts.get(&left.adt).map(|node| node.path.as_str()) <= adts.get(&right.adt).map(|node| node.path.as_str()),
+    _ => false,
+}))]
 pub fn owning_cycles(
     cx: &LateContext<'_>,
     adts: &HashMap<LocalDefId, AdtNode>,
@@ -279,6 +293,13 @@ pub fn owning_cycles(
 /// - ensures: returns every key of the table, ordered by the stable path string
 ///   recorded with it, so the denial order is reproducible.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| output.len() == adts.len() && adts.keys().all(|id| output.contains(id))
+    && output.windows(2_usize).all(|pair| match pair { [left, right] => adts.get(left).map(|node| node.path.as_str()) <= adts.get(right).map(|node| node.path.as_str()), _ => false }))]
 fn sorted_adt_ids(adts: &HashMap<LocalDefId, AdtNode>) -> Vec<LocalDefId>
 {
     let mut ids: Vec<_> = adts.keys().copied().collect();
@@ -296,6 +317,12 @@ fn sorted_adt_ids(adts: &HashMap<LocalDefId, AdtNode>) -> Vec<LocalDefId>
 /// - ensures: returns one entry per field of every variant, in declaration
 ///   order, each type instantiated with the ADT's own parameters.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(requires: matches!(cx.tcx.def_kind(def_id), rustc_hir::def::DefKind::Struct | rustc_hir::def::DefKind::Enum | rustc_hir::def::DefKind::Union))]
 fn owned_field_types<'tcx>(
     cx: &LateContext<'tcx>,
     def_id: LocalDefId,
@@ -340,6 +367,17 @@ fn owned_field_types<'tcx>(
 /// - boundedness: a pass repeats only when it set a flag, and the flags are a
 ///   finite set that only grows.
 /// - input recursion: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| {
+    let walk = OwnershipWalk { cx, allow_list, owned_parameters: &output };
+    nodes.iter().all(|id| output.get(&id.to_def_id()).is_some_and(|flags| flags.iter().enumerate().all(|(index, flag)| {
+        flag.0 == owned_field_types(cx, *id).iter().any(|(_, ty)| walk.reach(*ty).parameters.contains(&ParameterIndex(index)))
+    })))
+})]
 fn owned_parameters(
     cx: &LateContext<'_>,
     nodes: &[LocalDefId],
@@ -420,6 +458,8 @@ impl<'tcx> OwnershipWalk<'_, 'tcx>
     /// Only owned positions contribute type or parameter reachability.
     ///
     /// # Specification
+    /// - ensures: references and raw pointers at the root contribute no
+    ///   ownership reachability.
     /// - requires: `root` is a field type instantiated with its ADT's identity
     ///   arguments.
     /// - ensures: a crate-local ADT is reported exactly when dropping a value
@@ -436,6 +476,13 @@ impl<'tcx> OwnershipWalk<'_, 'tcx>
     /// - boundedness: every push is a strict subterm of the popped type, type
     ///   trees are finite, and a type already visited is never pushed again.
     /// - input recursion: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui`
+    #[spec(ensures: |output| !matches!(*normalize_middle_ty(self.cx, root).kind(), rustc_ty::Ref(..) | rustc_ty::RawPtr(..))
+        || (output.adts.is_empty() && output.parameters.is_empty()))]
     fn reach(
         &self,
         root: rustc_ty::Ty<'tcx>,
@@ -490,6 +537,13 @@ impl<'tcx> OwnershipWalk<'_, 'tcx>
     ///   crate-local ADT answers negatively, since its own parameters are
     ///   analysed instead.
     /// - panics: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui`
+    #[spec(ensures: |output| output.0 == (adt.is_phantom_data() || matches!(self.cx.tcx.get_diagnostic_name(adt.did()), Some(sym::RcWeak | sym::ArcWeak))
+        || (!adt.did().is_local() && !self.allow_list.paths.is_empty() && self.allow_list.admits(TypePath::from(self.cx.tcx.def_path_str(adt.did()).as_str())).0)))]
     fn is_non_owning(
         &self,
         adt: rustc_ty::AdtDef<'tcx>,
@@ -526,6 +580,12 @@ impl<'tcx> OwnershipWalk<'_, 'tcx>
     ///   affirmatively for every parameter of an ADT with no flags, including
     ///   an index past the recorded ones.
     /// - panics: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui`
+    #[spec(ensures: |output| output.0 == self.owned_parameters.get(&def_id).and_then(|flags| flags.get(index.0)).is_none_or(|flag| flag.0))]
     fn is_owned_parameter(
         &self,
         def_id: DefId,
@@ -560,6 +620,12 @@ impl<'tcx> OwnershipWalk<'_, 'tcx>
 ///   moves to the vertex that enqueued the current one, so the chain is the
 ///   finite discovery order.
 /// - input recursion: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the mutual-cycle fixture checks the field-qualified hops
+///   and the return to the starting type.
+/// - witness: `ownership::tests::a_mutual_cycle_renders_both_hops`
+#[spec(requires: members.contains(&start) && start.0 < adjacency.len())]
 fn render_cycle(
     start: Vertex,
     adjacency: &[Vec<Vertex>],

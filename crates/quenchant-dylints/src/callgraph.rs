@@ -19,6 +19,7 @@
 use std::collections::HashMap;
 use std::collections::HashSet;
 
+use anodized::spec;
 use quenchant_shape::shape::Maybe;
 
 quenchant_shape::reason_enum! {
@@ -112,6 +113,12 @@ pub struct CallEdge
 ///   that builds the closure.
 /// - provides: the outgoing edge list of one call-graph node.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(requires: expr.hir_id.owner == cx.typeck_results().hir_owner)]
 pub fn local_call_edges<'tcx>(
     cx: &LateContext<'tcx>,
     expr: &'tcx Expr<'tcx>,
@@ -172,6 +179,21 @@ impl<'tcx> Visitor<'tcx> for LocalCallCollector<'_, 'tcx>
     ///   by the parser's own nesting limit, which rejects deeper input before a
     ///   lint pass ever runs.
     /// - input recursion: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui`
+    #[spec(ensures: |_| match expr.kind {
+        ExprKind::Call(callee, args) => match call_target(self.cx, callee) {
+            Maybe::Present(target) => self.calls.iter().any(|edge| edge.callee == target && edge.args.iter().copied().eq(args.iter().map(|arg| arg.hir_id))),
+            Maybe::Absent(_) => true,
+        },
+        ExprKind::MethodCall(_, receiver, args, _) => self.cx.typeck_results().type_dependent_def_id(expr.hir_id).and_then(|target| target.as_local()).is_none_or(|target| {
+            self.calls.iter().any(|edge| edge.callee == target && edge.args.iter().copied().eq(core::iter::once(receiver.hir_id).chain(args.iter().map(|arg| arg.hir_id))))
+        }),
+        _ => true,
+    })]
     fn visit_expr(
         &mut self,
         expr: &'tcx Expr<'_>,
@@ -224,6 +246,7 @@ impl<'tcx> Visitor<'tcx> for LocalCallCollector<'_, 'tcx>
 /// - hypothesis: L3 — the UI matrix separates a direct call, a function item
 ///   held in a binding, and the function pointer that stays invisible.
 /// - witness: `tests::ui`
+#[spec(requires: callee.hir_id.owner == cx.typeck_results().hir_owner)]
 fn call_target(
     cx: &LateContext<'_>,
     callee: &Expr<'_>,
@@ -257,6 +280,8 @@ fn call_target(
 /// Recursive components and their members have stable definition-path ordering.
 ///
 /// # Specification
+/// - ensures: members and components are ordered by their stable definition
+///   paths.
 /// - requires: `functions` holds every crate-local function the pass visited,
 ///   and `edges` maps callers to their crate-local callsites.
 /// - ensures: a component is returned exactly when it has more than one member
@@ -270,6 +295,11 @@ fn call_target(
 ///   recursion, and acyclic call chains; the component search itself is pinned
 ///   by the unit tests of [`tarjan_components`].
 /// - witness: `tests::ui`
+#[spec(ensures: |output| {
+    let path = |id: &LocalDefId| functions.get(id).map(|node| node.path.as_str());
+    output.iter().all(|component| component.iter().all(|id| functions.contains_key(id)) && component.windows(2_usize).all(|pair| match pair { [left, right] => path(left) <= path(right), _ => false }))
+        && output.windows(2_usize).all(|pair| match pair { [left, right] => left.first().and_then(path) <= right.first().and_then(path), _ => false })
+})]
 pub fn recursive_sccs(
     functions: &HashMap<LocalDefId, FunctionNode>,
     edges: &HashMap<LocalDefId, Vec<CallEdge>>,
@@ -344,6 +374,13 @@ pub fn recursive_sccs(
 /// - ensures: returns every key of the table, ordered by the stable path string
 ///   recorded with it, so the denial order is reproducible.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| output.len() == functions.len() && functions.keys().all(|id| output.contains(id))
+    && output.windows(2_usize).all(|pair| match pair { [left, right] => functions.get(left).map(|node| node.path.as_str()) <= functions.get(right).map(|node| node.path.as_str()), _ => false }))]
 fn sorted_function_ids(functions: &HashMap<LocalDefId, FunctionNode>) -> Vec<LocalDefId>
 {
     let mut ids: Vec<_> = functions.keys().copied().collect();
@@ -361,6 +398,18 @@ fn sorted_function_ids(functions: &HashMap<LocalDefId, FunctionNode>) -> Vec<Loc
 ///   longer be resolved.
 /// - provides: the refutation of a `- input recursion: none.` claim.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| output.0 == scc.iter().any(|caller| functions.get(caller).is_some_and(|node| {
+    let derived = input_derived_bindings(cx, node);
+    edges.get(caller).is_some_and(|calls| calls.iter().any(|edge| scc.contains(&edge.callee) && edge.args.iter().any(|arg| match expr_for_hir_id(cx, *arg) {
+        Maybe::Present(expr) => expr_contains_derived_binding(cx, &derived, expr).0,
+        Maybe::Absent(_) => true,
+    })))
+})))]
 pub fn scc_has_input_derived_recursive_call(
     cx: &LateContext<'_>,
     scc: &[LocalDefId],
@@ -415,6 +464,12 @@ pub fn scc_has_input_derived_recursive_call(
 /// - boundedness: a pass repeats only when it inserted a binding, and the set
 ///   only grows within the body's finite binding count.
 /// - input recursion: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| node.input_bindings.iter().all(|binding| output.contains(binding)))]
 fn input_derived_bindings(
     cx: &LateContext<'_>,
     node: &FunctionNode,
@@ -483,6 +538,16 @@ impl<'tcx> Visitor<'tcx> for ProvenancePropagation<'_, '_, 'tcx>
     /// - measure: the height of the remaining HIR subtree below `local`.
     /// - boundedness: HIR trees are finite and depth-capped by the parser.
     /// - input recursion: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui`
+    #[spec(captures: expected = {
+        let mut expected = Vec::new();
+        if local.init.is_some_and(|init| expr_contains_derived_binding(self.cx, self.derived, init).0) { collect_pattern_bindings(local.pat, &mut expected); }
+        expected
+    }, ensures: |_| expected.iter().all(|binding| self.derived.contains(binding)))]
     fn visit_local(
         &mut self,
         local: &'tcx LetStmt<'tcx>,
@@ -511,6 +576,28 @@ impl<'tcx> Visitor<'tcx> for ProvenancePropagation<'_, '_, 'tcx>
     /// - measure: the height of the remaining HIR subtree below `expr`.
     /// - boundedness: HIR trees are finite and depth-capped by the parser.
     /// - input recursion: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui`
+    #[spec(captures: expected = {
+        let mut expected = Vec::new();
+        match expr.kind {
+            ExprKind::Let(local) if expr_contains_derived_binding(self.cx, self.derived, local.init).0 => collect_pattern_bindings(local.pat, &mut expected),
+            ExprKind::Match(scrutinee, arms, _) if expr_contains_derived_binding(self.cx, self.derived, scrutinee).0 => {
+                for arm in arms { collect_pattern_bindings(arm.pat, &mut expected); }
+            },
+            ExprKind::Assign(target, value, _) | ExprKind::AssignOp(_, target, value)
+                if expr_contains_derived_binding(self.cx, self.derived, value).0 || (matches!(expr.kind, ExprKind::AssignOp(..)) && expr_contains_derived_binding(self.cx, self.derived, target).0) => {
+                let mut collector = LocalReferenceCollector { cx: self.cx, locals: Vec::new() };
+                collector.visit_expr(target);
+                expected = collector.locals;
+            },
+            _ => {},
+        }
+        expected
+    }, ensures: |_| expected.iter().all(|binding| self.derived.contains(binding)))]
     fn visit_expr(
         &mut self,
         expr: &'tcx Expr<'_>,
@@ -553,6 +640,16 @@ impl<'tcx> Visitor<'tcx> for ProvenancePropagation<'_, '_, 'tcx>
 ///   parameter order, each id once.
 /// - provides: the provenance seed of the input-recursion refutation.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| {
+    let mut expected = Vec::new();
+    for parameter in body.params { collect_pattern_bindings(parameter.pat, &mut expected); }
+    output == expected
+})]
 pub fn parameter_binding_ids(body: &Body<'_>) -> Vec<HirId>
 {
     let mut bindings = Vec::new();
@@ -568,6 +665,12 @@ pub fn parameter_binding_ids(body: &Body<'_>) -> Vec<HirId>
 /// - ensures: adds every binding the pattern introduces to the set, and answers
 ///   affirmatively exactly when the set grew.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(captures: before = derived.len(), ensures: |output| output.0 == (derived.len() > before))]
 fn mark_pattern_bindings(
     pat: &Pat<'_>,
     derived: &mut HashSet<HirId>,
@@ -585,9 +688,16 @@ fn mark_pattern_bindings(
 /// Pattern traversal preserves binding identities through destructuring.
 ///
 /// # Specification
+/// - ensures: a binding at the pattern root is present in the resulting list.
 /// - ensures: appends every binding the pattern introduces, in visit order,
 ///   each id once.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |_| match pat.kind { PatKind::Binding(_, id, ..) => bindings.contains(&id), _ => true })]
 fn collect_pattern_bindings(
     pat: &Pat<'_>,
     bindings: &mut Vec<HirId>,
@@ -626,6 +736,12 @@ impl<'tcx> Visitor<'tcx> for PatternBindingCollector<'_>
     /// - measure: the height of the remaining HIR subtree below `pat`.
     /// - boundedness: HIR patterns are finite and depth-capped by the parser.
     /// - input recursion: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui`
+    #[spec(ensures: |_| match pat.kind { PatKind::Binding(_, id, ..) => self.bindings.contains(&id), _ => true })]
     fn visit_pat(
         &mut self,
         pat: &'tcx Pat<'_>,
@@ -643,9 +759,16 @@ impl<'tcx> Visitor<'tcx> for PatternBindingCollector<'_>
 /// A reference to any derived local makes the expression input-dependent.
 ///
 /// # Specification
+/// - ensures: no expression is derived from an empty provenance set.
 /// - ensures: answers affirmatively exactly when some path in the expression
 ///   resolves to a local in the derived set.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| !derived.is_empty() || !output.0)]
 fn expr_contains_derived_binding<'tcx>(
     cx: &LateContext<'tcx>,
     derived: &HashSet<HirId>,
@@ -704,6 +827,12 @@ impl<'tcx> Visitor<'tcx> for DerivedBindingFinder<'_, '_, 'tcx>
     /// - measure: the height of the remaining HIR subtree below `expr`.
     /// - boundedness: HIR trees are finite and depth-capped by the parser.
     /// - input recursion: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui`
+    #[spec(ensures: |_| !matches!(expr.kind, ExprKind::Path(ref path) if matches!(self.cx.qpath_res(path, expr.hir_id), Res::Local(id) if self.derived.contains(&id))) || self.found)]
     fn visit_expr(
         &mut self,
         expr: &'tcx Expr<'_>,
@@ -732,6 +861,12 @@ impl<'tcx> Visitor<'tcx> for DerivedBindingFinder<'_, '_, 'tcx>
 ///   rather than the assigned place alone is the conservative direction for a
 ///   ban with an explicit escape hatch.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(captures: before = derived.len(), ensures: |output| output.0 == (derived.len() > before))]
 fn mark_local_references<'tcx>(
     expr: &'tcx Expr<'tcx>,
     cx: &LateContext<'tcx>,
@@ -793,6 +928,12 @@ impl<'tcx> Visitor<'tcx> for LocalReferenceCollector<'_, 'tcx>
     /// - measure: the height of the remaining HIR subtree below `expr`.
     /// - boundedness: HIR trees are finite and depth-capped by the parser.
     /// - input recursion: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui`
+    #[spec(ensures: |_| match expr.kind { ExprKind::Path(ref path) => match self.cx.qpath_res(path, expr.hir_id) { Res::Local(id) => self.locals.contains(&id), _ => true }, _ => true })]
     fn visit_expr(
         &mut self,
         expr: &'tcx Expr<'_>,
@@ -816,6 +957,15 @@ impl<'tcx> Visitor<'tcx> for LocalReferenceCollector<'_, 'tcx>
 /// - provides: `expression_lookup::Missing::NotExpression` identifies the HIR
 ///   kind mismatch, preserving the caller's conservative provenance decision.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| match cx.tcx.hir_node(hir_id) {
+    Node::Expr(expected) => matches!(output, Maybe::Present(actual) if core::ptr::eq(actual, expected)),
+    _ => matches!(output, Maybe::Absent(expression_lookup::Missing::NotExpression)),
+})]
 fn expr_for_hir_id<'tcx>(
     cx: &LateContext<'tcx>,
     hir_id: HirId,
