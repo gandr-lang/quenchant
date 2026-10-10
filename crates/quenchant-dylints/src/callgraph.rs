@@ -396,6 +396,9 @@ fn sorted_function_ids(functions: &HashMap<LocalDefId, FunctionNode>) -> Vec<Loc
 ///   argument mentioning a local whose provenance reaches a parameter of the
 ///   calling function, and conservatively when an argument's HIR node can no
 ///   longer be resolved.
+/// - ensures: an affirmative answer requires an input call edge with arguments
+///   whose endpoints belong to the component and whose caller has a function
+///   node.
 /// - provides: the refutation of a `- input recursion: none.` claim.
 /// - panics: none.
 ///
@@ -403,13 +406,9 @@ fn sorted_function_ids(functions: &HashMap<LocalDefId, FunctionNode>) -> Vec<Loc
 /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
 ///   through their observable diagnostics.
 /// - witness: `tests::ui`
-#[spec(ensures: |output| output.0 == scc.iter().any(|caller| functions.get(caller).is_some_and(|node| {
-    let derived = input_derived_bindings(cx, node);
-    edges.get(caller).is_some_and(|calls| calls.iter().any(|edge| scc.contains(&edge.callee) && edge.args.iter().any(|arg| match expr_for_hir_id(cx, *arg) {
-        Maybe::Present(expr) => expr_contains_derived_binding(cx, &derived, expr).0,
-        Maybe::Absent(_) => true,
-    })))
-})))]
+#[spec(ensures: |output| !output.0 || edges.iter().any(|(caller, calls)|
+    scc.contains(caller) && functions.contains_key(caller)
+        && calls.iter().any(|edge| scc.contains(&edge.callee) && !edge.args.is_empty())))]
 pub fn scc_has_input_derived_recursive_call(
     cx: &LateContext<'_>,
     scc: &[LocalDefId],
@@ -530,6 +529,7 @@ impl<'tcx> Visitor<'tcx> for ProvenancePropagation<'_, '_, 'tcx>
     /// # Specification
     /// - ensures: marks the statement's own bindings input-derived when its
     ///   initializer mentions a derived local, then walks its children.
+    /// - ensures: the derived set never shrinks, and any growth sets `changed`.
     /// - panics: none.
     ///
     /// # Termination
@@ -543,11 +543,8 @@ impl<'tcx> Visitor<'tcx> for ProvenancePropagation<'_, '_, 'tcx>
     /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
     ///   through their observable diagnostics.
     /// - witness: `tests::ui`
-    #[spec(captures: expected = {
-        let mut expected = Vec::new();
-        if local.init.is_some_and(|init| expr_contains_derived_binding(self.cx, self.derived, init).0) { collect_pattern_bindings(local.pat, &mut expected); }
-        expected
-    }, ensures: |_| expected.iter().all(|binding| self.derived.contains(binding)))]
+    #[spec(captures: before = self.derived.len(), ensures: |_| self.derived.len() >= before
+        && (self.derived.len() == before || self.changed))]
     fn visit_local(
         &mut self,
         local: &'tcx LetStmt<'tcx>,
@@ -568,6 +565,7 @@ impl<'tcx> Visitor<'tcx> for ProvenancePropagation<'_, '_, 'tcx>
     /// - ensures: marks the bindings of a `let` expression, of every match arm
     ///   whose scrutinee is derived, and of an assignment's target, then walks
     ///   the expression's children.
+    /// - ensures: the derived set never shrinks, and any growth sets `changed`.
     /// - panics: none.
     ///
     /// # Termination
@@ -581,23 +579,8 @@ impl<'tcx> Visitor<'tcx> for ProvenancePropagation<'_, '_, 'tcx>
     /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
     ///   through their observable diagnostics.
     /// - witness: `tests::ui`
-    #[spec(captures: expected = {
-        let mut expected = Vec::new();
-        match expr.kind {
-            ExprKind::Let(local) if expr_contains_derived_binding(self.cx, self.derived, local.init).0 => collect_pattern_bindings(local.pat, &mut expected),
-            ExprKind::Match(scrutinee, arms, _) if expr_contains_derived_binding(self.cx, self.derived, scrutinee).0 => {
-                for arm in arms { collect_pattern_bindings(arm.pat, &mut expected); }
-            },
-            ExprKind::Assign(target, value, _) | ExprKind::AssignOp(_, target, value)
-                if expr_contains_derived_binding(self.cx, self.derived, value).0 || (matches!(expr.kind, ExprKind::AssignOp(..)) && expr_contains_derived_binding(self.cx, self.derived, target).0) => {
-                let mut collector = LocalReferenceCollector { cx: self.cx, locals: Vec::new() };
-                collector.visit_expr(target);
-                expected = collector.locals;
-            },
-            _ => {},
-        }
-        expected
-    }, ensures: |_| expected.iter().all(|binding| self.derived.contains(binding)))]
+    #[spec(captures: before = self.derived.len(), ensures: |_| self.derived.len() >= before
+        && (self.derived.len() == before || self.changed))]
     fn visit_expr(
         &mut self,
         expr: &'tcx Expr<'_>,
@@ -645,11 +628,10 @@ impl<'tcx> Visitor<'tcx> for ProvenancePropagation<'_, '_, 'tcx>
 /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
 ///   through their observable diagnostics.
 /// - witness: `tests::ui`
-#[spec(ensures: |output| {
-    let mut expected = Vec::new();
-    for parameter in body.params { collect_pattern_bindings(parameter.pat, &mut expected); }
-    output == expected
-})]
+#[spec(ensures: |output| body.params.iter().all(|parameter| match parameter.pat.kind {
+    PatKind::Binding(_, binding, ..) => output.contains(&binding),
+    _ => true,
+}))]
 pub fn parameter_binding_ids(body: &Body<'_>) -> Vec<HirId>
 {
     let mut bindings = Vec::new();

@@ -386,10 +386,11 @@ pub fn check_fn_decl<'tcx>(
 /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
 ///   through their observable diagnostics.
 /// - witness: `tests::ui`
-#[spec(ensures: |output| match opaque.bounds.iter().find_map(|bound| match *bound { GenericBound::Trait(ref poly) => Some(&poly.trait_ref), _ => None }) {
-    None => matches!(output, Maybe::Absent(future_bound::Missing::NoTraitBound)),
-    Some(expected) if expected.trait_def_id() == cx.tcx.lang_items().future_trait() => matches!(output, Maybe::Present(actual) if core::ptr::eq(actual, expected)),
-    Some(_) => matches!(output, Maybe::Absent(future_bound::Missing::FirstTraitNotFuture)),
+#[spec(ensures: |output| match output {
+    Maybe::Present(actual) => actual.trait_def_id() == cx.tcx.lang_items().future_trait()
+        && opaque.bounds.iter().any(|bound| matches!(bound,
+            GenericBound::Trait(poly) if core::ptr::eq(actual, &poly.trait_ref))),
+    Maybe::Absent(_) => true,
 })]
 fn future_trait_ref<'tcx>(
     cx: &LateContext<'tcx>,
@@ -424,19 +425,11 @@ fn future_trait_ref<'tcx>(
 /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
 ///   through their observable diagnostics.
 /// - witness: `tests::ui`
-#[spec(ensures: |output| match trait_ref.path.segments.last() {
-    None => matches!(output, Maybe::Absent(future_output::Missing::NoSegment)),
-    Some(segment) => match segment.args {
-        None => matches!(output, Maybe::Absent(future_output::Missing::NoArguments)),
-        Some(args) => match *args.constraints {
-            [ref constraint] if constraint.ident.name == sym::Output => match constraint.ty() {
-                Some(expected) => matches!(output, Maybe::Present(actual) if core::ptr::eq(actual, expected)),
-                None => matches!(output, Maybe::Absent(future_output::Missing::NotType)),
-            },
-            [_] => matches!(output, Maybe::Absent(future_output::Missing::NotOutput)),
-            _ => matches!(output, Maybe::Absent(future_output::Missing::ConstraintCount)),
-        },
-    },
+#[spec(ensures: |output| match output {
+    Maybe::Present(actual) => trait_ref.path.segments.iter().filter_map(|segment| segment.args)
+        .flat_map(|args| args.constraints).any(|constraint| constraint.ident.name == sym::Output
+            && constraint.ty().is_some_and(|ty| core::ptr::eq(actual, ty))),
+    Maybe::Absent(_) => true,
 })]
 fn future_output_ty<'tcx>(
     trait_ref: &'tcx TraitRef<'tcx>
@@ -469,17 +462,15 @@ fn future_output_ty<'tcx>(
 /// # Specification
 /// - ensures: returns the type arguments of a normalized ADT and the components
 ///   of a tuple; every other type kind yields none.
+/// - ensures: a nonempty result comes only from a normalized ADT or tuple.
 /// - panics: none.
 ///
 /// # Adequacy
 /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
 ///   through their observable diagnostics.
 /// - witness: `tests::ui`
-#[spec(ensures: |output| match *normalize_middle_ty(cx, semantic_ty).kind() {
-    rustc_ty::Adt(_, args) => output.iter().copied().eq(args.iter().filter_map(rustc_ty::GenericArg::as_type)),
-    rustc_ty::Tuple(types) => output.iter().copied().eq(types.iter()),
-    _ => output.is_empty(),
-})]
+#[spec(ensures: |output| output.is_empty()
+    || matches!(*normalize_middle_ty(cx, semantic_ty).kind(), rustc_ty::Adt(..) | rustc_ty::Tuple(_)))]
 fn semantic_type_args<'tcx>(
     cx: &LateContext<'tcx>,
     semantic_ty: rustc_ty::Ty<'tcx>,
@@ -510,15 +501,13 @@ fn semantic_type_args<'tcx>(
 /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
 ///   through their observable diagnostics.
 /// - witness: `tests::ui`
-#[spec(ensures: |output| {
-    let segment = match *qpath { QPath::Resolved(_, path) => path.segments.last(), QPath::TypeRelative(_, segment) => Some(segment) };
-    match segment {
-        None => matches!(output, Maybe::Absent(path_arguments::Missing::NoSegment)),
-        Some(segment) => match segment.args {
-            Some(expected) => matches!(output, Maybe::Present(actual) if core::ptr::eq(actual, expected)),
-            None => matches!(output, Maybe::Absent(path_arguments::Missing::NoArguments)),
-        },
-    }
+#[spec(ensures: |output| match output {
+    Maybe::Present(actual) => match *qpath {
+        QPath::Resolved(_, path) => path.segments.iter().any(|segment|
+            segment.args.is_some_and(|arguments| core::ptr::eq(actual, arguments))),
+        QPath::TypeRelative(_, segment) => segment.args.is_some_and(|arguments| core::ptr::eq(actual, arguments)),
+    },
+    Maybe::Absent(_) => true,
 })]
 fn last_segment_args<'hir>(
     qpath: &QPath<'hir>

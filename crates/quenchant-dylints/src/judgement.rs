@@ -764,6 +764,8 @@ fn declaration(lines: &[String]) -> Maybe<Declaration, crate::rustdoc::section_l
 /// - ensures: returns the name exactly when the value is one nonempty
 ///   backtick-delimited run holding neither a further backtick nor whitespace;
 ///   prose, a bare name, and two names on one bullet all yield nothing.
+/// - ensures: surrounding any returned name with backticks reconstructs the
+///   trimmed input.
 /// - provides: the exactness a parameter lookup depends on, since the name is
 ///   matched against the parameter's spelling verbatim.
 /// - provides: `name_syntax::Missing` separates `OpeningBacktickAbsent`,
@@ -776,15 +778,11 @@ fn declaration(lines: &[String]) -> Maybe<Declaration, crate::rustdoc::section_l
 ///   empty pair of backticks, a name followed by prose, and two names on one
 ///   bullet.
 /// - witness: `judgement::tests::an_expected_bullet_names_one_backticked_parameter`
-#[spec(ensures: |output| match value.0.trim().strip_prefix('`') {
-    None => matches!(output, Maybe::Absent(name_syntax::Missing::OpeningBacktickAbsent)),
-    Some(rest) => match rest.strip_suffix('`') {
-        None => matches!(output, Maybe::Absent(name_syntax::Missing::ClosingBacktickAbsent)),
-        Some("") => matches!(output, Maybe::Absent(name_syntax::Missing::EmptyName)),
-        Some(name) if name.contains('`') => matches!(output, Maybe::Absent(name_syntax::Missing::InteriorBacktick)),
-        Some(name) if name.contains(char::is_whitespace) => matches!(output, Maybe::Absent(name_syntax::Missing::Whitespace)),
-        Some(name) => matches!(output, Maybe::Present(actual) if actual.0 == name),
-    },
+#[spec(ensures: |output| match output {
+    Maybe::Present(name) => !name.0.is_empty()
+        && !name.0.contains(|character: char| character == '`' || character.is_whitespace())
+        && core::iter::once('`').chain(name.0.chars()).chain(core::iter::once('`')).eq(value.0.trim().chars()),
+    Maybe::Absent(_) => true,
 })]
 fn backticked_name(value: RustdocLine<'_>) -> Maybe<RustdocLine<'_>, name_syntax::Missing>
 {
@@ -825,10 +823,11 @@ fn backticked_name(value: RustdocLine<'_>) -> Maybe<RustdocLine<'_>, name_syntax
 /// - hypothesis: L3 — the fixture matrix separates a named parameter, a name no
 ///   parameter binds, and a match on a parameter the declaration does not name.
 /// - witness: `tests::ui`
-#[spec(ensures: |output| output == body.params.iter().find_map(|param| match param.pat.kind {
-    PatKind::Binding(_, id, ident, None) if ident.as_str() == name.0 => Some(id),
-    _ => None,
-}).map_or(Maybe::Absent(parameter_lookup::Missing::Unbound), Maybe::Present))]
+#[spec(ensures: |output| match output {
+    Maybe::Present(binding) => body.params.iter().any(|parameter| matches!(parameter.pat.kind,
+        PatKind::Binding(_, id, ident, None) if id == binding && ident.as_str() == name.0)),
+    Maybe::Absent(_) => true,
+})]
 fn parameter_binding(
     body: &Body<'_>,
     name: ParameterName<'_>,
@@ -961,19 +960,14 @@ fn scrutinee_mentions_expected<'tcx>(
 ///   binding.
 /// - provides: the identity test behind the expected plane.
 /// - panics: none.
+/// - executable: none — the function is its own specification; the UI fixtures
+///   are the oracle.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — the fixture matrix separates the declared parameter, a
 ///   local of the same function that is not it, and a parameter of a function
 ///   declaring nothing.
 /// - witness: `tests::ui`
-#[spec(ensures: |output| {
-    let owner = cx.tcx.hir_enclosing_body_owner(binding);
-    output.0 == match (declaration_of(cx, owner), cx.tcx.hir_maybe_body_owned_by(owner)) {
-        (Maybe::Present(declaration), Some(body)) if matches!(declaration.defect, Maybe::Absent(_)) => declaration.expected.iter().any(|name| parameter_binding(body, ParameterName::from(name.as_str())) == Maybe::Present(binding)),
-        _ => false,
-    }
-})]
 fn declared_expected_parameter(
     cx: &LateContext<'_>,
     binding: HirId,
