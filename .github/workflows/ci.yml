@@ -254,7 +254,7 @@ jobs:
         working-directory: *dylint-package
         run: cargo clippy --all-targets -- --deny warnings
       - name: load Dylint library over workspace
-        run: cargo dylint --lib quenchant_dylints --no-deps -- --workspace --all-targets
+        run: mise run check:dylint
       - name: resolve adequacy witnesses
         run: cargo run -p quenchant-gates -- witnesses --manifest-path Cargo.toml
       - *save-dylint-library

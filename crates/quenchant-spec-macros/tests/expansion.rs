@@ -2,16 +2,6 @@
 //! API.
 
 #![cfg_attr(not(anodized_print), no_std)]
-#![cfg_attr(
-    dylint_lib = "quenchant_dylints",
-    deny(
-        spec_attribute_present,
-        adequacy_present,
-        maybe_shape,
-        erased_error_signature,
-        spec_attribute_unqualified
-    )
-)]
 
 extern crate alloc;
 #[cfg(any(anodized_panic, anodized_print))]

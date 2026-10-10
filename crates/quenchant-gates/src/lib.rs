@@ -13,17 +13,6 @@
 //! identity so similarly named tests cannot silently satisfy each other's
 //! obligations.
 
-#![cfg_attr(
-    dylint_lib = "quenchant_dylints",
-    deny(
-        spec_attribute_present,
-        adequacy_present,
-        maybe_shape,
-        erased_error_signature,
-        spec_attribute_unqualified
-    )
-)]
-
 extern crate alloc;
 
 pub mod anodized;

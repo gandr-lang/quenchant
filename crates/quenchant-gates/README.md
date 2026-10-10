@@ -65,7 +65,7 @@ Each check carries a `# Specification`, closed refusal reasons in `Maybe`, and a
 
 Executable predicates check catalog preservation, witness resolution, invocation policy, pin coherence, and typed failure boundaries. Formatter and process boundaries carry explicit exemptions where the returned value omits the observation needed for an independent runtime check. Their adequacy witnesses exercise the observable boundary instead.
 
-The library, binary, and integration-test crate roots enforce the five executable-specification policy lints during Dylint checks. Specifications use the defaults-off `quenchant-anodized` facade; `quenchant-anodized/anodized` enables the backend, and the enforcing tasks select `anodized_panic` for the complete build graph.
+`mise run check:dylint` enforces the five executable-specification policy lints across the library, binary, and integration-test targets through workspace-wide flags. Specifications use the defaults-off `quenchant-anodized` facade; `quenchant-anodized/anodized` enables the backend, and the enforcing tasks select `anodized_panic` for the complete build graph.
 
 ## Results
 

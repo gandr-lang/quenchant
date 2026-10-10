@@ -23,16 +23,6 @@
 //! Source extraction, operational failure, refusal, and accepted obligations
 //! remain distinct. None alone establishes general correspondence to every
 //! production configuration or automatic transfer to another proof backend.
-#![cfg_attr(
-    dylint_lib = "quenchant_dylints",
-    deny(
-        spec_attribute_present,
-        adequacy_present,
-        maybe_shape,
-        erased_error_signature,
-        spec_attribute_unqualified
-    )
-)]
 
 use std::io::Write as _;
 use std::path::Path;

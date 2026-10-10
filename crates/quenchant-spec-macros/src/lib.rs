@@ -3,16 +3,6 @@
     not(doc),
     doc = "Conditional specification attributes and token-preserving erasure."
 )]
-#![cfg_attr(
-    dylint_lib = "quenchant_dylints",
-    deny(
-        spec_attribute_present,
-        adequacy_present,
-        maybe_shape,
-        erased_error_signature,
-        spec_attribute_unqualified
-    )
-)]
 
 /// Select instrumentation from the cfg of the build driving the consumer.
 ///
