@@ -57,8 +57,8 @@ quenchant_shape::reason_enum! {
 /// Compare Cargo's explicit package inventory to the one publication authority.
 ///
 /// # Specification
-/// - ensures: the eight declared packages are present, six restricted to
-///   crates.io and the Dylint plugin and fixture macros disabled.
+/// - ensures: the eight declared packages are present, five restricted to
+///   crates.io and the gate binary, Dylint plugin, and fixture macros disabled.
 /// - provides: sealed `refusal::Refused` evidence for unknown, missing, or
 ///   incorrectly eligible packages.
 /// - fails: malformed Cargo JSON returns `GateError::Tool` rather than a policy

@@ -9,8 +9,6 @@
 #![forbid(unsafe_code)]
 
 pub use quenchant_arith::arith;
-#[cfg(feature = "gates")]
-pub use quenchant_gates as gates;
 pub use quenchant_shape::delegate_ops;
 pub use quenchant_shape::nominal_type;
 pub use quenchant_shape::reason_enum;

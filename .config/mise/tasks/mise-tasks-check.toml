@@ -30,6 +30,16 @@ run = "cargo run --quiet --locked -p quenchant-gates -- action-pins"
 description = "Verify the exact package publication eligibility boundary"
 run = "cargo run --quiet --locked -p quenchant-gates -- publish-allowlist"
 
+# Cargo selects publishable members from their manifests, orders dependencies,
+# and resolves unpublished siblings through its temporary packaging registry.
+# Publication queries require registry access even in dry-run mode. Dirty trees
+# are accepted so local checks verify edits before a commit. Rustup run pins
+# host macros compiled outside the checkout during tarball verification.
+["check:publish-dry-run"]
+description = "Verify every publishable package without uploading"
+depends = ["check:publish"]
+run = "rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} cargo publish --workspace --dry-run --locked --allow-dirty --target-dir target/publish"
+
 ["check:deny"]
 description = "Check dependency advisories, versions, licenses, and sources"
 run = [

@@ -69,7 +69,7 @@ reason = "Action-pin parsing needs no optional encoding or debug surface"
 
 [[bans.features]]
 crate = "quenchant@0.0.0"
-allow = ["anodized", "default", "gates"]
+allow = ["anodized", "default"]
 exact = true
 reason = "The all-features gate exercises the complete umbrella surface"
 

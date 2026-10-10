@@ -12,9 +12,9 @@ Commit prose explains the change and its constraint; it is not a session transcr
 
 ## Package preparation
 
-The manifest gate checks the exact package eligibility boundary: six registry packages, the Git-distributed Dylint plugin, and internal fixture macros. The latter two MUST retain `publish = false`; registry exclusion MUST NOT remove either from workspace build and test gates. A package's eligibility does not establish that it can resolve unpublished siblings or that it has been uploaded.
+The manifest gate checks the exact package eligibility boundary: five registry packages, the Git-distributed gate executable and Dylint plugin, and internal fixture macros. The three non-registry packages MUST retain `publish = false`; registry exclusion MUST NOT remove them from workspace build and test gates. A package's eligibility does not establish that it can resolve unpublished siblings or that it has been uploaded.
 
-Cargo can prepare the interdependent library/macro family together. Its temporary packaging registry permits dependency-source checks and verification without a real upload. When reporting a dry run, distinguish packaging, verification, sibling-resolution limitations, and the explicit aborted upload. `--no-verify` supplies packaging evidence only.
+`mise run check:publish-dry-run` prepares and verifies the interdependent library/macro family together. Cargo selects members from manifest eligibility and resolves them in dependency order through its temporary packaging registry. The task uses the lockfile and pins the compiler for tarball verification; Cargo's publication queries require registry access. Both the root check graph and the CI build/test lane run it. When reporting a dry run, distinguish packaging, verification, sibling-resolution limitations, and the explicit aborted upload. `--no-verify` supplies packaging evidence only.
 
 Consumers load the plugin through Dylint's Git/path metadata, not an ordinary Cargo dependency. Preserve its compiler-paired Git `clippy_utils` source rather than duplicating utilities or substituting a registry crate solely for publication. Compiler selection and bump evidence follow the [plugin's version-pair procedure](../../crates/quenchant-dylints/README.md#selecting-compiler-and-utility-versions).
 

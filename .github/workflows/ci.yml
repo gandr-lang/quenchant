@@ -189,6 +189,8 @@ jobs:
         run: cargo build --workspace --all-targets
       - name: build workspace targets in fast arithmetic mode
         run: cargo build --workspace --all-targets --features quenchant-arith/fast
+      - name: verify publishable packages without uploading
+        run: mise run check:publish-dry-run
       - name: check libraries without a standard library
         run: cargo build --locked -p quenchant-arith -p quenchant-shape --no-default-features --target thumbv7em-none-eabi
       - name: check fast libraries without a standard library

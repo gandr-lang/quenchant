@@ -18,15 +18,12 @@ publish.workspace = true
 [dependencies]
 quenchant-anodized.workspace = true
 quenchant-arith.workspace = true
-quenchant-gates = { workspace = true, optional = true }
 quenchant-shape.workspace = true
 
 # The feature compiles the backend in; build cfgs select instrumentation.
-# `gates` needs std and remains separate from the no_std libraries.
 [features]
 default = []
 anodized = ["quenchant-anodized/anodized"]
-gates = ["dep:quenchant-gates"]
 
 [lints]
 workspace = true

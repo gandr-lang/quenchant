@@ -12,6 +12,8 @@ mise exec -- cargo install --path crates/quenchant-gates --locked
 
 Use the repository's pinned toolchain. The invocation-state query requires nightly Cargo support; the installed binary cannot make a stable consumer's compiler expose an unsupported query. A consumer should keep this executable and its chosen Dylint library at compatible source revisions.
 
+This package is distributed through Git, with `publish = false`. External consumers install a reviewed full revision with `cargo install --git https://github.com/gandr-lang/quenchant --rev <revision> --locked --bin quenchant-gates quenchant-gates`; the umbrella does not link its library.
+
 ## Example
 
 Run directly from source without installing:

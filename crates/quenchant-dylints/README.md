@@ -48,7 +48,7 @@ For future bumps:
 - Test the starting pair with the actual utility source and Dylint version. If incompatible, inspect the breaking compiler APIs and test nearby nightlies by increasing distance from the starting nightly, remaining in the selected Rust release line. Verify the boundary with adjacent candidates; a package version number alone is not evidence.
 - Record the stable release, source tag or revision, selected nightly, rejected nearer candidates, and executed checks together. If the selection differs from the tag's declared nightly, update the pin gate's compatibility model with the evidence; do not bypass its existing equality check or introduce an environment override.
 - Retain required components and targets. Rebuild the driver and plugin through repository tasks, run `mise run check` and all-file hooks, and verify the actual consumer lint invocation. Keep caches keyed to the root toolchain file.
-- At every intended registry release head, run `mise exec -- cargo publish --dry-run --locked --workspace`. This verifies the six registry packages, not the Git plugin; its build and UI tests remain separate mandatory evidence. Do not credit `--no-verify` as compilation or infer readiness from one unrelated package.
+- At every intended registry release head, run `mise run check:publish-dry-run`. This verifies the five registry packages, not the Git tools; the plugin build and UI tests remain separate mandatory evidence. Do not credit `--no-verify` as compilation or infer readiness from one unrelated package.
 
 ## Example: validate the source policy
 
