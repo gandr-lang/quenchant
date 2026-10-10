@@ -3,6 +3,7 @@
 //! Foreign methods are paired with their unsubstituted declarations: required
 //! Option layers are accepted, while absence introduced by substitution is not.
 
+use anodized::spec;
 use rustc_hir::Body;
 use rustc_hir::FnDecl;
 use rustc_hir::FnRetTy;
@@ -47,6 +48,13 @@ impl<'tcx> LateLintPass<'tcx> for OptionSignature
     /// - ensures: checks free functions, inherent methods, and trait methods;
     ///   closure signatures are inferred implementation details.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui_options`
     fn check_fn(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -123,6 +131,8 @@ pub enum Exposure
 ///   cannot hide the standard Option identity.
 /// - ensures: a foreign method contributes only its unsubstituted type shape.
 /// - panics: none.
+/// - executable: none — rustc emits diagnostics without a queryable per-call
+///   diagnostic result.
 ///
 /// # Adequacy
 /// - hypothesis: L3 UI witnesses separate direct, nested, aliased, async,
@@ -197,6 +207,11 @@ fn check_declaration<'tcx>(
 /// - hypothesis: L3 UI contrasts aliases and structural nesting with nominal
 ///   leaves, foreign generic substitution, and future output bounds.
 /// - witness: `tests::ui_options`
+#[spec(ensures: |output| match *normalize_middle_ty(cx, actual).kind() {
+    ty::Adt(adt, _) if !cx.tcx.is_diagnostic_item(sym::Option, adt.did())
+        && matches!(nominal_boundary(cx, adt), NominalBoundary::Reached) => matches!(output, Exposure::NotFound),
+    _ => true,
+})]
 pub fn exposure<'tcx>(
     cx: &LateContext<'tcx>,
     actual: ty::Ty<'tcx>,
@@ -339,6 +354,7 @@ pub fn exposure<'tcx>(
 /// output.
 ///
 /// # Specification
+/// - ensures: an authored shape supplies no foreign projection.
 /// - ensures: only the same associated projection supplies an external required
 ///   shape; generic or associated substitutions retain their authored boundary.
 /// - panics: none.
@@ -347,6 +363,7 @@ pub fn exposure<'tcx>(
 /// - hypothesis: L3 foreign dynamic and future outputs distinguish required
 ///   Option layers from layers introduced by a generic argument.
 /// - witness: `tests::ui_options`
+#[spec(ensures: |output| !matches!(required, Required::Authored) || matches!(output, Required::Authored))]
 fn required_projection<'tcx>(
     cx: &LateContext<'tcx>,
     required: Required<'tcx>,
@@ -409,6 +426,26 @@ enum RequiredArguments<'tcx>
 /// - ensures: only type arguments enter the traversal; absent counterpart
 ///   positions remain authored rather than becoming foreign exemptions.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui_options`
+#[spec(ensures: |_| {
+    let count = actual.iter().filter(|argument| argument.as_type().is_some()).count();
+    pending.len() >= count && actual.iter().enumerate().rev().filter_map(|(index, argument)| argument.as_type().map(|ty| (index, ty)))
+        .zip(pending.iter().rev()).all(|((index, actual), &(queued, counterpart))| {
+            let foreign = match required {
+                RequiredArguments::Foreign(arguments) => arguments.get(index).and_then(|argument| argument.as_type()),
+                RequiredArguments::Authored => None,
+            };
+            queued == actual && match (foreign, counterpart) {
+                (Some(expected), Required::Foreign(actual)) => actual == expected,
+                (None, Required::Authored) => true,
+                _ => false,
+            }
+        })
+})]
 fn push_arguments<'tcx>(
     pending: &mut Vec<(ty::Ty<'tcx>, Required<'tcx>)>,
     actual: &[ty::GenericArg<'tcx>],
@@ -432,6 +469,7 @@ fn push_arguments<'tcx>(
 /// Find the same trait constructor in a foreign opaque or dynamic bound.
 ///
 /// # Specification
+/// - ensures: an authored shape supplies no foreign trait arguments.
 /// - ensures: a same-spelled different trait cannot supply required arguments.
 /// - panics: none.
 ///
@@ -439,6 +477,7 @@ fn push_arguments<'tcx>(
 /// - hypothesis: L3 dynamic and opaque generic-argument witnesses distinguish
 ///   foreign-required absence from absence introduced by substitution.
 /// - witness: `tests::ui_options`
+#[spec(ensures: |output| !matches!(required, Required::Authored) || matches!(output, RequiredArguments::Authored))]
 fn required_trait<'tcx>(
     cx: &LateContext<'tcx>,
     required: Required<'tcx>,
@@ -504,6 +543,8 @@ enum NominalBoundary
 /// - hypothesis: L3 same-crate-name rlibs with distinct metadata distinguish
 ///   diagnostic-item identity from spelling; aliases retain real identity.
 /// - witness: `tests::ui_options`
+#[spec(ensures: |output| matches!(output, NominalBoundary::Reached) == ((adt.did().is_local() && adt.repr().transparent())
+    || cx.tcx.is_diagnostic_item(Symbol::intern("quenchant_maybe"), adt.did())))]
 fn nominal_boundary(
     cx: &LateContext<'_>,
     adt: ty::AdtDef<'_>,

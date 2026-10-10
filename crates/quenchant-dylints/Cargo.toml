@@ -25,6 +25,7 @@ crate-type = ["cdylib"]
 [dependencies]
 clippy_utils.workspace = true
 dylint_linting.workspace = true
+quenchant-anodized.workspace = true
 quenchant-shape.workspace = true
 
 # The harness uses the facade in its selected mode. UI fixtures commission
@@ -34,7 +35,6 @@ quenchant-shape.workspace = true
 clap.workspace = true
 cxx.workspace = true
 dylint_testing.workspace = true
-quenchant-anodized.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 

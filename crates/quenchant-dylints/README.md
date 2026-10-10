@@ -201,6 +201,8 @@ The predicate and adequacy-presence gates are `allow` by default. A consumer cra
 #![cfg_attr(dylint_lib = "quenchant_dylints", deny(spec_attribute_present, adequacy_present))]
 ```
 
+The compiler plugin denies these gates, the specification-spelling gate, and the shape/error gates at its own crate root. Its internal predicates check input membership, parsing bounds and roundtrips, compiler identities, input domains, and monotone state transitions rather than reconstructing an expected result by replaying the implementation. Classifiers whose bodies are their specifications instead name the UI fixtures as their oracle. Other item-local exemptions cover compiler effects without a per-call observation, shared-index operations without a stable post-call snapshot, and fallible configuration reads. UI fixtures retain their independent lint levels so accepted and refused forms remain test inputs.
+
 A module not yet brought up allows both with the same `cfg_attr` form. The opt-in is a rollout, not the steady state: once every consumer crate has opted in, both defaults move to `deny` and the crate-root attributes are removed. If a consumer cannot opt in because the exemption grammar cannot state its obligations, the grammar is revised before the default moves.
 
 ## Ownership exceptions

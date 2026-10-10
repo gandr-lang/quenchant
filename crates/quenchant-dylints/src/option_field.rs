@@ -17,6 +17,7 @@
 
 use core::cell::OnceCell;
 
+use anodized::spec;
 use rustc_hir::Item;
 use rustc_hir::ItemKind;
 use rustc_hir::def_id::DefId;
@@ -76,6 +77,8 @@ impl<'tcx> LateLintPass<'tcx> for OptionField
     ///   is reported once at the field's type, unless the item implements a
     ///   wire-form trait; other items are not inspected.
     /// - panics: none.
+    /// - executable: none — rustc owns diagnostic emission and suppression; the
+    ///   callback cannot read back the field diagnostics.
     ///
     /// # Adequacy
     /// - hypothesis: L3 UI contrasts plain structs and enum variants against
@@ -122,8 +125,16 @@ impl<'tcx> LateLintPass<'tcx> for OptionField
 /// # Specification
 /// - ensures: returns the definition of every serde `Serialize` and
 ///   `Deserialize` trait and every clap `FromArgMatches` trait among this
-///   crate's dependencies, each once; a crate that links neither yields none.
+///   crate's dependencies; a crate that links neither yields none.
+/// - ensures: no returned definition occurs more than once.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — serde re-exports, hand-written implementations, and clap
+///   derives distinguish dependency lookup from same-spelled controls.
+/// - witness: `tests::ui_options`
+#[spec(ensures: |output| output.iter().enumerate().all(|(index, item)|
+    !output.iter().take(index).any(|earlier| earlier == item)))]
 fn wire_form_traits(cx: &LateContext<'_>) -> Vec<DefId>
 {
     let mut traits = Vec::new();
@@ -147,6 +158,14 @@ fn wire_form_traits(cx: &LateContext<'_>) -> Vec<DefId>
 ///   implementation whose self type is the ADT `adt`, whether a derive or the
 ///   author wrote it.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — derived and hand-written wire implementations are
+///   accepted while ordinary structs and neighbouring derives are refused.
+/// - witness: `tests::ui_options`
+#[spec(ensures: |output| output.0 == traits.iter().any(|&definition|
+    cx.tcx.trait_impls_of(definition).non_blanket_impls()
+        .contains_key(&SimplifiedType::Adt(adt.to_def_id()))))]
 fn implements_wire_form(
     cx: &LateContext<'_>,
     traits: &[DefId],

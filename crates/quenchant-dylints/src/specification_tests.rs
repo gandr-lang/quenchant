@@ -71,6 +71,8 @@ async fn asynchronous(value: Result<Count, Refused>) -> Result<Count, Refused>
 /// panics.
 ///
 /// # Specification
+/// - requires: the outcome is the deliberate postcondition failure in enforcing
+///   mode, or the typed refusal otherwise.
 /// - ensures: enforcing invocations reject exactly the deliberate postcondition
 ///   failure; non-enforcing invocations preserve the body's typed refusal.
 /// - panics: any mismatch fails the test.
@@ -80,6 +82,10 @@ async fn asynchronous(value: Result<Count, Refused>) -> Result<Count, Refused>
 ///   branches.
 /// - witness: `specification_tests::early_exits_reach_postconditions`
 /// - witness: `specification_tests::async_early_exit_reaches_postcondition`
+#[spec(requires: if cfg!(anodized_panic) && !cfg!(anodized_discard_specs) {
+    outcome.as_ref().is_err_and(|panic| panic.downcast_ref::<String>().map(String::as_str)
+        .or_else(|| panic.downcast_ref::<&str>().copied()).is_some_and(|message| message.starts_with("postcondition failed")))
+} else { matches!(outcome, Ok(Err(Refused))) })]
 fn assert_failure(outcome: std::thread::Result<Result<Count, Refused>>)
 {
     if cfg!(anodized_panic) && !cfg!(anodized_discard_specs) {

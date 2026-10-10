@@ -23,6 +23,16 @@
 //! and Dylint driver are one compatibility boundary.
 
 #![feature(rustc_private)]
+#![cfg_attr(
+    dylint_lib = "quenchant_dylints",
+    deny(
+        spec_attribute_present,
+        adequacy_present,
+        maybe_shape,
+        erased_error_signature,
+        spec_attribute_unqualified
+    )
+)]
 #![expect(
     unstable_features,
     reason = "rustc_private is the lint driver's substrate"
@@ -61,6 +71,7 @@ mod termination;
 
 use std::collections::HashMap;
 
+use anodized::spec;
 use clippy_utils::diagnostics::span_lint;
 use clippy_utils::diagnostics::span_lint_hir;
 use clippy_utils::diagnostics::span_lint_hir_and_then;
@@ -308,6 +319,14 @@ impl_lint_pass!(WorkflowBoundaries => [
 ///   library declares, then registers its pre-expansion and late passes; the
 ///   attribute collector and the specification pass share one record index.
 /// - panics: none.
+/// - executable: none — registered compiler callbacks are opaque; their
+///   execution is observed only when rustc runs the passes.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures load this library and exercise its
+///   registered policies through accepted and refused programs.
+/// - witness: `tests::ui`
+/// - witness: `tests::ui_spec_gates`
 #[expect(
     clippy::no_mangle_with_rust_abi,
     reason = "dylint's driver loads `register_lints` by exact symbol name and passes rustc-internal \
@@ -466,6 +485,15 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
     ///   transparent representation, and records every struct, enum and union
     ///   for the ownership graph built at crate end.
     /// - panics: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui`
+    #[spec(ensures: |_| !matches!(item.kind, ItemKind::Struct(..) | ItemKind::Enum(..) | ItemKind::Union(..))
+        || self.adts.get(&item.owner_id.def_id).is_some_and(|node| node.hir_id == item.hir_id()
+            && node.span == item.kind.ident().map_or(item.span, |ident| ident.span)
+            && node.path == cx.tcx.def_path_str(item.owner_id.def_id.to_def_id())))]
     fn check_item(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -506,6 +534,14 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
     ///   the function's node and outgoing call edges for the recursion search
     ///   at crate end; a closure is neither checked nor recorded.
     /// - panics: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui`
+    #[spec(ensures: |_| matches!(fn_kind, FnKind::Closure) || self.functions.get(&def_id).is_some_and(|node| {
+        node.body_hir_id == body.value.hir_id && node.span == span && node.input_bindings == parameter_binding_ids(body)
+    }))]
     fn check_fn(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -546,6 +582,13 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
     ///   whose name is the workspace's own; a provided one reaches `check_fn`
     ///   instead.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui`
     fn check_trait_item(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -571,6 +614,13 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
     /// - ensures: checks the declaration of a foreign function whose name is
     ///   the workspace's own, and ignores every other foreign item kind.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui`
     fn check_foreign_item(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -601,6 +651,13 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
     ///   recursive call component, following an approved exception with its
     ///   termination defect where the specification does not hold.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui`
     fn check_crate_post(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -712,6 +769,7 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
 ///   at its name), both in a denied and in an owner-approved position.
 /// - witness: `tests::ui`
 /// - witness: `tests::ui_specifications`
+#[spec(ensures: |output| output == if item_span.in_external_macro(cx.tcx.sess.source_map()) { cx.tcx.def_ident_span(def_id).unwrap_or(item_span) } else { item_span })]
 fn reportable_span(
     cx: &LateContext<'_>,
     def_id: LocalDefId,
@@ -731,6 +789,15 @@ fn reportable_span(
 /// - ensures: answers affirmatively exactly when one of the item's own `repr`
 ///   attributes declares the transparent representation.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| output.0 == {
+    let attrs = cx.tcx.hir_attrs(item.hir_id());
+    find_attr!(attrs, Repr { reprs, .. } if reprs.iter().any(|&(repr, _)| repr == ReprAttr::ReprTransparent))
+})]
 fn has_transparent_repr(
     cx: &LateContext<'_>,
     item: &Item<'_>,
@@ -750,6 +817,12 @@ fn has_transparent_repr(
 ///   trait whose definition is outside this crate.
 /// - provides: the one signature exception the primitive rule admits.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| output.0 == trait_ref_of_method(cx, OwnerId { def_id }).and_then(|reference| reference.trait_def_id()).is_some_and(|id| !id.is_local()))]
 fn implements_non_local_trait(
     cx: &LateContext<'_>,
     def_id: LocalDefId,
@@ -783,6 +856,14 @@ fn implements_non_local_trait(
 ///   expectation on the enclosing module, an expectation without a reason, and
 ///   no expectation at all.
 /// - witness: `tests::ui`
+#[spec(ensures: |output| {
+    let level = cx.tcx.lint_level_spec_at_node(RECURSION_FORBIDDEN, hir_id);
+    match (level.level(), level.src) {
+        (Level::Expect, LintLevelSource::Node { reason, span, .. }) if expectation_on_item(cx, hir_id, span).0 => if reason.is_some() { matches!(output, ExceptionState::Approved) } else { matches!(output, ExceptionState::Unreasoned) },
+        (Level::Expect, _) => matches!(output, ExceptionState::Inherited),
+        _ => matches!(output, ExceptionState::Absent),
+    }
+})]
 fn exception_state(
     cx: &LateContext<'_>,
     hir_id: HirId,
@@ -816,6 +897,12 @@ fn exception_state(
 ///   the item from one inherited through the HIR ancestry.
 /// - provides: the item-level requirement of the recursion exception.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| output.0 == cx.tcx.hir_attrs(hir_id).iter().any(|attribute| attribute.span().contains(span)))]
 fn expectation_on_item(
     cx: &LateContext<'_>,
     hir_id: HirId,
@@ -833,6 +920,8 @@ fn expectation_on_item(
 #[cfg(test)]
 mod tests
 {
+    use anodized::spec;
+
     /// Configuration witnesses distinguish a justified non-owning boundary from
     /// an unjustified entry that must remain owning.
     const ALLOW_LIST: &str = r#"
@@ -1029,6 +1118,8 @@ non_owning_generics = [
     /// - witness: `tests::ui_arithmetic`
     /// - witness: `tests::ui_options`
     /// - witness: `tests::ui_safety`
+    #[spec(ensures: |output| output.first().is_some_and(|flag| flag == "--edition=2024")
+        && output.windows(2_usize).any(|pair| matches!(pair, [flag, value] if flag == "--cfg" && value == "anodized_panic")))]
     fn fixture_extern_flags() -> Vec<String>
     {
         let test_binary =

@@ -14,6 +14,7 @@
 
 use std::collections::HashMap;
 
+use anodized::spec;
 use quenchant_shape::shape::Maybe;
 
 quenchant_shape::reason_enum! {
@@ -141,6 +142,7 @@ impl TerminationDefect
 ///   further heading at `#` and at `##`, and a `none` claim refuted under both
 ///   plain and punctuated spellings.
 /// - witness: `tests::ui`
+#[spec(requires: scc.contains(&def_id))]
 pub fn termination_defect(
     cx: &LateContext<'_>,
     def_id: LocalDefId,
@@ -177,6 +179,12 @@ pub fn termination_defect(
 /// - provides: the input of this module's section reader, whose grammar needs
 ///   no indentation.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — termination UI cases distinguish trimmed doc fragments
+///   and section boundaries from missing or malformed termination claims.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| output.iter().all(|line| line.trim() == line))]
 fn rustdoc_lines(
     cx: &LateContext<'_>,
     def_id: LocalDefId,
@@ -213,6 +221,13 @@ fn split_doc_lines(text: RustdocText<'_>) -> Vec<String>
 /// - provides: `termination_section::Missing::HeadingAbsent` distinguishes a
 ///   missing section from a present but incomplete section.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — heading boundaries and wrapped values distinguish
+///   section-local folding from absorption of later documentation.
+/// - witness: `termination::tests::section_stops_at_the_next_heading`
+/// - witness: `termination::tests::wrapped_bullet_values_fold_into_one_bullet`
+#[spec(requires: lines.iter().all(|line| line.trim() == line))]
 fn section_bullets(lines: &[String]) -> Maybe<Vec<String>, termination_section::Missing>
 {
     let Some(start) = lines.iter().position(|line| line == HEADING)
@@ -253,11 +268,14 @@ fn section_bullets(lines: &[String]) -> Maybe<Vec<String>, termination_section::
 ///   the line.
 /// - provides: the terminator of every rustdoc section this crate reads.
 /// - panics: none.
+/// - executable: none — the function is its own specification; the UI fixtures
+///   are the oracle.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — the tests separate `# `, `## `, a bare `#`, and a `#`
 ///   that appears after other text.
 /// - witness: `termination::tests::any_heading_level_terminates_the_section`
+/// - witness: `tests::ui`
 pub fn opens_heading(line: RustdocLine<'_>) -> OpensHeading
 {
     let rest = line.0.trim_start_matches('#');
@@ -278,6 +296,14 @@ pub fn opens_heading(line: RustdocLine<'_>) -> OpensHeading
 ///   length is wrong; `MalformedBullet` means a required nonempty bullet does
 ///   not match in its prescribed position.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — reordered, empty, and complete folded bullets separate
+///   grammar rejection from the exact input-recursion value.
+/// - witness: `termination::tests::out_of_order_bullets_are_rejected`
+/// - witness: `termination::tests::empty_bullet_values_are_rejected`
+/// - witness: `termination::tests::wrapped_bullet_values_fold_into_one_bullet`
+#[spec(requires: bullets.iter().all(|bullet| bullet.starts_with("- ")))]
 fn grammar_input_recursion(bullets: &[String]) -> Maybe<String, input_grammar::Mismatch>
 {
     let [_, _, _, ref input] = *bullets
@@ -306,6 +332,15 @@ fn grammar_input_recursion(bullets: &[String]) -> Maybe<String, input_grammar::M
 ///   prefix and the text after it is not whitespace alone.
 /// - provides: the value requirement of every required bullet.
 /// - panics: none.
+/// - executable: none — the function is its own specification; the UI fixtures
+///   are the oracle.
+///
+/// # Adequacy
+/// - hypothesis: L3 — empty values and reordered prefixes distinguish both
+///   requirements from a complete termination explanation.
+/// - witness: `termination::tests::empty_bullet_values_are_rejected`
+/// - witness: `termination::tests::out_of_order_bullets_are_rejected`
+/// - witness: `tests::ui`
 fn required_bullet_has_value(
     line: TerminationLine<'_>,
     prefix: BulletPrefix<'_>,
@@ -330,6 +365,8 @@ fn required_bullet_has_value(
 ///   claim, and no choice of punctuation after the word escapes it.
 /// - provides: the trigger for the call-graph refutation.
 /// - panics: none.
+/// - executable: none — the function is its own specification; the UI fixtures
+///   are the oracle.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — the tests separate the bare claim, the claim under every
@@ -338,6 +375,7 @@ fn required_bullet_has_value(
 /// - witness: `termination::tests::none_claim_survives_trailing_prose`
 /// - witness: `termination::tests::none_claim_is_recognized_with_or_without_a_period`
 /// - witness: `termination::tests::none_claim_survives_any_punctuation`
+/// - witness: `tests::ui`
 fn claims_no_input_recursion(value: TerminationLine<'_>) -> ClaimsNoInputRecursion
 {
     // Punctuation cannot disable refutation: `none?` and `none!` carry the same

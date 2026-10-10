@@ -6,6 +6,7 @@
 //! unsafe items introduced after this pass are outside its source boundary.
 //! A syntactically present clause does not establish that its claim is true.
 
+use anodized::spec;
 use clippy_utils::diagnostics::span_lint_and_help;
 use quenchant_shape::shape::Maybe;
 use rustc_ast::AssocItem;
@@ -72,6 +73,13 @@ impl EarlyLintPass for SafetyDocumentation
     /// - ensures: reports a missing safety clause on each unsafe item and does
     ///   not report on safe items.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui_safety`
     fn check_item(
         &mut self,
         cx: &EarlyContext<'_>,
@@ -124,6 +132,13 @@ impl EarlyLintPass for SafetyDocumentation
     /// - ensures: a bridge module's section never applies to later sibling
     ///   items.
     /// - panics: none.
+    /// - executable: none — this obligation concerns the scope seen by later
+    ///   sibling callbacks, beyond the current invocation.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui_safety`
     fn check_item_post(
         &mut self,
         _cx: &EarlyContext<'_>,
@@ -145,6 +160,13 @@ impl EarlyLintPass for SafetyDocumentation
     /// # Specification
     /// - ensures: checks each unsafe trait function at its own documentation.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui_safety`
     fn check_trait_item(
         &mut self,
         cx: &EarlyContext<'_>,
@@ -164,6 +186,13 @@ impl EarlyLintPass for SafetyDocumentation
     /// - ensures: checks each unsafe implementation function independently of
     ///   its enclosing implementation's safety section.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui_safety`
     fn check_impl_item(
         &mut self,
         cx: &EarlyContext<'_>,
@@ -190,6 +219,8 @@ struct SafetyClausePresent(bool);
 ///   containing a nonempty `- unsafe invariants:` bullet before the next
 ///   heading.
 /// - panics: none.
+/// - executable: none — rustc emits diagnostics without a queryable per-call
+///   diagnostic result.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — UI inputs distinguish missing sections, misplaced and
@@ -225,6 +256,15 @@ fn check_documentation(
 /// - hypothesis: L3 — UI cases separate empty and misplaced bullets from valid
 ///   declarations and from the enclosing C++ bridge module's section.
 /// - witness: `tests::ui_safety`
+#[spec(ensures: |output| {
+    let lines = attrs.iter().filter_map(Attribute::doc_str).fold(Vec::new(), |mut lines, doc| {
+        lines.extend(doc.as_str().lines().map(str::to_owned));
+        lines
+    });
+    output.0 == matches!(section_lines(&lines, SectionHeading::from("# Safety")), Maybe::Present(bullets) if bullets.iter().any(|bullet| {
+        bullet.strip_prefix("- unsafe invariants:").is_some_and(|value| !value.trim().is_empty())
+    }))
+})]
 fn safety_section(attrs: &[Attribute]) -> SafetyClausePresent
 {
     let mut lines = Vec::new();

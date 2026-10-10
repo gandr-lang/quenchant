@@ -18,6 +18,7 @@
 //! at any level so injected or unrelated bullets cannot repair an incomplete
 //! authored claim.
 
+use anodized::spec;
 use quenchant_shape::shape::Maybe;
 
 quenchant_shape::reason_enum! {
@@ -166,6 +167,13 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowAdequacy
     /// - ensures: reads the block wherever the item carries one; an item is
     ///   never a required trait method here.
     /// - panics: none.
+    /// - executable: none — rustc owns the diagnostic sink; this callback has
+    ///   no readback of emitted or suppressed diagnostics.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler UI diagnostics distinguish item sections and
+    ///   malformed hypotheses against accepted controls.
+    /// - witness: `tests::ui`
     fn check_item(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -182,6 +190,14 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowAdequacy
     /// - ensures: reads the block wherever the item carries one; an implemented
     ///   item always has a body, so the declaration-only exemption is refused.
     /// - panics: none.
+    /// - executable: none — rustc owns the diagnostic sink; this callback has
+    ///   no readback of emitted or suppressed diagnostics.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler UI diagnostics distinguish implemented
+    ///   methods and misplaced declaration-only claims against accepted
+    ///   controls.
+    /// - witness: `tests::ui`
     fn check_impl_item(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -203,6 +219,14 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowAdequacy
     ///   declaration-only exemption exactly on a method declared without a
     ///   body.
     /// - panics: none.
+    /// - executable: none — rustc owns the diagnostic sink; this callback has
+    ///   no readback of emitted or suppressed diagnostics.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler UI diagnostics distinguish required and
+    ///   provided methods with declaration-only claims against accepted
+    ///   controls.
+    /// - witness: `tests::ui`
     fn check_trait_item(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -227,6 +251,14 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowAdequacy
     /// - ensures: reads the block wherever the item carries one; a foreign
     ///   declaration is not a trait method, so the exemption is refused.
     /// - panics: none.
+    /// - executable: none — rustc owns the diagnostic sink; this callback has
+    ///   no readback of emitted or suppressed diagnostics.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler UI diagnostics distinguish foreign
+    ///   declarations claiming the required-method exemption against accepted
+    ///   controls.
+    /// - witness: `tests::ui`
     fn check_foreign_item(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -328,6 +360,13 @@ impl AdequacyDefect
 ///   item with no such heading is reported nothing.
 /// - provides: the reporting half of [`ADEQUACY_BLOCK_GRAMMAR`].
 /// - panics: none.
+/// - executable: none — rustc owns the diagnostic sink; this callback has no
+///   readback of emitted or suppressed diagnostics.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler UI diagnostics distinguish missing sections and
+///   each first grammar defect against accepted controls.
+/// - witness: `tests::ui`
 fn check_block(
     cx: &LateContext<'_>,
     def_id: LocalDefId,
@@ -357,6 +396,13 @@ fn check_block(
 ///   the `# Adequacy` heading; the section's content is
 ///   [`ADEQUACY_BLOCK_GRAMMAR`]'s to judge.
 /// - panics: none.
+/// - executable: none — rustc owns the diagnostic sink; this callback has no
+///   readback of emitted or suppressed diagnostics.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler UI diagnostics distinguish clause-bearing items
+///   with and without adequacy headings against accepted controls.
+/// - witness: `tests::ui_spec_gates`
 pub fn require_section(
     cx: &LateContext<'_>,
     name: Span,
@@ -406,6 +452,7 @@ const HEADING: &str = "# Adequacy";
 ///   a hypothesis after the evidence, no witness, a witness that is not an
 ///   exact path, and the exemption misused four ways.
 /// - witness: `tests::ui`
+#[spec(requires: bullets.iter().all(|bullet| bullet.starts_with("- ")))]
 fn grammar_defect(
     bullets: &[String],
     required: TraitRequiredMethod,
@@ -488,6 +535,9 @@ fn grammar_defect(
 ///   and parentheses, every rung of the ladder, and an alphanumeric run that
 ///   merely contains a rung's spelling.
 /// - witness: `adequacy::tests::a_rung_is_found_on_its_own_token_boundary`
+#[spec(ensures: |output| output.0 == value.0
+    .split(|character: char| !character.is_ascii_alphanumeric())
+    .any(|token| ["L0", "L1", "L2", "L3"].contains(&token)))]
 fn names_ladder_rung(value: HypothesisValue<'_>) -> NamesLadderRung
 {
     NamesLadderRung(
@@ -517,6 +567,20 @@ fn names_ladder_rung(value: HypothesisValue<'_>) -> NamesLadderRung
 ///   empty pair of backticks, a bullet carrying prose after the path, and two
 ///   paths on one bullet.
 /// - witness: `adequacy::tests::only_one_backticked_path_is_an_exact_witness`
+#[spec(ensures: |output| match output {
+    Maybe::Present(path) => bullet.0.trim().strip_prefix("- witness: `")
+        .and_then(|value| value.strip_suffix('`')) == Some(path.0)
+        && !path.0.is_empty() && !path.0.contains('`'),
+    Maybe::Absent(witness_syntax::Missing::PrefixAbsent) =>
+        !bullet.0.trim().starts_with("- witness: `"),
+    Maybe::Absent(witness_syntax::Missing::ClosingBacktickAbsent) =>
+        bullet.0.trim().strip_prefix("- witness: `").is_some_and(|value| !value.ends_with('`')),
+    Maybe::Absent(witness_syntax::Missing::EmptyPath) => bullet.0.trim() == "- witness: ``",
+    Maybe::Absent(witness_syntax::Missing::InteriorBacktick) =>
+        bullet.0.trim().strip_prefix("- witness: `")
+            .and_then(|value| value.strip_suffix('`'))
+            .is_some_and(|value| value.contains('`')),
+})]
 fn exact_witness(bullet: RustdocLine<'_>) -> Maybe<RustdocLine<'_>, witness_syntax::Missing>
 {
     let Some(rest) = bullet.0.trim().strip_prefix("- witness: `")

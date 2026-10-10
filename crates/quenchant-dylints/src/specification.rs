@@ -21,6 +21,7 @@
 //! resolution are separate stages, and a failure in generated checking still
 //! needs classification regardless of who manufactured its declaration.
 
+use anodized::spec;
 use clippy_utils::diagnostics::span_lint_and_help;
 use clippy_utils::in_automatically_derived;
 use clippy_utils::is_in_test_function;
@@ -156,6 +157,13 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowSpecification
     /// - ensures: checks a function item and ignores every other item kind,
     ///   reporting at the function's name where it has one.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui_specifications`
     fn check_item(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -175,6 +183,13 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowSpecification
     /// # Specification
     /// - ensures: checks a method and ignores every other associated item kind.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui_specifications`
     fn check_impl_item(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -200,6 +215,13 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowSpecification
     /// - ensures: checks a method declaration, with or without a body, and
     ///   ignores every other associated item kind.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui_specifications`
     fn check_trait_item(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -226,6 +248,13 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowSpecification
     /// - ensures: checks a foreign function and ignores every other foreign
     ///   item kind.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui_specifications`
     fn check_foreign_item(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -324,6 +353,8 @@ const ACCEPTED_SHAPES: &str = concat!(
 /// - provides: the denial [`SPECIFICATION_PRESENT`] reports, and the item class
 ///   the two clause-bearing gates decide.
 /// - panics: none.
+/// - executable: none — rustc emits diagnostics without a queryable per-call
+///   diagnostic result.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — the UI matrices separate each firing shape and each
@@ -401,6 +432,7 @@ fn check_presence(
 /// - hypothesis: L3 — the tests separate a clause block, the marker alone with
 ///   and without its period, a blank-padded marker, and an empty body.
 /// - witness: `specification::tests::only_a_clause_makes_a_block_clause_bearing`
+#[spec(ensures: |output| output.0 == body.iter().any(|line| !line.trim().is_empty() && matches!(marker_spelling(RustdocLine::from(line.trim())), MarkerSpelling::NotTheMarker)))]
 fn carries_clauses(body: &[String]) -> ClauseBearing
 {
     ClauseBearing(body.iter().any(|line| {
@@ -452,6 +484,7 @@ fn carries_clauses(body: &[String]) -> ClauseBearing
 ///   of the rule and empties both matrices.
 /// - witness: `tests::ui`
 /// - witness: `tests::ui_specifications`
+#[spec(ensures: |output| output.0 == (!declaration.in_external_macro(cx.tcx.sess.source_map()) && name_authored(cx, def_id).0))]
 fn authored(
     cx: &LateContext<'_>,
     def_id: LocalDefId,
@@ -489,6 +522,7 @@ fn authored(
 ///   [`authored`].
 /// - witness: `tests::ui_signatures`
 /// - witness: `tests::ui_specifications`
+#[spec(ensures: |output| output.0 == cx.tcx.def_ident_span(def_id).is_some_and(|name| !name.in_external_macro(cx.tcx.sess.source_map()) && name_span_carries_identifier(cx, def_id, name).0))]
 pub fn name_authored(
     cx: &LateContext<'_>,
     def_id: LocalDefId,
@@ -536,6 +570,12 @@ pub fn name_authored(
 ///   and the item specifications no panic.
 /// - witness: `tests::ui`
 /// - witness: `tests::ui_specifications`
+#[spec(ensures: |output| output.0 == cx.tcx.opt_item_name(def_id.to_def_id()).is_some_and(|identifier| {
+    cx.tcx.sess.source_map().span_to_snippet(span).is_ok_and(|written| {
+        let written = written.trim();
+        written.strip_prefix("r#").unwrap_or(written) == identifier.as_str()
+    })
+}))]
 fn name_span_carries_identifier(
     cx: &LateContext<'_>,
     def_id: LocalDefId,
@@ -578,6 +618,18 @@ enum MarkerSpelling
 ///   merely opening with the spelling is not it.
 /// - provides: the marker recognition both denials below share.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — punctuated, unpunctuated and bulleted marker cases
+///   distinguish the recognized spellings from ordinary clauses.
+/// - witness: `specification::tests::the_marker_carries_the_terminal_period`
+#[spec(ensures: |output| {
+    let text = line.0.trim();
+    let word = text.strip_prefix('-').map_or(text, str::trim);
+    if word.strip_suffix('.').unwrap_or(word) != TRIVIAL_MARKER { matches!(output, MarkerSpelling::NotTheMarker) }
+    else if text.starts_with('-') { matches!(output, MarkerSpelling::Bulleted) }
+    else { matches!(output, MarkerSpelling::Canonical) }
+})]
 fn marker_spelling(line: RustdocLine<'_>) -> MarkerSpelling
 {
     let text = line.0.trim();
@@ -618,6 +670,8 @@ fn marker_spelling(line: RustdocLine<'_>) -> MarkerSpelling
 /// - witness: `specification::tests::the_marker_carries_the_terminal_period`
 /// - witness: `specification::tests::the_marker_beside_a_clause_is_refused`
 /// - witness: `specification::tests::clauses_without_the_marker_are_accepted`
+#[spec(ensures: |output| output.0 == (body.iter().any(|line| !line.trim().is_empty() && !matches!(marker_spelling(RustdocLine::from(line.trim())), MarkerSpelling::NotTheMarker))
+    && body.iter().any(|line| !line.trim().is_empty() && matches!(marker_spelling(RustdocLine::from(line.trim())), MarkerSpelling::NotTheMarker))))]
 fn marker_beside_clause(body: &[String]) -> MarkerBesideClause
 {
     let mut marker = false;
@@ -653,6 +707,7 @@ fn marker_beside_clause(body: &[String]) -> MarkerBesideClause
 ///   marker with its period, an ordinary clause list, and the canonical body.
 /// - witness: `specification::tests::the_bulleted_marker_is_refused`
 /// - witness: `specification::tests::clauses_without_the_marker_are_accepted`
+#[spec(ensures: |output| output.0 == body.iter().any(|line| matches!(marker_spelling(RustdocLine::from(line.trim())), MarkerSpelling::Bulleted)))]
 fn marker_written_as_bullet(body: &[String]) -> MarkerWrittenAsBullet
 {
     MarkerWrittenAsBullet(body.iter().any(|line| {

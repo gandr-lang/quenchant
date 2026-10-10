@@ -20,6 +20,7 @@
 
 use alloc::collections::VecDeque;
 
+use anodized::spec;
 use quenchant_shape::shape::Maybe;
 
 quenchant_shape::reason_enum! {
@@ -222,6 +223,13 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowJudgement
     ///   but a function, treating a type definition as the one site that may
     ///   carry `- direction:`; a function item is left to `check_fn`.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui`
     fn check_item(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -253,6 +261,13 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowJudgement
     ///   body, resolving `- expected:` against the parameters that body binds;
     ///   a closure carries no declaration and is skipped.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui`
     fn check_fn(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -277,6 +292,13 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowJudgement
     /// - ensures: reports the misplacement defect for every associated item but
     ///   a method, which reaches `check_fn` with its parameters in scope.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui`
     fn check_impl_item(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -303,6 +325,13 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowJudgement
     ///   provided method, which reaches `check_fn`; a required method's
     ///   parameters bind nothing a match can dispatch on.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui`
     fn check_trait_item(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -329,6 +358,13 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowJudgement
     /// - ensures: reports the misplacement defect on every foreign declaration,
     ///   which holds no scrutinee at all.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui`
     fn check_foreign_item(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -350,6 +386,13 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowJudgement
     ///   scrutinee is the declared direction or mentions the declared expected
     ///   parameter; a match inside an expansion is left alone.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui`
     fn check_expr(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -538,6 +581,13 @@ impl JudgementDefect
 /// - ensures: reports the section's defect exactly when the item carries a `#
 ///   Judgement` section that declares nothing usable at that site.
 /// - panics: none.
+/// - executable: none — rustc emits diagnostics without a queryable per-call
+///   diagnostic result.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
 fn report_declaration_defect(
     cx: &LateContext<'_>,
     def_id: LocalDefId,
@@ -579,6 +629,8 @@ fn report_declaration_defect(
 ///   const, an associated type, and a required trait method — beside the
 ///   provided method and the associated function that do carry one.
 /// - witness: `tests::ui`
+#[spec(captures: grammar = match &declaration.defect { Maybe::Present(defect) => Some(core::mem::discriminant(defect)), Maybe::Absent(_) => None },
+ensures: |output| grammar.is_none_or(|expected| matches!(&output, Maybe::Present(actual) if core::mem::discriminant(actual) == expected)))]
 fn site_defect(
     declaration: Declaration,
     site: DeclarationSite<'_>,
@@ -623,6 +675,12 @@ fn site_defect(
 /// - provides: `crate::rustdoc::section_lookup::Missing::HeadingAbsent` records
 ///   absence of that exact authored heading.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| matches!(output, Maybe::Present(_)) == indented_rustdoc_lines(cx, def_id).iter().any(|line| line.trim() == HEADING))]
 fn declaration_of(
     cx: &LateContext<'_>,
     def_id: LocalDefId,
@@ -658,6 +716,7 @@ fn declaration_of(
 /// - witness: `judgement::tests::a_direction_bullet_states_what_the_direction_is`
 /// - witness: `judgement::tests::an_expected_bullet_names_one_backticked_parameter`
 /// - witness: `judgement::tests::a_wrapped_direction_value_stays_one_bullet`
+#[spec(ensures: |output| matches!(output, Maybe::Present(_)) == lines.iter().any(|line| line.trim() == HEADING))]
 fn declaration(lines: &[String]) -> Maybe<Declaration, crate::rustdoc::section_lookup::Missing>
 {
     let bullets = match section_lines(lines, SectionHeading::from(HEADING)) {
@@ -705,6 +764,8 @@ fn declaration(lines: &[String]) -> Maybe<Declaration, crate::rustdoc::section_l
 /// - ensures: returns the name exactly when the value is one nonempty
 ///   backtick-delimited run holding neither a further backtick nor whitespace;
 ///   prose, a bare name, and two names on one bullet all yield nothing.
+/// - ensures: surrounding any returned name with backticks reconstructs the
+///   trimmed input.
 /// - provides: the exactness a parameter lookup depends on, since the name is
 ///   matched against the parameter's spelling verbatim.
 /// - provides: `name_syntax::Missing` separates `OpeningBacktickAbsent`,
@@ -717,6 +778,12 @@ fn declaration(lines: &[String]) -> Maybe<Declaration, crate::rustdoc::section_l
 ///   empty pair of backticks, a name followed by prose, and two names on one
 ///   bullet.
 /// - witness: `judgement::tests::an_expected_bullet_names_one_backticked_parameter`
+#[spec(ensures: |output| match output {
+    Maybe::Present(name) => !name.0.is_empty()
+        && !name.0.contains(|character: char| character == '`' || character.is_whitespace())
+        && core::iter::once('`').chain(name.0.chars()).chain(core::iter::once('`')).eq(value.0.trim().chars()),
+    Maybe::Absent(_) => true,
+})]
 fn backticked_name(value: RustdocLine<'_>) -> Maybe<RustdocLine<'_>, name_syntax::Missing>
 {
     let Some(rest) = value.0.trim().strip_prefix('`')
@@ -756,6 +823,11 @@ fn backticked_name(value: RustdocLine<'_>) -> Maybe<RustdocLine<'_>, name_syntax
 /// - hypothesis: L3 — the fixture matrix separates a named parameter, a name no
 ///   parameter binds, and a match on a parameter the declaration does not name.
 /// - witness: `tests::ui`
+#[spec(ensures: |output| match output {
+    Maybe::Present(binding) => body.params.iter().any(|parameter| matches!(parameter.pat.kind,
+        PatKind::Binding(_, id, ident, None) if id == binding && ident.as_str() == name.0)),
+    Maybe::Absent(_) => true,
+})]
 fn parameter_binding(
     body: &Body<'_>,
     name: ParameterName<'_>,
@@ -793,6 +865,7 @@ fn parameter_binding(
 ///   match on the same parameter beneath a call, and a match on another
 ///   parameter of the same function.
 /// - witness: `tests::ui`
+#[spec(requires: !scrutinee.span.from_expansion())]
 fn scrutinee_role<'tcx>(
     cx: &LateContext<'tcx>,
     scrutinee: &'tcx Expr<'tcx>,
@@ -814,6 +887,15 @@ fn scrutinee_role<'tcx>(
 ///   references peeled, is a crate-local ADT whose own rustdoc carries a
 ///   defect-free `- direction:` declaration.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| output.0 == cx.typeck_results().expr_ty_opt(scrutinee).is_some_and(|ty| match *ty.peel_refs().kind() {
+    rustc_ty::Adt(adt, _) => adt.did().as_local().is_some_and(|id| matches!(declaration_of(cx, id), Maybe::Present(declaration) if matches!(declaration.defect, Maybe::Absent(_)) && declaration.direction.0)),
+    _ => false,
+}))]
 fn scrutinee_is_direction<'tcx>(
     cx: &LateContext<'tcx>,
     scrutinee: &'tcx Expr<'tcx>,
@@ -842,10 +924,18 @@ fn scrutinee_is_direction<'tcx>(
 /// expression.
 ///
 /// # Specification
+/// - ensures: a direct reference to a declared expected parameter is
+///   recognized.
 /// - ensures: answers affirmatively exactly when some path in the scrutinee,
 ///   closure bodies included, resolves to a parameter its function declares
 ///   expected.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui`
+#[spec(ensures: |output| !matches!(scrutinee.kind, ExprKind::Path(QPath::Resolved(None, path)) if matches!(path.res, Res::Local(binding) if declared_expected_parameter(cx, binding).0)) || output.0)]
 fn scrutinee_mentions_expected<'tcx>(
     cx: &LateContext<'tcx>,
     scrutinee: &'tcx Expr<'tcx>,
@@ -870,6 +960,8 @@ fn scrutinee_mentions_expected<'tcx>(
 ///   binding.
 /// - provides: the identity test behind the expected plane.
 /// - panics: none.
+/// - executable: none — the function is its own specification; the UI fixtures
+///   are the oracle.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — the fixture matrix separates the declared parameter, a
@@ -915,6 +1007,11 @@ fn declared_expected_parameter(
 ///   bare-binding arm, a wildcard inside an or-pattern, a binding carrying a
 ///   subpattern, and an exhaustive match naming every variant.
 /// - witness: `tests::ui`
+#[spec(ensures: |output| match pattern.kind {
+    PatKind::Wild | PatKind::Binding(_, _, _, None) => output.as_slice() == [pattern.span],
+    PatKind::Or(_) => true,
+    _ => output.is_empty(),
+})]
 fn fallback_spans(pattern: &Pat<'_>) -> Vec<Span>
 {
     let mut pending: VecDeque<&Pat<'_>> = VecDeque::new();
@@ -981,6 +1078,12 @@ impl<'tcx> Visitor<'tcx> for ExpectedMention<'_, 'tcx>
     ///   by the parser's own nesting limit, which rejects deeper input before a
     ///   lint pass ever runs.
     /// - input recursion: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+    ///   through their observable diagnostics.
+    /// - witness: `tests::ui`
+    #[spec(ensures: |_| !matches!(expr.kind, ExprKind::Path(QPath::Resolved(None, path)) if matches!(path.res, Res::Local(binding) if declared_expected_parameter(self.cx, binding).0)) || self.found.0)]
     fn visit_expr(
         &mut self,
         expr: &'tcx Expr<'_>,

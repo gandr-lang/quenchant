@@ -14,6 +14,7 @@
 
 use core::cell::OnceCell;
 
+use anodized::spec;
 use clippy_utils::diagnostics::span_lint_and_help;
 use rustc_hir::Body;
 use rustc_hir::FnDecl;
@@ -102,6 +103,13 @@ impl<'tcx> LateLintPass<'tcx> for ErasedErrorSignature
     ///   methods with bodies; closure signatures are inferred implementation
     ///   details.
     /// - panics: none.
+    /// - executable: none — rustc owns the emitted diagnostics, with no
+    ///   readback available to verify this callback's reporting effects.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — free and associated functions contrast erased outputs
+    ///   with named errors and foreign-trait controls.
+    /// - witness: `tests::ui_shapes`
     fn check_fn(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -143,6 +151,8 @@ impl ErasedErrorSignature
     ///   implementation whose output reaches a `Result` with an erased error;
     ///   does nothing where the lint is allowed.
     /// - panics: none.
+    /// - executable: none — rustc owns lint levels and diagnostic emission;
+    ///   emitted or suppressed messages cannot be read back here.
     ///
     /// # Adequacy
     /// - hypothesis: L3 — the error matrix separates boxed, shared, aliased,
@@ -199,9 +209,16 @@ impl ErasedErrorSignature
 ///
 /// # Specification
 /// - ensures: returns the definition of `anyhow::Error` and of `eyre::Report`
-///   among this crate's dependencies, each once; a crate that links neither
-///   yields none.
+///   among this crate's dependencies; a crate that links neither yields none.
+/// - ensures: no returned definition occurs more than once.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — dependency-erased errors and same-named local errors
+///   separate resolved dependency identity from spelling alone.
+/// - witness: `tests::ui_shapes`
+#[spec(ensures: |output| output.iter().enumerate().all(|(index, item)|
+    !output.iter().take(index).any(|earlier| earlier == item)))]
 fn erased_error_types(cx: &LateContext<'_>) -> Vec<DefId>
 {
     let mut types = Vec::new();
@@ -227,6 +244,16 @@ fn erased_error_types(cx: &LateContext<'_>) -> Vec<DefId>
 ///   whose error type [`erases`]; each opaque type is opened once, so the walk
 ///   ends on any signature.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — nested and opaque return types distinguish reachable
+///   erasure from named-error and parameter-only controls.
+/// - witness: `tests::ui_shapes`
+#[spec(requires: {
+    let expected = erased_error_types(cx);
+    expected.iter().all(|definition| erased.contains(definition))
+        && erased.iter().all(|definition| expected.contains(definition))
+})]
 fn returns_erased_error<'tcx>(
     cx: &LateContext<'tcx>,
     erased: &[DefId],
@@ -287,6 +314,16 @@ fn returns_erased_error<'tcx>(
 ///   `core::error::Error`, or is an ADT among `erased`; a named error that
 ///   carries an erased value in a field is not erased.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — pointer-wrapped Error objects and named error fields
+///   separate erased boundary types from retained failure identity.
+/// - witness: `tests::ui_shapes`
+#[spec(requires: {
+    let expected = erased_error_types(cx);
+    expected.iter().all(|definition| erased.contains(definition))
+        && erased.iter().all(|definition| expected.contains(definition))
+})]
 fn erases<'tcx>(
     cx: &LateContext<'tcx>,
     erased: &[DefId],

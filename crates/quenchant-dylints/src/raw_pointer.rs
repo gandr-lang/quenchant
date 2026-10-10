@@ -13,6 +13,7 @@
 //! reference value, slice pointer methods that autoref a place, and fresh
 //! borrows handed to `ptr::from_ref` or `ptr::from_mut`.
 
+use anodized::spec;
 use clippy_utils::diagnostics::span_lint_and_then;
 use clippy_utils::is_expr_temporary_value;
 use clippy_utils::source::snippet_with_context;
@@ -93,6 +94,8 @@ impl<'tcx> LateLintPass<'tcx> for RawPointerThroughReference
     /// - ensures: expressions from macro expansions and desugarings are not
     ///   inspected.
     /// - panics: none.
+    /// - executable: none — rustc emits diagnostics without a queryable
+    ///   per-call diagnostic result.
     ///
     /// # Adequacy
     /// - hypothesis: L3 UI witnesses separate each refused form from the
@@ -140,6 +143,7 @@ enum Origin
 /// Classify the storage a place expression names.
 ///
 /// # Specification
+/// - ensures: overloaded dereferences and indexing classify as `Reference`.
 /// - ensures: follows fields, built-in indexing, box dereferences and the
 ///   autoderef steps recorded on each projection base; the first reference met
 ///   yields `Reference`, a raw-pointer dereference `RawPointer`, and a local or
@@ -152,6 +156,8 @@ enum Origin
 /// - hypothesis: L3 owned, boxed, raw-pointer and reference-reached receivers
 ///   are distinguished in the UI witnesses.
 /// - witness: `tests::ui_pointers`
+#[spec(ensures: |output| !matches!(place.kind, ExprKind::Unary(UnOp::Deref, _) | ExprKind::Index(..))
+    || !cx.typeck_results().is_method_call(place) || output == Origin::Reference)]
 fn place_origin<'tcx>(
     cx: &LateContext<'tcx>,
     mut place: &'tcx Expr<'tcx>,
@@ -205,6 +211,18 @@ enum Reached
 /// - ensures: `Reference` when an autoderef step is overloaded or starts from a
 ///   reference type; box dereferences count as `Directly`.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui_pointers`
+#[spec(ensures: |output| {
+    let typeck = cx.typeck_results();
+    let sources = core::iter::once(typeck.expr_ty(expr)).chain(typeck.expr_adjustments(expr).iter().map(|adjustment| adjustment.target));
+    (output == Reached::Reference) == typeck.expr_adjustments(expr).iter().zip(sources).any(|(adjustment, source)| {
+        matches!(adjustment.kind, Adjust::Deref(kind) if !matches!(kind, DerefAdjustKind::Builtin) || source.is_ref())
+    })
+})]
 fn adjusted_through<'tcx>(
     cx: &LateContext<'tcx>,
     expr: &'tcx Expr<'tcx>,
@@ -234,6 +252,8 @@ fn adjusted_through<'tcx>(
 ///   `ptr::from_ref` or `ptr::from_mut` replacement.
 /// - ensures: borrows of temporaries are not reported.
 /// - panics: none.
+/// - executable: none — rustc emits diagnostics without a queryable per-call
+///   diagnostic result.
 ///
 /// # Adequacy
 /// - hypothesis: L3 unsizing borrows, argument and binding coercions of
@@ -306,6 +326,15 @@ enum RawBorrow
 /// - ensures: matches only a leading built-in deref followed by a raw borrow;
 ///   later unsizing steps are allowed.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui_pointers`
+#[spec(ensures: |output| match *adjustments {
+    [Adjustment { kind: Adjust::Deref(DerefAdjustKind::Builtin), .. }, Adjustment { kind: Adjust::Borrow(AutoBorrow::RawPtr(expected)), .. }, ..] => matches!(output, RawBorrow::Coerced(actual) if actual == expected),
+    _ => matches!(output, RawBorrow::Other),
+})]
 fn raw_borrow(adjustments: &[Adjustment<'_>]) -> RawBorrow
 {
     match *adjustments {
@@ -336,6 +365,8 @@ fn raw_borrow(adjustments: &[Adjustment<'_>]) -> RawBorrow
 /// - ensures: the suggestion takes `&raw` of the place and casts it to the
 ///   element type.
 /// - panics: none.
+/// - executable: none — rustc emits diagnostics without a queryable per-call
+///   diagnostic result.
 ///
 /// # Adequacy
 /// - hypothesis: L3 arrays, boxed slices, raw-pointer places and explicit
@@ -460,6 +491,13 @@ enum Receiver
 /// - ensures: `Autoref` when the adjustments borrow the receiver as a reference
 ///   and no earlier step dereferences a reference.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui_pointers`
+#[spec(ensures: |output| (output == Receiver::Autoref) == (adjusted_through(cx, receiver) == Reached::Directly
+    && cx.typeck_results().expr_adjustments(receiver).iter().any(|adjustment| matches!(adjustment.kind, Adjust::Borrow(AutoBorrow::Ref(_))))))]
 fn autoref<'tcx>(
     cx: &LateContext<'tcx>,
     receiver: &'tcx Expr<'tcx>,
@@ -496,6 +534,8 @@ fn autoref<'tcx>(
 ///   base, and, for a cast replacement, a unary or borrow operand.
 /// - ensures: an argument that is an existing reference value is not reported.
 /// - panics: none.
+/// - executable: none — rustc emits diagnostics without a queryable per-call
+///   diagnostic result.
 ///
 /// # Adequacy
 /// - hypothesis: L3 a fresh borrow and an existing reference passed to each
@@ -614,6 +654,13 @@ fn check_pointer_constructor<'tcx>(
 /// - ensures: one diagnostic at `span`, suggesting `&raw const` or `&raw mut`
 ///   of `place` in the borrow's own position, so the coercion still applies.
 /// - panics: none.
+/// - executable: none — rustc emits diagnostics without a queryable per-call
+///   diagnostic result.
+///
+/// # Adequacy
+/// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
+///   through their observable diagnostics.
+/// - witness: `tests::ui_pointers`
 fn emit_raw_borrow<'tcx>(
     cx: &LateContext<'tcx>,
     span: Span,
