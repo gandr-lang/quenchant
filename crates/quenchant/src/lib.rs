@@ -7,16 +7,6 @@
 #![cfg_attr(doc, doc = include_str!("../README.md"))]
 #![no_std]
 #![forbid(unsafe_code)]
-#![cfg_attr(
-    dylint_lib = "quenchant_dylints",
-    deny(
-        spec_attribute_present,
-        adequacy_present,
-        maybe_shape,
-        erased_error_signature,
-        spec_attribute_unqualified
-    )
-)]
 
 pub use quenchant_arith::arith;
 pub use quenchant_shape::delegate_ops;

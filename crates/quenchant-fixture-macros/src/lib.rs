@@ -10,16 +10,6 @@
 //! item's documentation. Empty generated bodies are intentional fixture data,
 //! not a client implementation offered to applications.
 #![cfg_attr(doc, doc = include_str!("../README.md"))]
-#![cfg_attr(
-    dylint_lib = "quenchant_dylints",
-    deny(
-        spec_attribute_present,
-        adequacy_present,
-        maybe_shape,
-        erased_error_signature,
-        spec_attribute_unqualified
-    )
-)]
 
 use anodized::spec;
 use proc_macro2::Delimiter;

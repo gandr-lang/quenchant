@@ -5,17 +5,6 @@
 //! paths are `gates::<file>::<test>`, and their code remains subject to the
 //! library's lint policy.
 
-#![cfg_attr(
-    dylint_lib = "quenchant_dylints",
-    deny(
-        spec_attribute_present,
-        adequacy_present,
-        maybe_shape,
-        erased_error_signature,
-        spec_attribute_unqualified
-    )
-)]
-
 #[cfg(test)]
 mod anodized;
 #[cfg(test)]

@@ -23,16 +23,6 @@
 //! and Dylint driver are one compatibility boundary.
 
 #![feature(rustc_private)]
-#![cfg_attr(
-    dylint_lib = "quenchant_dylints",
-    deny(
-        spec_attribute_present,
-        adequacy_present,
-        maybe_shape,
-        erased_error_signature,
-        spec_attribute_unqualified
-    )
-)]
 #![expect(
     unstable_features,
     reason = "rustc_private is the lint driver's substrate"

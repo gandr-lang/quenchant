@@ -4,16 +4,6 @@
     not(doc),
     doc = "Specification attributes with optional development instrumentation."
 )]
-#![cfg_attr(
-    dylint_lib = "quenchant_dylints",
-    deny(
-        spec_attribute_present,
-        adequacy_present,
-        maybe_shape,
-        erased_error_signature,
-        spec_attribute_unqualified
-    )
-)]
 
 #[cfg(all(any(anodized_panic, anodized_print), not(feature = "anodized")))]
 compile_error!(

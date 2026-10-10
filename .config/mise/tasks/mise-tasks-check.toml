@@ -83,10 +83,13 @@ run = "cargo run -p quenchant-gates --locked -- witnesses --manifest-path Cargo.
 # compilation is off because the driver reads whole-crate HIR: an incremental
 # rebuild can skip the units the lints need to see. A toolchain bump
 # invalidates the driver -- `rm -rf ~/.dylint_drivers target/dylint` before the
-# wall runs again.
+# wall runs again. The five executable-specification and adequacy lints are
+# denied here for every workspace target, rather than in individual crate roots.
+# CI invokes this task to use the same policy and compiler environment.
 ["check:dylint"]
 description = "Load the workspace's own Dylint library over the workspace"
 env.CARGO_INCREMENTAL = "0"
+env.DYLINT_RUSTFLAGS = "-D spec_attribute_present -D adequacy_present -D maybe_shape -D erased_error_signature -D spec_attribute_unqualified"
 # The plugin must link through dylint-link even when cargo dylint builds it
 # from the workspace root, where its crate-local Cargo configuration is absent.
 # Cargo's linker variable is per target, so each host the wall runs on is
