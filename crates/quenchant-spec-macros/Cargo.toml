@@ -16,11 +16,8 @@ publish.workspace = true
 proc-macro = true
 
 [dev-dependencies]
+anodized.workspace = true
 anodized-macros.workspace = true
-
-[features]
-default = []
-anodized = []
 
 [lints]
 workspace = true

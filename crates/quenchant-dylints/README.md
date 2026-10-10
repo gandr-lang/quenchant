@@ -158,7 +158,7 @@ A generated sibling can reuse an author's identifier token without becoming an a
 
 `spec_attribute_present` and `adequacy_present` apply to the items `specification_present` checks, once the block is well formed and states a clause: anything but `trivial.`. Such a block owes two things:
 
-- an executable predicate: a `#[spec(...)]` attribute with at least one `requires:`, `maintains:`, or `ensures:` clause, or an exemption in the block. The attribute is matched by its path's last segment, so `quenchant::spec`, a `cfg_attr`-applied attribute, and a nested marker inside a `#[spec]` trait count.
+- an executable predicate: a `#[spec(...)]` attribute with at least one `requires:`, `maintains:`, or `ensures:` clause, or an exemption in the block. The attribute is matched by its path's last segment, so `anodized::spec`, a `cfg_attr`-applied attribute, and a nested marker inside a `#[spec]` trait count.
 - an `# Adequacy` section naming the tests that distinguish a violation of the clauses. `adequacy_block_grammar` checks its shape; `quenchant-gates` resolves its witnesses.
 
 The proposed exemption is one clause, the block's last before an optional `- intension:`:

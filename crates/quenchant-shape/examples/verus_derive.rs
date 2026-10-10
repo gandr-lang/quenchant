@@ -436,7 +436,7 @@ fn is_doc(attribute: &syn::Attribute) -> Answer
 /// # Specification
 /// - requires: `attribute` is one item's own attribute.
 /// - ensures: answers affirmatively for exactly the two paths `spec` and
-///   `quenchant::spec`, and negatively for every other path, so a `spec` scoped
+///   `anodized::spec`, and negatively for every other path, so a `spec` scoped
 ///   to another crate never enters the derivation.
 /// - provides: the one place the accepted spellings are named.
 /// - panics: none.
@@ -455,7 +455,7 @@ fn is_specification(attribute: &syn::Attribute) -> Answer
         .iter()
         .map(|segment| segment.ident.to_string())
         .collect();
-    Answer(segments == ["quenchant", "spec"] || segments == ["spec"])
+    Answer(segments == ["anodized", "spec"] || segments == ["spec"])
 }
 
 /// Whether a rustdoc block states a specification inside its specification
@@ -962,9 +962,9 @@ mod tests
     {
         for (attribute, accepted) in [
             ("#[spec]", true),
-            ("#[quenchant::spec]", true),
+            ("#[anodized::spec]", true),
             ("#[other::spec]", false),
-            ("#[quenchant::spec::inner]", false),
+            ("#[anodized::spec::inner]", false),
             ("#[spec::inner]", false),
             ("#[anodized]", false),
             ("#[doc = \"a summary\"]", false),
@@ -1189,7 +1189,7 @@ mod tests
             ///
             /// # Specification
             /// - ensures: returns the only ticket.
-            #[quenchant::spec(ensures: |output| matches!(output, Ticket::One))]
+            #[anodized::spec(ensures: |output| matches!(output, Ticket::One))]
             fn ticket(&self) -> Ticket
             {
                 Ticket::One
@@ -1260,7 +1260,7 @@ mod tests
             (
                 quote! {
                     /// A bare attribute.
-                    #[quenchant::spec]
+                    #[anodized::spec]
                     fn bare() {}
                 },
                 "bare: the specification attribute declares no predicate",
@@ -1348,14 +1348,14 @@ mod tests
             ///
             /// # Specification
             /// - ensures: returns the count.
-            #[quenchant::spec(ensures: |output| output == count)]
+            #[anodized::spec(ensures: |output| output == count)]
             fn derivable(count: usize) -> usize
             {
                 count
             }
 
             /// A bare attribute.
-            #[quenchant::spec]
+            #[anodized::spec]
             fn bare() {}
 
             /// A specification with no attribute.

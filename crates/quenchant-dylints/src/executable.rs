@@ -134,7 +134,7 @@ declare_lint! {
     ///
     /// An authored function or method whose `# Specification` block carries clauses must carry `#[spec(...)]` with at least one executable `requires:`, `maintains:` or `ensures:` predicate, or state in the block why no runtime predicate expresses its obligation.
     ///
-    /// The attribute is matched by the last segment of its path, so `#[spec]`, `#[quenchant::spec]` and `#[anodized::spec]` all count, written directly, under `cfg_attr`, or as a nested marker inside a specified trait or implementation. A block whose whole body is `trivial.` owes nothing.
+    /// The attribute is matched by the last segment of its path, so `#[spec]` and `#[anodized::spec]` both count, written directly, under `cfg_attr`, or as a nested marker inside a specified trait or implementation. A block whose whole body is `trivial.` owes nothing.
     ///
     /// ### The exemption
     ///

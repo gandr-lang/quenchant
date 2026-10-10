@@ -33,7 +33,7 @@ deny = [
   { crate = "windows", reason = "Use windows-sys for direct Windows bindings" },
 ]
 skip = [
-  { crate = "syn@2.0.119", reason = "Anodized 0.6 and Dylint tests have not moved to syn 3" },
+  { crate = "syn@2.0.119", reason = "Anodized and Dylint tests require syn 2" },
   { crate = "thiserror@1.0.69", reason = "Dylint's rustfix stack has not moved to thiserror 2" },
   { crate = "thiserror-impl@1.0.69", reason = "Paired with Dylint's retained thiserror 1" },
   { crate = "windows-sys@0.59.0", reason = "Dylint's compiletest stack has not moved to windows-sys 0.61" },
@@ -77,31 +77,31 @@ reason = "The all-features gate exercises the complete umbrella surface"
 crate = "quenchant-anodized@0.0.0"
 allow = ["anodized", "default"]
 exact = true
-reason = "The all-features gate exercises both specification modes"
+reason = "Only the facade feature compiles the backend; build cfgs select checking"
 
 [[bans.features]]
 crate = "quenchant-arith@0.0.0"
-allow = ["anodized", "default", "fast"]
+allow = ["default", "fast"]
 exact = true
-reason = "The all-features gate exercises both arithmetic modes and specifications"
+reason = "Arithmetic features select only its strict and fast operation families"
 
 [[bans.features]]
 crate = "quenchant-dylints@0.0.0"
-allow = ["anodized", "default"]
+allow = []
 exact = true
-reason = "The all-features gate exercises Dylint's enforcing fixtures"
+reason = "Dylint specification interpretation is selected by build cfg, not features"
 
 [[bans.features]]
 crate = "quenchant-shape@0.0.0"
-allow = ["anodized", "default"]
+allow = []
 exact = true
-reason = "The all-features gate exercises both shape specification modes"
+reason = "Shape specification interpretation is selected by build cfg, not features"
 
 [[bans.features]]
 crate = "quenchant-spec-macros@0.0.0"
-allow = ["anodized", "default"]
+allow = []
 exact = true
-reason = "The all-features gate exercises the enforcing macro expansion"
+reason = "The wrapper forwards build cfgs without its own feature selection"
 
 [bans.workspace-dependencies]
 include-path-dependencies = true
@@ -257,6 +257,6 @@ exceptions = [{ crate = "foldhash@0.2.0", allow = ["Zlib"] }]
 unknown-registry = "deny"
 unknown-git = "deny"
 required-git-spec = "tag"
-allow-git = ["https://github.com/rust-lang/rust-clippy"]
+allow-git = ["https://github.com/gandr-lang/anodized", "https://github.com/rust-lang/rust-clippy"]
 unused-allowed-source = "deny"
 unused-allowed-org = "deny"

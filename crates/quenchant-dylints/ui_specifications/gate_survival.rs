@@ -16,7 +16,7 @@ enum Fuel {
 }
 
 /// The recursive call inside the generated closure still belongs to this function.
-#[quenchant::spec(ensures: |output| output >= Count::ZERO)]
+#[anodized::spec(ensures: |output| output >= Count::ZERO)]
 fn specified_recursion(fuel: Fuel) -> Count {
     match fuel {
         Fuel::One => specified_recursion(Fuel::Zero),
@@ -33,7 +33,7 @@ fn ordinary_recursion(fuel: Fuel) -> Count {
 }
 
 /// Author type tokens retain the primitive-signature finding.
-#[quenchant::spec(requires: value > 0)]
+#[anodized::spec(requires: value > 0)]
 fn specified_primitive(value: u32) -> u32 {
     value
 }

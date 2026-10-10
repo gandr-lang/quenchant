@@ -1,16 +1,34 @@
 //! Exercise expansion in a real consumer crate rather than calling the host
 //! API.
 
-extern crate self as quenchant;
+#![cfg_attr(not(anodized_print), no_std)]
 
-#[cfg(feature = "anodized")]
+extern crate alloc;
+#[cfg(any(anodized_panic, anodized_print))]
+extern crate anodized as backend;
+extern crate self as anodized;
+extern crate std;
+
+#[cfg(any(anodized_panic, anodized_print))]
 pub use anodized_macros::spec as __instrument;
+#[cfg(any(anodized_panic, anodized_print))]
+pub use backend::__;
+#[cfg(any(anodized_panic, anodized_print))]
+pub use backend::result;
+#[cfg(any(anodized_panic, anodized_print))]
+pub use backend::types;
 pub use quenchant_spec_macros::__erase;
 pub use quenchant_spec_macros::spec;
 
 #[cfg(test)]
 mod tests
 {
+    #[cfg(anodized_panic)]
+    use alloc::string::String;
+    #[cfg(not(anodized_panic))]
+    use alloc::string::ToString as _;
+
+    use crate::spec;
     /// A result whose two variants distinguish ordinary code from specification
     /// checks.
     #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -23,8 +41,8 @@ mod tests
         Altered,
     }
 
-    #[cfg(not(feature = "anodized"))]
-    #[quenchant::spec(ensures: false)]
+    #[cfg(not(any(anodized_panic, anodized_print)))]
+    #[spec(ensures: false)]
     /// Preserve nested ordinary declarations and macro-language data without
     /// instrumentation.
     ///
@@ -65,7 +83,7 @@ mod tests
         )
     }
 
-    #[cfg(not(feature = "anodized"))]
+    #[cfg(not(any(anodized_panic, anodized_print)))]
     #[test]
     fn disabled_preserves_nested_code_and_macro_languages()
     {
@@ -80,14 +98,51 @@ mod tests
         );
     }
 
+    #[cfg(not(any(anodized_panic, anodized_print)))]
+    #[spec(maintains: unavailable_type_predicate(self))]
+    /// A type predicate is erased without resolving its names.
+    #[repr(transparent)]
+    struct Stripped(Receipt);
+
+    #[cfg(not(any(anodized_panic, anodized_print)))]
+    #[spec(maintains: unavailable_enum_predicate(self))]
+    /// Enum variants remain ordinary data in strip mode.
+    enum StrippedChoice
+    {
+        /// Carry an unchanged payload.
+        Value(Receipt),
+    }
+
+    #[cfg(not(any(anodized_panic, anodized_print)))]
+    #[spec(ensures: unavailable_const_predicate())]
+    /// Const evaluation must not resolve an erased predicate.
+    ///
+    /// # Specification
+    /// - ensures: returns the supplied receipt at compile time and runtime.
+    /// - panics: none.
+    const fn stripped_const(receipt: Receipt) -> Receipt
+    {
+        receipt
+    }
+
+    #[cfg(not(any(anodized_panic, anodized_print)))]
+    #[test]
+    fn disabled_preserves_types_and_const_evaluation()
+    {
+        const RECEIPT: Receipt = stripped_const(Receipt::Preserved);
+        let StrippedChoice::Value(receipt) = StrippedChoice::Value(RECEIPT);
+        assert_eq!(Stripped(receipt).0, Receipt::Preserved);
+        assert_eq!(stripped_const(Receipt::Altered), Receipt::Altered);
+    }
+
     #[cfg_attr(
-        feature = "anodized",
+        any(anodized_panic, anodized_print),
         expect(
             non_upper_case_globals,
-            reason = "The published backend emits lowercase associated qualifier constants."
+            reason = "The backend emits lowercase associated qualifier constants."
         )
     )]
-    #[quenchant::spec]
+    #[spec]
     /// A nested method obligation belongs to the enclosing trait annotation.
     trait Inspect
     {
@@ -103,7 +158,7 @@ mod tests
         fn inspect(&self) -> Receipt;
     }
 
-    #[quenchant::spec]
+    #[spec]
     impl Inspect for Receipt
     {
         /// Keep the ordinary result independent of instrumentation mode.
@@ -112,7 +167,7 @@ mod tests
         /// - ensures: the uninstrumented body preserves either semantic
         ///   variant.
         /// - panics: only through enforcing specification instrumentation.
-        fn inspect(&self) -> Receipt
+        fn inspect(&self) -> Self
         {
             *self
         }
@@ -122,18 +177,17 @@ mod tests
     fn nested_trait_obligations_follow_the_selected_mode()
     {
         assert_eq!(Receipt::Preserved.inspect(), Receipt::Preserved);
-        #[cfg(all(feature = "anodized", anodized_panic))]
+        #[cfg(anodized_panic)]
         {
             let failure = std::panic::catch_unwind(|| Receipt::Altered.inspect())
                 .expect_err("the inherited postcondition must reject the altered result");
-            assert_postcondition_failure(failure);
+            assert_postcondition_failure(failure.as_ref());
         }
-        #[cfg(not(all(feature = "anodized", anodized_panic)))]
+        #[cfg(not(anodized_panic))]
         assert_eq!(Receipt::Altered.inspect(), Receipt::Altered);
     }
 
-    #[cfg(feature = "anodized")]
-    #[quenchant::spec(ensures: |ref output| output.is_ok())]
+    #[spec(ensures: |ref output| output.is_ok())]
     /// Let the backend inspect an early error return without consuming its
     /// move-only payload.
     ///
@@ -149,13 +203,13 @@ mod tests
         Ok(value)
     }
 
-    #[cfg(all(feature = "anodized", anodized_panic))]
+    #[cfg(anodized_panic)]
     /// Reject unrelated panics as evidence of specification enforcement.
     ///
     /// # Specification
     /// - ensures: requires the backend's postcondition failure diagnostic.
     /// - panics: an unrelated payload fails this test helper.
-    fn assert_postcondition_failure(failure: Box<dyn core::any::Any + Send>)
+    fn assert_postcondition_failure(failure: &(dyn core::any::Any + Send))
     {
         let text = failure
             .downcast_ref::<String>()
@@ -168,21 +222,21 @@ mod tests
         );
     }
 
-    #[cfg(all(feature = "anodized", anodized_panic))]
+    #[cfg(anodized_panic)]
     #[test]
     fn enforcing_postcondition_observes_early_error_return()
     {
         let failure =
             std::panic::catch_unwind(|| checked_exit(Err(std::io::Error::other("sentinel"))))
                 .expect_err("the postcondition must reject the early error return");
-        assert_postcondition_failure(failure);
+        assert_postcondition_failure(failure.as_ref());
         assert_eq!(
             checked_exit(Ok(Receipt::Preserved)).expect("valid result"),
             Receipt::Preserved
         );
     }
 
-    #[cfg(all(feature = "anodized", not(anodized_panic)))]
+    #[cfg(not(anodized_panic))]
     #[test]
     fn backend_selection_does_not_imply_enforcement()
     {

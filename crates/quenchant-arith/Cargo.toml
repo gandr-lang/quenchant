@@ -15,11 +15,11 @@ categories = ["mathematics", "no-std"]
 publish.workspace = true
 
 [dependencies]
-quenchant.workspace = true
+quenchant-anodized.workspace = true
 
 [features]
 default = []
-anodized = ["quenchant/anodized"]
+
 fast = []
 
 [lints]

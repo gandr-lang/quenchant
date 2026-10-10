@@ -1,7 +1,7 @@
 // The presence rule reads the author's own name through a real expansion.
 #![allow(dead_code)]
 
-use quenchant::spec;
+use anodized::spec;
 
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, PartialOrd)]
@@ -29,7 +29,7 @@ fn specified_without_a_block(count: Count) -> Count {
 }
 
 /// A qualified attribute expands the same way, and hides no absence either.
-#[quenchant::spec(maintains: count > Count::ZERO)]
+#[anodized::spec(maintains: count > Count::ZERO)]
 fn qualified_without_a_block(count: Count) -> Count {
     count
 }

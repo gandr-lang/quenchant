@@ -3,6 +3,8 @@
 
 use core::future::Future as _;
 
+use anodized::spec;
+
 /// Nominal output keeps the witness inside the signature policy.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -23,7 +25,7 @@ struct Refused;
 /// - hypothesis: L3 — the same failure reaches postconditions through `?` and
 ///   explicit return, and the success control preserves its exact payload.
 /// - witness: `specification_tests::early_exits_reach_postconditions`
-#[quenchant::spec(ensures: |output| output.is_ok())]
+#[spec(ensures: |output| output.is_ok())]
 fn question(value: Result<Count, Refused>) -> Result<Count, Refused>
 {
     let value = value?;
@@ -39,7 +41,7 @@ fn question(value: Result<Count, Refused>) -> Result<Count, Refused>
 /// # Adequacy
 /// - hypothesis: L3 — explicit return is the control for the `?` exit.
 /// - witness: `specification_tests::early_exits_reach_postconditions`
-#[quenchant::spec(ensures: |output| output.is_ok())]
+#[spec(ensures: |output| output.is_ok())]
 fn explicit(value: Result<Count, Refused>) -> Result<Count, Refused>
 {
     let Ok(value) = value
@@ -58,7 +60,7 @@ fn explicit(value: Result<Count, Refused>) -> Result<Count, Refused>
 /// # Adequacy
 /// - hypothesis: L3 — the awaited generated closure cannot bypass the check.
 /// - witness: `specification_tests::async_early_exit_reaches_postcondition`
-#[quenchant::spec(ensures: |output| output.is_ok())]
+#[spec(ensures: |output| output.is_ok())]
 async fn asynchronous(value: Result<Count, Refused>) -> Result<Count, Refused>
 {
     let value = core::future::ready(value).await?;
@@ -80,7 +82,7 @@ async fn asynchronous(value: Result<Count, Refused>) -> Result<Count, Refused>
 /// - witness: `specification_tests::async_early_exit_reaches_postcondition`
 fn assert_failure(outcome: std::thread::Result<Result<Count, Refused>>)
 {
-    if cfg!(all(feature = "anodized", anodized_panic)) && !cfg!(anodized_discard_specs) {
+    if cfg!(anodized_panic) && !cfg!(anodized_discard_specs) {
         let panic = outcome.expect_err("the enforcing lane must reject this postcondition");
         let message = panic
             .downcast_ref::<String>()

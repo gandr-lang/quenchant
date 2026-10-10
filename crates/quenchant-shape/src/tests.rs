@@ -1,7 +1,11 @@
 //! Consumer-visible absence transitions, callback behavior, and wrapper
 //! specifications.
 
+#[cfg(anodized_panic)]
+use alloc::string::String;
 use core::cell::Cell;
+
+use anodized::spec;
 
 use super::Maybe;
 use super::absence_query;
@@ -31,7 +35,7 @@ reason_enum! {
 ///   concrete enum, which is what the compile-fail example on `reason_enum!`
 ///   denies to an outside implementer.
 /// - panics: none.
-#[quenchant::spec(ensures: |ref output| matches!(output, Maybe::Absent(_)))]
+#[spec(ensures: |ref output| matches!(output, Maybe::Absent(_)))]
 fn unavailable<Reason>(reason: Reason) -> Maybe<Ticket, Reason>
 where
     Reason: lookup::Reason,
@@ -167,7 +171,7 @@ impl core::fmt::Display for LookupFailure
     ///
     /// # Errors
     /// - `core::fmt::Error`: the formatter's sink refused the write.
-    #[quenchant::spec]
+    #[spec]
     fn fmt(
         &self,
         f: &mut core::fmt::Formatter<'_>,
@@ -255,7 +259,7 @@ fn nominal_wrapper_preserves_transparent_layout()
 }
 
 /// A false predicate fails only in the selected enforcing interpretation.
-#[cfg(all(feature = "anodized", anodized_panic))]
+#[cfg(anodized_panic)]
 #[test]
 fn specification_enforcement_rejects_false_postcondition()
 {
@@ -270,7 +274,7 @@ fn specification_enforcement_rejects_false_postcondition()
     /// - hypothesis: L3 an empty body cannot produce the asserted postcondition
     ///   failure; missing proc-macro enforcement returns normally instead.
     /// - witness: `shape::tests::specification_enforcement_rejects_false_postcondition`
-    #[quenchant::spec(ensures: false)]
+    #[spec(ensures: false)]
     fn rejected()
     {
     }

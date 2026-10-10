@@ -24,12 +24,33 @@ repository = "https://github.com/gandr-lang/quenchant"
 license = "Apache-2.0 WITH LLVM-exception"
 publish = ["crates-io"]
 
-# Published executable specification instrumentation.
+# Fork runtime for no_std checks and type refinements without the logic layer.
+# The fork's package version must equal an upstream-published version. Cargo
+# removes Git on publication; registry-enabled instrumentation is unsupported.
+# features:
+# - none: keep alloc-backed logic out of the target graph
 # consumers:
-# - quenchant-anodized
+# - quenchant-anodized (optional)
+# - quenchant-spec-macros (dev)
+[workspace.dependencies.anodized]
+git = "https://github.com/gandr-lang/anodized"
+rev = "74640cf336ceb54ea6bba07db8bfb66f3cedd9c5"
+version = "=0.7.0"
+default-features = false
+
+# Fork instrumentation paired with the runtime revision above.
+# The fork's package version must equal an upstream-published version. Cargo
+# removes Git on publication, so this feature is development/CI-only.
+# features:
+# - none: the macro package has no optional features
+# consumers:
+# - quenchant-anodized (optional)
 # - quenchant-spec-macros (dev)
 [workspace.dependencies.anodized-macros]
-version = "=0.6.0"
+git = "https://github.com/gandr-lang/anodized"
+rev = "74640cf336ceb54ea6bba07db8bfb66f3cedd9c5"
+version = "=0.7.0"
+default-features = false
 
 # Argument-parser derives the field absence rule recognizes as wire form
 # through `FromArgMatches`; the UI matrix links the real crate.
@@ -81,22 +102,12 @@ version = "6.0.4"
 version = "1.0.107"
 features = ["span-locations"]
 
-# Consumer-named specification facade with optional instrumentation. The
-# umbrella package reaches the same package under its real name below.
+# Specification facade, imported by its library name, anodized.
 # consumers:
+# - quenchant
 # - quenchant-arith
 # - quenchant-shape
 # - quenchant-dylints (dev)
-[workspace.dependencies.quenchant]
-package = "quenchant-anodized"
-path = "crates/quenchant-anodized"
-version = "=0.0.0"
-
-# The specification facade under its own name. The umbrella package cannot take
-# it through the `quenchant` alias above, because that is the umbrella's own
-# package name.
-# consumers:
-# - quenchant
 [workspace.dependencies.quenchant-anodized]
 path = "crates/quenchant-anodized"
 version = "=0.0.0"

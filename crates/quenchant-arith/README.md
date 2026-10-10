@@ -49,12 +49,12 @@ Signed division truncates toward zero. Signed `MIN / -1` and `MIN % -1` violate 
 
 ## Specification instrumentation
 
-The independent `anodized` feature enables the published specification backend and requires `std`. It does not change the arithmetic family selected by `fast`.
+The build driver compiles the facade's development backend with `quenchant-anodized/anodized` and selects checking with `anodized_panic` or `anodized_print`. Panic enforcement retains `no_std` and does not change the arithmetic family selected by `fast`.
 
 To exercise the enforcing configuration from the workspace root:
 
 ```sh
-RUSTFLAGS="--cfg anodized_panic" mise exec -- cargo test -p quenchant-arith --features anodized
+RUSTFLAGS="--cfg anodized_panic" mise exec -- cargo test -p quenchant-arith --features quenchant-anodized/anodized
 ```
 
 The annotated predicates compare the selected arithmetic relation on executed calls. They do not prove all inputs correct, and their removal in the default `no_std` configuration removes no ordinary arithmetic validation. The trait-level type restriction, authored clauses, and runtime observations have different evidence scopes.

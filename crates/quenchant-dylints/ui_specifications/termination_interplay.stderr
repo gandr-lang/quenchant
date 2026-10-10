@@ -1,8 +1,13 @@
 error: `# Termination` section must contain exactly the bullets `- reason:`, `- measure:`, `- boundedness:`, `- input recursion:`, in that order, each with a value
-  --> $DIR/termination_interplay.rs:41:4
+  --> $DIR/termination_interplay.rs:41:1
    |
-LL | fn truncated(fuel: Fuel) -> Count {
-   |    ^^^^^^^^^
+LL | / fn truncated(fuel: Fuel) -> Count {
+LL | |     match fuel {
+LL | |         Fuel::One => truncated(Fuel::Zero),
+LL | |         Fuel::Zero => Count::ZERO,
+LL | |     }
+LL | | }
+   | |_^
    |
    = note: `#[deny(recursion_forbidden)]` on by default
 

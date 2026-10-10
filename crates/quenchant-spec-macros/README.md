@@ -1,6 +1,6 @@
 # quenchant-spec-macros
 
-Host-side expansion for the [quenchant-anodized facade](../quenchant-anodized/README.md). The normal dependency graph is empty: the wrapper uses Rust's supplied token API rather than a second specification parser. The published backend is a development dependency for integration tests, not a dependency of disabled consumer builds.
+Host-side expansion for the [quenchant-anodized facade](../quenchant-anodized/README.md). The normal dependency graph is empty: the wrapper uses Rust's supplied token API rather than a second specification parser. The pinned backend is a development dependency for integration tests, not a dependency of disabled consumer builds.
 
 ## Install through the facade
 
@@ -8,22 +8,24 @@ From an application beside a checkout:
 
 ```toml
 [dependencies]
-quenchant = { package = "quenchant-anodized", version = "=0.0.0", path = "../quenchant/crates/quenchant-anodized" }
+quenchant-anodized = { version = "=0.0.0", path = "../quenchant/crates/quenchant-anodized" }
 
-[features]
-anodized = ["quenchant/anodized"]
 ```
 
-Applications use `#[quenchant::spec]`; direct installation of the implementation package does not provide the facade's helper namespace. Registry-only installation follows publication of the package family.
+Applications import `anodized::spec`; direct installation of the implementation package does not provide the facade's helper namespace. Registry-only installation follows publication of the package family.
 
 ## Example
 
 ```rust
-# extern crate self as quenchant;
+# #[cfg(any(anodized_panic, anodized_print))]
+# extern crate anodized as backend;
+# extern crate self as anodized;
+# #[cfg(any(anodized_panic, anodized_print))]
+# pub use backend::{__, result, types};
 # pub use quenchant_spec_macros::{spec, __erase};
-# #[cfg(feature = "anodized")]
+# #[cfg(any(anodized_panic, anodized_print))]
 # pub use anodized_macros::spec as __instrument;
-#[quenchant::spec(ensures: |ref output| output.is_ok())]
+#[anodized::spec(ensures: |ref output| output.is_ok())]
 fn accept() -> Result<(), core::convert::Infallible> {
     Ok(())
 }
@@ -34,11 +36,11 @@ assert_eq!(accept(), Ok(()));
 
 The hidden setup supplies the facade namespace for this package's executable documentation. In an application, the facade dependency supplies it.
 
-## Selection belongs to the consumer
+## Selection belongs to the build driver
 
-`spec` emits two mutually exclusive `cfg_attr` routes. The consuming crate's `anodized` feature chooses published instrumentation or `__erase`. The wrapper's host-side compilation cannot decide that consumer condition correctly by inspecting only its own dependency features.
+`spec` emits two mutually exclusive `cfg_attr` routes rooted at `anodized`. `any(anodized_panic, anodized_print)` selects `__instrument`; its negation selects `__erase`. Consumers declare no feature. The facade's feature only makes the backend available to the build driver.
 
-The enabled route forwards the original item and predicate tokens. It does not reinterpret the predicate language. Selection alone does not establish enforcement; the facade guide describes the separate host cfg and execution witness.
+The enabled route forwards the original item and predicate tokens without reinterpreting the predicate language. The facade guide describes host-artifact selection, the named error for a missing backend, and the execution witnesses.
 
 ## Removing markers without rewriting the program
 
@@ -50,7 +52,7 @@ Ordinary tokens keep their order and spans. Rebuilt groups use the original encl
 
 ## Verification scope
 
-Integration cases run the real host macro API through consumer compilation. They distinguish disabled nested-code preservation, untouched macro matcher and invocation payloads, inherited trait predicates, move-only early returns, and backend selection without enforcement. The library packages also compile for a target without a standard library.
+Integration cases run the real host macro API through consumer compilation. They distinguish disabled type and const preservation, nested-code preservation, untouched macro payloads, inherited trait predicates, move-only early returns, and backend selection without enforcement. The library packages also compile for a target without a standard library.
 
 These witnesses defend the adapter boundary. They do not establish that an arbitrary authored specification is complete, that the backend proves it, or that another verification target has equivalent semantics.
 

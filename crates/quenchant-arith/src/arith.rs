@@ -12,6 +12,8 @@
 //! The nominal representation adds no allocation. Predicate instrumentation and
 //! its failure reporting are a separate cost and evidence boundary.
 
+use anodized::spec;
+
 /// A private transparent representation boundary; arithmetic uses the sealed
 /// integer trait.
 #[derive(Clone, Copy, Debug, Default, Eq, Hash, Ord, PartialEq, PartialOrd)]
@@ -139,20 +141,20 @@ mod sealed
 /// - witness: `arith::tests::u128_boundaries`
 /// - witness: `arith::tests::i8_negative_boundaries`
 #[cfg_attr(
-    feature = "anodized",
+    any(anodized_panic, anodized_print),
     expect(
         non_upper_case_globals,
-        reason = "The published backend emits lowercase associated qualifier constants."
+        reason = "The backend emits lowercase associated qualifier constants."
     )
 )]
 #[cfg_attr(
-    feature = "anodized",
+    any(anodized_panic, anodized_print),
     expect(
         clippy::missing_inline_in_public_items,
-        reason = "The published backend generates public default trait helpers without inline attributes."
+        reason = "The backend generates public default trait helpers without inline attributes."
     )
 )]
-#[quenchant::spec]
+#[spec]
 pub trait Integer: sealed::Sealed + Copy + Default + Eq + core::fmt::Debug
 {
     /// Exact arithmetic with profile-independent panic boundaries.
@@ -319,7 +321,7 @@ macro_rules! integers {
             fn from(value: Int<$representation>) -> Self { value.0 }
         }
 
-        #[quenchant::spec]
+        #[spec]
         impl Integer for Int<$representation> {
             /// Representation-specific strictness remains independent of build profile.
             ///
@@ -525,7 +527,7 @@ macro_rules! binary_family {
         /// - witness: `arith::tests::u128_boundaries`
         /// - witness: `arith::tests::i8_negative_boundaries`
         #[inline]
-        #[quenchant::spec(ensures: |output| left.checked(right, Operation::$operation) == Ok(output))]
+        #[spec(ensures: |output| left.checked(right, Operation::$operation) == Ok(output))]
         pub fn $strict<T>(
             left: T,
             right: T,
@@ -547,7 +549,7 @@ macro_rules! binary_family {
         /// - witness: `arith::tests::u128_boundaries`
         /// - witness: `arith::tests::i8_negative_boundaries`
         #[inline]
-        #[quenchant::spec(ensures: |output| output == left.wrapping(right, Operation::$operation))]
+        #[spec(ensures: |output| output == left.wrapping(right, Operation::$operation))]
         pub fn $wrapping<T>(
             left: T,
             right: T,
@@ -569,7 +571,7 @@ macro_rules! binary_family {
         /// - witness: `arith::tests::u128_boundaries`
         /// - witness: `arith::tests::i8_negative_boundaries`
         #[inline]
-        #[quenchant::spec(ensures: |output| output == left.saturating(right, Operation::$operation))]
+        #[spec(ensures: |output| output == left.saturating(right, Operation::$operation))]
         pub fn $saturating<T>(
             left: T,
             right: T,
@@ -592,7 +594,7 @@ macro_rules! binary_family {
         /// - witness: `arith::tests::u128_boundaries`
         /// - witness: `arith::tests::i8_negative_boundaries`
         #[inline]
-        #[quenchant::spec(ensures: |output| left.checked(right, Operation::$operation) == Ok(output))]
+        #[spec(ensures: |output| left.checked(right, Operation::$operation) == Ok(output))]
         pub fn $default<T>(
             left: T,
             right: T,
@@ -621,10 +623,10 @@ macro_rules! binary_family {
         /// - witness: `arith::tests::u128_boundaries`
         /// - witness: `arith::tests::i8_negative_boundaries`
         #[inline]
-        #[quenchant::spec(
-            requires: left.checked(right, Operation::$operation).is_ok(),
-            ensures: |output| left.checked(right, Operation::$operation) == Ok(output),
-        )]
+        #[spec(
+                    requires: left.checked(right, Operation::$operation).is_ok(),
+                    ensures: |output| left.checked(right, Operation::$operation) == Ok(output),
+                )]
         pub unsafe fn $default<T>(
             left: T,
             right: T,
@@ -647,8 +649,8 @@ macro_rules! binary_family {
             /// # Specification
             /// - provides: the strict family's result for the named operation,
             ///   independent of the `fast` feature.
-            /// - panics: overflow, or a zero divisor for division or remainder,
-            ///   in every profile.
+            /// - panics: overflow, or a zero divisor for division or remainder, in
+            ///   every profile.
             #[inline]
             fn $method(
                 self,
@@ -683,7 +685,7 @@ binary_family!(rem, strict_rem, wrapping_rem, saturating_rem, Rem, rem, Rem);
 /// - witness: `arith::tests::u128_boundaries`
 /// - witness: `arith::tests::i8_negative_boundaries`
 #[inline]
-#[quenchant::spec(ensures: |output| output == left.checked(right, Operation::Add))]
+#[spec(ensures: |output| output == left.checked(right, Operation::Add))]
 pub fn checked_add<T>(
     left: T,
     right: T,
@@ -711,7 +713,7 @@ where
 /// - witness: `arith::tests::u128_boundaries`
 /// - witness: `arith::tests::i8_negative_boundaries`
 #[inline]
-#[quenchant::spec(ensures: |output| output == left.checked(right, Operation::Sub))]
+#[spec(ensures: |output| output == left.checked(right, Operation::Sub))]
 pub fn checked_sub<T>(
     left: T,
     right: T,
@@ -739,7 +741,7 @@ where
 /// - witness: `arith::tests::u128_boundaries`
 /// - witness: `arith::tests::i8_negative_boundaries`
 #[inline]
-#[quenchant::spec(ensures: |output| output == left.checked(right, Operation::Mul))]
+#[spec(ensures: |output| output == left.checked(right, Operation::Mul))]
 pub fn checked_mul<T>(
     left: T,
     right: T,
@@ -768,7 +770,7 @@ where
 /// - witness: `arith::tests::u128_boundaries`
 /// - witness: `arith::tests::i8_negative_boundaries`
 #[inline]
-#[quenchant::spec(ensures: |output| output == left.checked(right, Operation::Div))]
+#[spec(ensures: |output| output == left.checked(right, Operation::Div))]
 pub fn checked_div<T>(
     left: T,
     right: T,
@@ -797,7 +799,7 @@ where
 /// - witness: `arith::tests::u128_boundaries`
 /// - witness: `arith::tests::i8_negative_boundaries`
 #[inline]
-#[quenchant::spec(ensures: |output| output == left.checked(right, Operation::Rem))]
+#[spec(ensures: |output| output == left.checked(right, Operation::Rem))]
 pub fn checked_rem<T>(
     left: T,
     right: T,

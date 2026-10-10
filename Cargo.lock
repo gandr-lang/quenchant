@@ -12,10 +12,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "anodized"
+version = "0.7.0"
+source = "git+https://github.com/gandr-lang/anodized?rev=74640cf336ceb54ea6bba07db8bfb66f3cedd9c5#74640cf336ceb54ea6bba07db8bfb66f3cedd9c5"
+dependencies = [
+ "anodized-macros",
+]
+
+[[package]]
 name = "anodized-core"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "601d2c14e9a8a48d48791b0815cf428e7d1691383da91d710a102537ffcd79a1"
+version = "0.7.0"
+source = "git+https://github.com/gandr-lang/anodized?rev=74640cf336ceb54ea6bba07db8bfb66f3cedd9c5#74640cf336ceb54ea6bba07db8bfb66f3cedd9c5"
 dependencies = [
  "bitflags 2.13.1",
  "proc-macro2",
@@ -25,9 +32,8 @@ dependencies = [
 
 [[package]]
 name = "anodized-macros"
-version = "0.6.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e92cdd213110ae008fcace04f68539e1032add0b92e69526c20669bc32dc9636"
+version = "0.7.0"
+source = "git+https://github.com/gandr-lang/anodized?rev=74640cf336ceb54ea6bba07db8bfb66f3cedd9c5#74640cf336ceb54ea6bba07db8bfb66f3cedd9c5"
 dependencies = [
  "anodized-core",
  "proc-macro2",
@@ -841,6 +847,7 @@ dependencies = [
 name = "quenchant-anodized"
 version = "0.0.0"
 dependencies = [
+ "anodized",
  "anodized-macros",
  "quenchant-spec-macros",
 ]
@@ -901,6 +908,7 @@ dependencies = [
 name = "quenchant-spec-macros"
 version = "0.0.0"
 dependencies = [
+ "anodized",
  "anodized-macros",
 ]
 

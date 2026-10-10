@@ -1,8 +1,8 @@
 //! Report the compiler cfg evidence for one named consumer invocation.
 //!
-//! The published backend chooses its mode when its host artifact is compiled.
-//! Discard wins over other cfgs; panic rejects violations; print alone reports
-//! them; neither enforcing flag leaves only predicate compilation.
+//! The backend chooses its mode when its host artifact is compiled. Discard,
+//! embedded specifications, and runtime checking are mutually exclusive.
+//! Deferred failures require panic mode; printing alone does not enforce.
 //!
 //! Cargo resolves the consumer's configuration and environment when queried
 //! with `rustc -Z unstable-options --print cfg`. The installed gate's own cfgs
@@ -10,9 +10,9 @@
 //! operational failure, not evidence of a benign default mode.
 //!
 //! Backend discard is rejected by this policy, and `--require-enforcing` also
-//! requires panic mode. The facade's consumer-side feature is a different
-//! selection boundary: this query neither counts emitted checks nor certifies
-//! that a cached host artifact used target-only flags. Enforcing lanes also run
+//! requires panic mode. The facade feature only compiles its backend; this
+//! query neither counts emitted checks nor certifies that a cached host
+//! artifact used target-only flags. Enforcing lanes also run
 //! a deliberately violated specification under their actual dependency graph.
 //!
 //! Omitting executable instrumentation changes neither an authored obligation
@@ -43,13 +43,17 @@ impl<'text> From<&'text str> for CfgText<'text>
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EnforcementState
 {
-    /// Discard cfg takes precedence over every requested checking mode.
+    /// Discard is selected without any other backend mode.
     Discarded,
-    /// Panic cfg is selected without discard; printing may also be selected.
+    /// Embedded specifications are selected without runtime checking.
+    Embedded,
+    /// Conflicting cfgs would prevent the backend from compiling.
+    Incompatible,
+    /// Panic cfg is selected in a valid runtime mode.
     Enforcing,
-    /// Print cfg is selected without discard or panic.
+    /// Print cfg is selected without panic in a valid runtime mode.
     PrintOnly,
-    /// No discard, panic, or print cfg is selected.
+    /// No backend mode cfg is selected.
     NonEnforcing,
 }
 
@@ -70,6 +74,8 @@ impl core::fmt::Display for EnforcementState
     {
         f.write_str(match *self {
             | Self::Discarded => "discarded",
+            | Self::Embedded => "embedded",
+            | Self::Incompatible => "incompatible",
             | Self::Enforcing => "enforcing",
             | Self::PrintOnly => "print-only",
             | Self::NonEnforcing => "non-enforcing",
@@ -81,7 +87,7 @@ impl core::fmt::Display for EnforcementState
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Requirement
 {
-    /// Observation permits every mode except explicit discard.
+    /// Observation permits valid modes except explicit discard.
     Observe,
     /// Acceptance requires the panic-enabled mode.
     Enforcing,
@@ -102,8 +108,8 @@ impl EnforcementState
     /// Observation and enforcing policy have different acceptance sets.
     ///
     /// # Specification
-    /// - ensures: discarded specifications always fail; other states pass
-    ///   observation; only `Enforcing` passes the enforcing requirement.
+    /// - ensures: discarded or incompatible modes always fail; other states
+    ///   pass observation; only `Enforcing` passes the enforcing requirement.
     /// - panics: none.
     ///
     /// # Adequacy
@@ -117,10 +123,14 @@ impl EnforcementState
     ) -> Verdict
     {
         match (self, requirement) {
-            | (Self::Discarded, _)
-            | (Self::PrintOnly | Self::NonEnforcing, Requirement::Enforcing) => Verdict::Fail,
+            | (Self::Discarded | Self::Incompatible, _)
+            | (Self::Embedded | Self::PrintOnly | Self::NonEnforcing, Requirement::Enforcing) => {
+                Verdict::Fail
+            },
             | (Self::Enforcing, _)
-            | (Self::PrintOnly | Self::NonEnforcing, Requirement::Observe) => Verdict::Pass,
+            | (Self::Embedded | Self::PrintOnly | Self::NonEnforcing, Requirement::Observe) => {
+                Verdict::Pass
+            },
         }
     }
 }
@@ -230,14 +240,14 @@ pub fn invocation_state(manifest: &Path) -> Result<EnforcementState, GateError>
     enforcement_state(CfgText::from(output.as_str()))
 }
 
-/// Exact cfg spelling and precedence determine the published backend's
-/// requested mode.
+/// Exact cfg spelling and compatibility determine the backend's requested mode.
 ///
 /// # Specification
 /// - requires: `cfgs` is the compiler cfg listing, not Rust flags or source
 ///   text.
-/// - ensures: discard wins over panic, panic over print, otherwise
-///   non-enforcing; valued or similarly named cfgs do not enable a bare flag.
+/// - ensures: conflicting modes and try-without-panic are incompatible; valid
+///   static modes do not enforce; only panic enforces runtime checks. Valued or
+///   similarly named cfgs do not enable a bare flag.
 /// - fails: missing `target_arch`, `target_os`, or `target_pointer_width`
 ///   evidence returns [`GateError::MissingCompilerCfgs`].
 /// - panics: none.
@@ -246,23 +256,29 @@ pub fn invocation_state(manifest: &Path) -> Result<EnforcementState, GateError>
 /// Returns [`GateError::MissingCompilerCfgs`] for an unmeasured listing.
 ///
 /// # Adequacy
-/// - hypothesis: L3 — all eight mode combinations distinguish precedence;
-///   exact-name near misses and missing evidence distinguish false passes.
-/// - witness: `anodized::tests::every_mode_combination_matches_macro_precedence`
+/// - hypothesis: L3 — all 64 mode combinations distinguish compatible
+///   configurations from conflicts; near misses distinguish false passes.
+/// - witness: `anodized::tests::every_mode_combination_matches_backend_constraints`
 /// - witness: `anodized::tests::similar_or_valued_cfgs_do_not_enable_modes`
 /// - witness: `anodized::tests::missing_compiler_evidence_is_an_error`
 #[inline]
 pub fn enforcement_state(cfgs: CfgText<'_>) -> Result<EnforcementState, GateError>
 {
     let mut discard = false;
+    let mut embed = false;
+    let mut charon = false;
     let mut panic = false;
     let mut print = false;
+    let mut deferred = false;
     let mut arch = false;
     let mut os = false;
     let mut width = false;
     for line in cfgs.0.lines().map(str::trim) {
         match line {
             | "anodized_discard_specs" => discard = true,
+            | "anodized_embed_specs" => embed = true,
+            | "anodized_charon" => charon = true,
+            | "anodized_try" => deferred = true,
             | "anodized_panic" => panic = true,
             | "anodized_print" => print = true,
             | _ => {
@@ -275,18 +291,31 @@ pub fn enforcement_state(cfgs: CfgText<'_>) -> Result<EnforcementState, GateErro
     if !(arch && os && width) {
         return Err(GateError::MissingCompilerCfgs);
     }
-    Ok(if discard {
-        EnforcementState::Discarded
-    }
-    else if panic {
-        EnforcementState::Enforcing
-    }
-    else if print {
-        EnforcementState::PrintOnly
-    }
-    else {
-        EnforcementState::NonEnforcing
-    })
+    let static_mode = embed || charon;
+    let runtime_mode = panic || print || deferred;
+    Ok(
+        if (discard && (static_mode || runtime_mode))
+            || (static_mode && runtime_mode)
+            || (deferred && !panic)
+        {
+            EnforcementState::Incompatible
+        }
+        else if discard {
+            EnforcementState::Discarded
+        }
+        else if static_mode {
+            EnforcementState::Embedded
+        }
+        else if panic {
+            EnforcementState::Enforcing
+        }
+        else if print {
+            EnforcementState::PrintOnly
+        }
+        else {
+            EnforcementState::NonEnforcing
+        },
+    )
 }
 
 #[cfg(test)]
@@ -306,35 +335,29 @@ target_pointer_width="64"
 "#;
 
     #[test]
-    fn every_mode_combination_matches_macro_precedence()
+    fn every_mode_combination_matches_backend_constraints()
     {
-        for (flags, expected) in [
-            ("", EnforcementState::NonEnforcing),
-            ("anodized_print", EnforcementState::PrintOnly),
-            ("anodized_panic", EnforcementState::Enforcing),
-            (
-                r#"anodized_panic
-anodized_print"#,
-                EnforcementState::Enforcing,
-            ),
-            ("anodized_discard_specs", EnforcementState::Discarded),
-            (
-                r#"anodized_discard_specs
-anodized_print"#,
-                EnforcementState::Discarded,
-            ),
-            (
-                r#"anodized_discard_specs
-anodized_panic"#,
-                EnforcementState::Discarded,
-            ),
-            (
-                r#"anodized_discard_specs
-anodized_panic
-anodized_print"#,
-                EnforcementState::Discarded,
-            ),
-        ] {
+        for mask in 0_u8 .. 64 {
+            let expected = match mask {
+                | 0 => EnforcementState::NonEnforcing,
+                | 1 => EnforcementState::Discarded,
+                | 2 | 4 | 6 => EnforcementState::Embedded,
+                | 8 | 24 | 40 | 56 => EnforcementState::Enforcing,
+                | 16 => EnforcementState::PrintOnly,
+                | _ => EnforcementState::Incompatible,
+            };
+            let flags = [
+                (1, "anodized_discard_specs"),
+                (2, "anodized_embed_specs"),
+                (4, "anodized_charon"),
+                (8, "anodized_panic"),
+                (16, "anodized_print"),
+                (32, "anodized_try"),
+            ]
+            .into_iter()
+            .filter_map(|(bit, flag)| (mask & bit != 0).then_some(flag))
+            .collect::<Vec<_>>()
+            .join("\n");
             let cfgs = format!("{TARGET}{flags}");
             assert_eq!(
                 enforcement_state(CfgText::from(cfgs.as_str())).unwrap(),
@@ -378,6 +401,8 @@ feature="anodized_print"
     {
         for (state, observed, enforced) in [
             (EnforcementState::Discarded, Verdict::Fail, Verdict::Fail),
+            (EnforcementState::Embedded, Verdict::Pass, Verdict::Fail),
+            (EnforcementState::Incompatible, Verdict::Fail, Verdict::Fail),
             (EnforcementState::Enforcing, Verdict::Pass, Verdict::Pass),
             (EnforcementState::PrintOnly, Verdict::Pass, Verdict::Fail),
             (EnforcementState::NonEnforcing, Verdict::Pass, Verdict::Fail),

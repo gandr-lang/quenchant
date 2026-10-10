@@ -38,10 +38,15 @@ LL | | }
    = note: `#[deny(recursion_forbidden)]` on by default
 
 error: function participates in a recursive call cycle; recursion is forbidden — write the iterative form (worklist, explicit frame stack), or take the owner-approved exception (`#[expect(recursion_forbidden, reason = "...")]` plus a complete `# Termination` section)
-  --> $DIR/gate_survival.rs:20:4
+  --> $DIR/gate_survival.rs:20:1
    |
-LL | fn specified_recursion(fuel: Fuel) -> Count {
-   |    ^^^^^^^^^^^^^^^^^^^
+LL | / fn specified_recursion(fuel: Fuel) -> Count {
+LL | |     match fuel {
+LL | |         Fuel::One => specified_recursion(Fuel::Zero),
+LL | |         Fuel::Zero => Count::ZERO,
+LL | |     }
+LL | | }
+   | |_^
 
 error: aborting due to 6 previous errors
 

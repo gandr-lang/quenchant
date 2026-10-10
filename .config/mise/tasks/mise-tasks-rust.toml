@@ -9,7 +9,7 @@ description = "Build every workspace target in strict and fast modes"
 run = [
   "cargo build --workspace --all-targets --locked",
   "cargo build --workspace --all-targets --locked --features quenchant-arith/fast",
-  "cargo build --workspace --all-targets --locked --features quenchant/anodized,quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized",
+  "cargo build --workspace --all-targets --locked --features quenchant/anodized",
   "cargo build --locked -p quenchant --features gates",
 ]
 
@@ -19,12 +19,17 @@ run = [
 # reached by the workspace pass, so the wall covers the tree exactly once.
 ["check:clippy"]
 description = "Enforce the complete lint wall in both arithmetic modes"
-depends = ["dylint:clippy"]
+depends = ["dylint:clippy", "clippy:enforcing"]
 run = [
   "cargo clippy --workspace --all-targets --locked --exclude quenchant-dylints -- --deny warnings",
   "cargo clippy --workspace --all-targets --locked --exclude quenchant-dylints --features quenchant-arith/fast -- --deny warnings",
-  "cargo clippy --workspace --all-targets --locked --exclude quenchant-dylints --features quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized -- --deny warnings",
+  "cargo clippy --workspace --all-targets --locked --exclude quenchant-dylints --features quenchant-anodized/anodized -- --deny warnings",
 ]
+
+["clippy:enforcing"]
+description = "Lint specifications under the enforcing build cfg"
+env.RUSTFLAGS = "--cfg anodized_panic"
+run = "cargo clippy --workspace --all-targets --locked --exclude quenchant-dylints --features quenchant-anodized/anodized -- --deny warnings"
 
 ["dylint:clippy"]
 description = "Lint the compiler plugin from its linker-configured directory"
@@ -55,9 +60,9 @@ run = [
 description = "Exercise library specifications under enforcing cfgs"
 env.RUSTFLAGS = "--cfg anodized_panic"
 run = [
-  "rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} {{ exec(command='mise which cargo-nextest') | quote }} nextest run --workspace --exclude quenchant-dylints --locked --features quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized",
-  "rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} {{ exec(command='mise which cargo-nextest') | quote }} nextest run --workspace --exclude quenchant-dylints --locked --release --features quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized",
-  "rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} {{ exec(command='mise which cargo-nextest') | quote }} nextest run --workspace --exclude quenchant-dylints --locked --features quenchant-arith/fast,quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized",
+  "rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} {{ exec(command='mise which cargo-nextest') | quote }} nextest run --workspace --exclude quenchant-dylints --locked --features quenchant-anodized/anodized",
+  "rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} {{ exec(command='mise which cargo-nextest') | quote }} nextest run --workspace --exclude quenchant-dylints --locked --release --features quenchant-anodized/anodized",
+  "rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} {{ exec(command='mise which cargo-nextest') | quote }} nextest run --workspace --exclude quenchant-dylints --locked --features quenchant-arith/fast,quenchant-anodized/anodized",
 ]
 
 ["dylint:tests"]
