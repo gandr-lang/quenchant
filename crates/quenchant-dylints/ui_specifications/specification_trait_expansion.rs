@@ -3,7 +3,7 @@
 // author's name.
 #![allow(dead_code)]
 
-use quenchant::spec;
+use anodized::spec;
 
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, PartialOrd)]

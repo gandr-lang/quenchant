@@ -138,7 +138,7 @@ fn anodized_gate(
         | Verdict::Pass => ExitCode::SUCCESS,
         | Verdict::Fail => {
             eprintln!(
-                "quenchant-gates: anodized policy FAILED: discard is forbidden; enforcing lanes require anodized_panic"
+                "quenchant-gates: anodized policy FAILED: discard and incompatible cfgs are forbidden; enforcing lanes require anodized_panic"
             );
             ExitCode::FAILURE
         },

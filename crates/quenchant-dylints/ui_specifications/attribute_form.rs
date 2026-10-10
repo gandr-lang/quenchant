@@ -2,7 +2,7 @@
 #![allow(dead_code, specification_present)]
 #![deny(unused_imports)]
 
-use quenchant::spec;
+use anodized::spec;
 
 #[repr(transparent)]
 #[derive(Clone, Copy, PartialEq, PartialOrd)]
@@ -19,7 +19,7 @@ fn combined(count: Count) -> Count {
 }
 
 /// Qualified attributes expand identically.
-#[quenchant::spec(maintains: count > Count::ZERO)]
+#[anodized::spec(maintains: count > Count::ZERO)]
 fn qualified(count: Count) -> Count {
     count
 }

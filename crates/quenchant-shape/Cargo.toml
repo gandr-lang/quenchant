@@ -23,7 +23,7 @@ path = "examples/verus_derive.rs"
 test = true
 
 [dependencies]
-quenchant.workspace = true
+quenchant-anodized.workspace = true
 
 # The Verus adapter reads this crate's own source; nothing in the library needs
 # a parser, so the three stay development-only.
@@ -31,10 +31,6 @@ quenchant.workspace = true
 proc-macro2.workspace = true
 quote.workspace = true
 syn.workspace = true
-
-[features]
-default = []
-anodized = ["quenchant/anodized"]
 
 [lints]
 workspace = true

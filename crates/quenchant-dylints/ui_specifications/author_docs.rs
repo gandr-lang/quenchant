@@ -13,25 +13,25 @@ impl Count {
 }
 
 // Denied by rustc: the macro injects no documentation to hide this omission.
-#[quenchant::spec(requires: count > Count::ZERO)]
+#[anodized::spec(requires: count > Count::ZERO)]
 pub fn undocumented(count: Count) -> Count {
     count
 }
 
 /// Author comments survive token-stream round trips.
-#[quenchant::spec(ensures: |output| output > Count::ZERO)]
+#[anodized::spec(ensures: |output| output > Count::ZERO)]
 pub fn documented(count: Count) -> Count {
     count
 }
 
 /** Block comments remain author documentation. */
-#[quenchant::spec]
+#[anodized::spec]
 pub fn block_comment(count: Count) -> Count {
     count
 }
 
 #[doc = "Explicit author documentation is visible to the native lint."]
-#[quenchant::spec]
+#[anodized::spec]
 pub fn raw_attribute(count: Count) -> Count {
     count
 }

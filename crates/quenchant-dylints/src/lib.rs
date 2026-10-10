@@ -18,7 +18,7 @@
 //! token coincidence. This distinction never makes a generated assertion
 //! failure safe to ignore.
 //!
-//! Specification fixtures use the public facade and published backend. The
+//! Specification fixtures use the public facade and its pinned backend. The
 //! `cdylib` itself links compiler internals, so its compiler, Clippy source,
 //! and Dylint driver are one compatibility boundary.
 
@@ -1005,7 +1005,7 @@ non_owning_generics = [
     ///   the facade's `anodized` feature enabled, returning their exact
     ///   artifact paths and dependency directories from an isolated Cargo
     ///   target.
-    /// - ensures: the fixture edition and `anodized` cfg match that
+    /// - ensures: the fixture edition and instrumentation cfg match that
     ///   interpretation.
     /// - ensures: the whole dependency graph receives the compiler-policy cfg,
     ///   preserving inherited flags with Cargo's encoded-flags precedence.
@@ -1041,10 +1041,10 @@ non_owning_generics = [
             |flags| flags.into_string().expect("Cargo flags are Unicode"),
         );
         let policy_flags = if inherited.is_empty() {
-            "--cfg=quenchant_compiler_policy".to_owned()
+            "--cfg=quenchant_compiler_policy\u{1f}--cfg=anodized_panic".to_owned()
         }
         else {
-            format!("{inherited}\u{1f}--cfg=quenchant_compiler_policy")
+            format!("{inherited}\u{1f}--cfg=quenchant_compiler_policy\u{1f}--cfg=anodized_panic")
         };
         let output = std::process::Command::new(env!("CARGO"))
             .current_dir(env!("CARGO_MANIFEST_DIR"))
@@ -1097,7 +1097,7 @@ non_owning_generics = [
                 .get("target")
                 .and_then(|target| target.get("name"))
                 .and_then(serde_json::Value::as_str);
-            let instrumented = target == Some("quenchant_anodized")
+            let instrumented = target == Some("anodized")
                 && message
                     .get("features")
                     .and_then(serde_json::Value::as_array)
@@ -1129,7 +1129,7 @@ non_owning_generics = [
                     | (Some("clap"), Some("rlib")) => {
                         clap = Some(path.to_path_buf());
                     },
-                    | (Some("quenchant_anodized"), Some("rlib")) if instrumented => {
+                    | (Some("anodized"), Some("rlib")) if instrumented => {
                         anodized = Some(path.to_path_buf());
                     },
                     | (Some("quenchant_arith"), Some("rlib")) => {
@@ -1161,7 +1161,7 @@ non_owning_generics = [
         }
         flags.extend([
             "--extern".to_owned(),
-            format!("quenchant={}", anodized.display()),
+            format!("anodized={}", anodized.display()),
             "--extern".to_owned(),
             format!("quenchant_fixture_macros={}", fixture_macros.display()),
             "--extern".to_owned(),
@@ -1175,7 +1175,7 @@ non_owning_generics = [
             "--extern".to_owned(),
             format!("clap={}", clap.display()),
             "--cfg".to_owned(),
-            r#"feature="anodized""#.to_owned(),
+            "anodized_panic".to_owned(),
         ]);
         flags
     }

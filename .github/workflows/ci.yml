@@ -204,7 +204,7 @@ jobs:
           RUSTFLAGS: --cfg anodized_panic
         run: >-
           cargo nextest run --profile ci --workspace --exclude quenchant-dylints
-          --features quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized
+          --features quenchant-anodized/anodized
       - name: test documentation examples
         run: cargo test --doc -p quenchant-arith -p quenchant-shape -p quenchant-anodized -p quenchant-spec-macros -p quenchant-fixture-macros
       - name: check private-item rustdoc
@@ -247,7 +247,7 @@ jobs:
           # Environment flags replace Cargo configuration; retain the linker.
           RUSTFLAGS: --cfg anodized_panic -C linker=dylint-link
           CARGO_TARGET_DIR: ${{ github.workspace }}/target/dylint-tests-enforcing
-        run: cargo nextest run --profile ci --features anodized -E 'test(specification_tests::)'
+        run: cargo nextest run --profile ci --features quenchant-anodized/anodized -E 'test(specification_tests::)'
       - name: lint Dylint package
         working-directory: *dylint-package
         run: cargo clippy --all-targets -- --deny warnings
@@ -291,10 +291,11 @@ jobs:
         run: cargo clippy --workspace --all-targets --exclude quenchant-dylints -- --deny warnings
       - name: lint every workspace target in fast arithmetic mode
         run: cargo clippy --workspace --all-targets --exclude quenchant-dylints --features quenchant-arith/fast -- --deny warnings
-      - name: lint published instrumentation
+      - name: lint enforcing specifications
+        env: *enforcing-specifications
         run: >-
           cargo clippy --workspace --all-targets --exclude quenchant-dylints
-          --features quenchant-arith/anodized,quenchant-shape/anodized,quenchant-spec-macros/anodized
+          --features quenchant-anodized/anodized
           -- --deny warnings
 
   format-gate:

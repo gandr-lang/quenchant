@@ -3,7 +3,7 @@ name = "quenchant-anodized"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-description = "Specification attributes with optional published instrumentation"
+description = "Specification attributes with optional development instrumentation"
 readme = "README.md"
 homepage.workspace = true
 repository.workspace = true
@@ -12,13 +12,18 @@ keywords = ["no-std", "specification", "verification"]
 categories = ["development-tools", "no-std"]
 publish.workspace = true
 
+[lib]
+name = "anodized"
+
 [dependencies]
+anodized = { workspace = true, optional = true }
 anodized-macros = { workspace = true, optional = true }
 quenchant-spec-macros.workspace = true
 
 [features]
 default = []
-anodized = ["dep:anodized-macros"]
+# Compiles the development backend in; the build cfg selects instrumentation.
+anodized = ["dep:anodized", "dep:anodized-macros"]
 
 [lints]
 workspace = true

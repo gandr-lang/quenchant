@@ -25,11 +25,11 @@ The consumer manifest is mandatory for `anodized` and `witnesses`. An installed 
 
 ## Invocation-state evidence
 
-The `anodized` command asks Cargo for the compiler cfgs resolved at the consumer manifest. The states distinguish no enforcing mode, print-only mode, panic enforcement, and discarded specifications. Discard takes precedence over panic; exact cfg names matter.
+The `anodized` command asks Cargo for the compiler cfgs resolved at the consumer manifest. It distinguishes compile-only, print-only, panic-enforcing, embedded, discarded, and incompatible modes. Discard conflicts with every other mode; embedding conflicts with runtime checks; deferred failures require panic mode. Exact cfg names matter.
 
 Add `--require-enforcing` to require panic enforcement. The repository's corresponding task also executes a deliberately violated specification. That execution is necessary because target cfg output alone does not certify a host procedural-macro artifact, its features, or its cache state.
 
-The facade's optional consumer feature and the backend's cfgs are separate choices. This command reports the latter; it is not a census of which functions carry emitted checks. Omitting instrumentation through the facade does not erase authored obligations. Direct backend discard remains unacceptable for a lane claiming backend enforcement.
+The facade's feature compiles the backend; the build cfg selects instrumentation. This command reports the cfg mode, not a census of functions carrying emitted checks. Omitting instrumentation does not erase authored obligations. Direct backend discard remains unacceptable for a lane claiming enforcement.
 
 ## Adequacy witnesses
 

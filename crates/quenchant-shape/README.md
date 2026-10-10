@@ -57,11 +57,11 @@ There is no `Try` implementation, implicit conversion to an error channel, or in
 
 `delegate_ops!` has binary, unary, and assignment forms. It invokes the selected safe operation once at the standard-trait boundary and rewraps value results. It neither chooses arithmetic semantics nor introduces cloning or an unsafe block. Safe arithmetic operators should use a permanently safe operation, not a feature-dependent unchecked entry point.
 
-Generated operator methods refer to the `quenchant` specification facade. A crate using that macro supplies the dependency name and feature mapping described in [the facade guide](../quenchant-anodized/README.md).
+Generated operator methods refer to the `anodized` specification facade. A crate using that macro adds `quenchant-anodized`; its [facade guide](../quenchant-anodized/README.md) describes build-cfg selection without consumer features.
 
 ## Specifications and the extraction example
 
-The optional `anodized` feature enables `std`-based instrumentation. Combinator postconditions borrow move-only results through `|ref output|`; they observe variant preservation without replaying a callback or adding equality bounds. Exact payload and callback behavior have separate executable witnesses.
+The build driver selects checking with `anodized_panic` or `anodized_print` and compiles the development backend with `quenchant-anodized/anodized`. Panic enforcement retains `no_std`. Combinator postconditions borrow move-only results through `|ref output|`; they observe variant preservation without replaying a callback or adding equality bounds. Exact payload and callback behavior have separate executable witnesses.
 
 `examples/verus_derive.rs` reads authored source and translates its supported predicates into verifier input. Run from `crates/quenchant-shape/` so its source-relative paths select the intended package:
 

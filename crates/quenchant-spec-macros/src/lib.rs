@@ -4,19 +4,18 @@
     doc = "Conditional specification attributes and token-preserving erasure."
 )]
 
-/// Select instrumentation in the annotated crate, not in the host dependency.
+/// Select instrumentation from the cfg of the build driving the consumer.
 ///
 /// # Specification
-/// - ensures: the consumer's `anodized` feature selects the published backend;
-///   its absence selects nested-marker erasure.
+/// - ensures: `anodized_panic` or `anodized_print` selects the backend; without
+///   either cfg, selects nested-marker erasure.
 /// - provides: original predicate and item tokens to the selected
 ///   interpretation.
 /// - panics: none.
 ///
 /// # Adequacy
-/// - hypothesis: L3 — feature-separated integration cases distinguish
-///   forwarding from stripping; negative predicates distinguish actual
-///   enforcement.
+/// - hypothesis: L3 — cfg-separated integration cases distinguish forwarding
+///   from stripping; negative predicates distinguish actual enforcement.
 /// - witness: `expansion::tests::disabled_preserves_nested_code_and_macro_languages`
 /// - witness: `expansion::tests::nested_trait_obligations_follow_the_selected_mode`
 #[inline]
@@ -28,9 +27,18 @@ pub fn spec(
 {
     let span = proc_macro::Span::call_site();
     let condition = proc_macro::TokenStream::from_iter([
-        proc_macro::TokenTree::Ident(proc_macro::Ident::new("feature", span)),
-        proc_macro::TokenTree::Punct(proc_macro::Punct::new('=', proc_macro::Spacing::Alone)),
-        proc_macro::TokenTree::Literal(proc_macro::Literal::string("anodized")),
+        proc_macro::TokenTree::Ident(proc_macro::Ident::new("any", span)),
+        proc_macro::TokenTree::Group(proc_macro::Group::new(
+            proc_macro::Delimiter::Parenthesis,
+            proc_macro::TokenStream::from_iter([
+                proc_macro::TokenTree::Ident(proc_macro::Ident::new("anodized_panic", span)),
+                proc_macro::TokenTree::Punct(proc_macro::Punct::new(
+                    ',',
+                    proc_macro::Spacing::Alone,
+                )),
+                proc_macro::TokenTree::Ident(proc_macro::Ident::new("anodized_print", span)),
+            ]),
+        )),
     ]);
     let mut output = conditional_attribute(
         condition.clone(),
@@ -99,7 +107,8 @@ pub fn __erase(
     strip_markers(item)
 }
 
-/// Attach a qualified helper without reparsing the authored item or arguments.
+/// Attach an `anodized` helper without reparsing the authored item or
+/// arguments.
 ///
 /// # Specification
 /// - ensures: the selected helper receives the original argument token stream.
@@ -116,7 +125,7 @@ fn conditional_attribute(
         proc_macro::TokenTree::Punct(proc_macro::Punct::new(':', proc_macro::Spacing::Joint)),
         proc_macro::TokenTree::Punct(proc_macro::Punct::new(':', proc_macro::Spacing::Alone)),
         proc_macro::TokenTree::Ident(proc_macro::Ident::new(
-            "quenchant",
+            "anodized",
             proc_macro::Span::call_site(),
         )),
         proc_macro::TokenTree::Punct(proc_macro::Punct::new(':', proc_macro::Spacing::Joint)),

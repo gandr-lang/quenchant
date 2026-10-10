@@ -23,7 +23,7 @@ enum Fuel {
 /// - boundedness: `One` strictly recurses to `Zero`, and `Zero` returns.
 /// - input recursion: none.
 #[expect(recursion_forbidden, reason = "approved closed-fuel recursion")]
-#[quenchant::spec(ensures: |output| output >= Count::ZERO)]
+#[anodized::spec(ensures: |output| output >= Count::ZERO)]
 fn complete(fuel: Fuel) -> Count {
     match fuel {
         Fuel::One => complete(Fuel::Zero),
@@ -37,7 +37,7 @@ fn complete(fuel: Fuel) -> Count {
 /// - reason: the recursion consumes the private closed `Fuel` enum, not input.
 /// - measure: remaining `Fuel` variants before `Zero`.
 #[expect(recursion_forbidden, reason = "approved closed-fuel recursion")]
-#[quenchant::spec(ensures: |output| output >= Count::ZERO)]
+#[anodized::spec(ensures: |output| output >= Count::ZERO)]
 fn truncated(fuel: Fuel) -> Count {
     match fuel {
         Fuel::One => truncated(Fuel::Zero),

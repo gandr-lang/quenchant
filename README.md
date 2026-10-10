@@ -13,25 +13,25 @@ Written for code that is generated as much as written. A synthesizing agent repr
 | [quenchant](crates/quenchant/README.md) | `quenchant::arith`, `quenchant::shape` | Umbrella package re-exporting the publishable libraries under one namespace |
 | [quenchant-arith](crates/quenchant-arith/README.md) | `quenchant_arith::arith` | Nominal integers with explicit strict, checked, wrapping, saturating, and unchecked arithmetic |
 | [quenchant-shape](crates/quenchant-shape/README.md) | `quenchant_shape::shape` and exported macros | Reason-preserving absence, closed reason sites, and transparent domain types |
-| [quenchant-anodized](crates/quenchant-anodized/README.md) | Dependency named `quenchant` | Public `#[quenchant::spec(...)]` facade and optional published instrumentation |
+| [quenchant-anodized](crates/quenchant-anodized/README.md) | `anodized::spec` | Specification facade with optional development instrumentation |
 | [quenchant-spec-macros](crates/quenchant-spec-macros/README.md) | Used through the facade | Dependency-free token forwarding and disabled-mode marker removal |
 | [quenchant-dylints](crates/quenchant-dylints/README.md) | Dylint compiler plugin | Signature, layout, recursion, ownership, specification, and evidence-shape checks |
 | [quenchant-gates](crates/quenchant-gates/README.md) | `quenchant-gates` executable | Invocation-state and witness checks; repository boundary, pin, action, and publication refusals |
 | [quenchant-fixture-macros](crates/quenchant-fixture-macros/README.md) | Test-only procedural attributes | Real foreign expansions for the compiler-plugin fixtures; never published |
 
-The arithmetic and shape libraries default to `no_std`. Procedural macros run on the build host; their use does not itself require a standard library on the target. No Anodized runtime or logic implementation is vendored here.
+The arithmetic and shape libraries support `no_std` in stripped and panic-enforcing builds; print mode uses `std`. Procedural macros run on the build host and do not themselves require a target standard library. No Anodized runtime or logic implementation is vendored here.
 
 ## Specification and checking modes
 
 A specification states admitted behavior. Satisfaction relates an implementation to that statement; evidence supports a particular obligation under stated assumptions. Adequacy concerns whether the specification, observations, and chosen evidence distinguish the deviations that matter. Neither a passing suite nor a mutation score defines completeness.
 
-The libraries' `anodized` feature opts into published specification instrumentation and a `std`-enabled build. Without it, the annotation and supported nested markers are removed while ordinary code remains. Required validation and safety checks are not optional instrumentation. The authored obligations remain authoritative even when no checks appear in a binary.
+Specifications use `use anodized::spec;` from the `quenchant-anodized` package. Its development-only `anodized` feature compiles [gandr-lang/anodized](https://github.com/gandr-lang/anodized) for `no_std` enforcement, `const fn` specifications, and type refinements without the logic layer. The build cfg—not a consumer feature—selects checking: `anodized_panic` enforces and `anodized_print` prints violations. With neither cfg, annotations and supported nested markers are removed. Required validation and safety checks stay unconditional, and authored obligations remain authoritative.
 
 Backend selection does not by itself enable violation panics. The verification tasks set the backend's enforcing host cfg and execute negative witnesses. A future proof adapter must read authored source or a preserved specification representation; it cannot recover removed clauses merely by inspecting stripped HIR.
 
 ## Use a library
 
-From an application beside a checkout, one dependency covers the family:
+From an application beside a checkout, one dependency supplies arithmetic and shapes:
 
 ```toml
 [dependencies]

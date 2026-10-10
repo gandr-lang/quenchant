@@ -2,7 +2,7 @@
 #![cfg_attr(dylint_lib = "quenchant_dylints", deny(spec_attribute_present))]
 #![allow(dead_code, unreachable_patterns)]
 
-use quenchant::spec;
+use anodized::spec;
 
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug, PartialEq, PartialOrd)]
@@ -45,7 +45,7 @@ fn postcondition(count: Count) -> Count
 /// - requires: `count` is positive.
 /// - ensures: it stays positive.
 /// - panics: none.
-#[quenchant::spec(maintains: count > Count::ZERO)]
+#[anodized::spec(maintains: count > Count::ZERO)]
 fn invariant(count: Count) -> Count
 {
     count

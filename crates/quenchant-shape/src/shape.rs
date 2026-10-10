@@ -9,6 +9,8 @@
 //! reason is invented. Reason-site sealing and private transparent fields
 //! constrain structure; their domain meanings remain authored obligations.
 
+use anodized::spec;
+
 /// An absence site owns a closed reason vocabulary and its generic bound.
 ///
 /// # Specification
@@ -195,7 +197,7 @@ macro_rules! delegate_ops {
             /// - panics: exactly when the selected operation panics.
             /// - intension: adds no allocation, cloning, or unsafe block.
             #[inline]
-            #[quenchant::spec]
+            #[anodized::spec]
             fn $method(
                 self,
                 rhs: Self,
@@ -222,7 +224,7 @@ macro_rules! delegate_ops {
             /// - panics: exactly when the selected operation panics.
             /// - intension: adds no allocation, cloning, or unsafe block.
             #[inline]
-            #[quenchant::spec]
+            #[anodized::spec]
             fn $method(self) -> Self
             {
                 Self($operation(self.0))
@@ -243,7 +245,7 @@ macro_rules! delegate_ops {
             /// - panics: exactly when the selected operation panics.
             /// - intension: adds no allocation, cloning, or unsafe block.
             #[inline]
-            #[quenchant::spec]
+            #[anodized::spec]
             fn $method(
                 &mut self,
                 rhs: Self,
@@ -325,7 +327,7 @@ impl<Value, Reason> Maybe<Value, Reason>
     ///   callback execution and reason preservation.
     /// - witness: `shape::tests::mapping_preserves_absence_and_moves_values`
     #[inline]
-    #[quenchant::spec(
+    #[spec(
         captures: was_present = matches!(self, Self::Present(_)),
         ensures: |ref output| matches!(output, Maybe::Present(_)) == was_present,
     )]
@@ -362,7 +364,7 @@ impl<Value, Reason> Maybe<Value, Reason>
     ///   produced absence, and produced value.
     /// - witness: `shape::tests::chaining_preserves_both_absence_transitions`
     #[inline]
-    #[quenchant::spec(
+    #[spec(
         captures: was_present = matches!(self, Self::Present(_)),
         ensures: |ref output| was_present || matches!(output, Maybe::Absent(_)),
     )]
@@ -430,7 +432,7 @@ impl<Value, Reason> Maybe<Value, Reason>
     ///   distinct reasons reach distinct errors.
     /// - witness: `shape::tests::failure_promotion_is_explicit_and_reason_sensitive`
     #[inline]
-    #[quenchant::spec(
+    #[spec(
         captures: was_present = matches!(self, Self::Present(_)),
         ensures: |ref output| output.is_ok() == was_present,
     )]

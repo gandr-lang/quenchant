@@ -1,5 +1,11 @@
 //! Observable arithmetic specifications across every representation width.
 
+#[cfg(anodized_panic)]
+use alloc::string::String;
+
+#[cfg(anodized_panic)]
+use anodized::spec;
+
 use super::ArithmeticError;
 use super::Int;
 use super::Operation;
@@ -290,7 +296,7 @@ fn diagnostics_distinguish_operations_and_failure_causes()
 
 /// Enforcement, rather than feature selection alone, determines whether a false
 /// predicate panics.
-#[cfg(all(feature = "anodized", anodized_panic))]
+#[cfg(anodized_panic)]
 #[test]
 fn specification_enforcement_rejects_false_postcondition()
 {
@@ -305,7 +311,7 @@ fn specification_enforcement_rejects_false_postcondition()
     /// - hypothesis: L3 an empty body cannot produce the asserted postcondition
     ///   failure; missing proc-macro enforcement returns normally instead.
     /// - witness: `arith::tests::specification_enforcement_rejects_false_postcondition`
-    #[quenchant::spec(ensures: false)]
+    #[spec(ensures: false)]
     fn rejected()
     {
     }

@@ -1,26 +1,27 @@
 # quenchant-anodized
 
-The public `#[quenchant::spec(...)]` interface separates an authored obligation from the choice to emit executable checking. The facade is `no_std`. Its optional backend is the published `anodized-macros` package, not a copied runtime or logic implementation.
+The package provides the `anodized` library and its `spec` attribute, separating an authored obligation from executable checking. The facade is `no_std`. Its optional backend is [gandr-lang/anodized](https://github.com/gandr-lang/anodized), pinned for `no_std` enforcement, `const fn` specifications, and type refinements without the logic layer.
 
 ## Install
 
-Use the dependency name `quenchant`, because emitted helper paths use that name. From an application beside a checkout:
+Add the package by its own name; Rust imports its library as `anodized`. From an application beside a checkout:
 
 ```toml
 [dependencies]
-quenchant = { package = "quenchant-anodized", version = "=0.0.0", path = "../quenchant/crates/quenchant-anodized" }
+quenchant-anodized = { version = "=0.0.0", path = "../quenchant/crates/quenchant-anodized", default-features = false }
 
-[features]
-anodized = ["quenchant/anodized"]
 ```
 
-A registry release permits removing the path. The feature must be declared in the consuming crate; enabling a dependency feature is not a substitute for the consumer-side condition.
+A registry release permits removing the path. No consumer feature is required. Declare `anodized_panic` and `anodized_print` in the consumer's `check-cfg` list when denying unexpected cfgs.
+
+The facade's `anodized` feature compiles the backend in for development and CI; enabling it from a registry release selects upstream packages and is unsupported.
 
 ## Example
 
 ```rust
-# extern crate quenchant_anodized as quenchant;
-#[quenchant::spec(ensures: |ref output| output.is_ok())]
+use anodized::spec;
+
+#[spec(ensures: |ref output| output.is_ok())]
 fn accept() -> Result<(), core::convert::Infallible> {
     Ok(())
 }
@@ -28,25 +29,29 @@ fn accept() -> Result<(), core::convert::Infallible> {
 assert_eq!(accept(), Ok(()));
 ```
 
-Postcondition patterns such as `|ref output|` borrow the returned value for inspection. The published backend otherwise moves the result into its predicate binding; borrowing permits move-only values without adding `Copy` or `Clone` bounds.
+Postcondition patterns such as `|ref output|` borrow the returned value for inspection without adding `Copy` or `Clone` bounds. The backend also supports owned patterns that it can reconstruct after checking.
 
-## Three separate choices
+With the facade feature enabled, `anodized::types::Spec` exposes the fork's refinement trait. Generated refinement implementations exist only under an instrumentation cfg, so tests calling `predicate` select that mode. Strip mode supplies no duplicate refinement implementation.
+
+## Build modes
 
 | Configuration | What the consumer receives | What it establishes |
 | ------------- | -------------------------- | ------------------- |
-| Consumer feature absent | Ordinary code with supported specification markers removed | No executable-check evidence |
-| Consumer feature present, no enforcing backend cfg | Published backend expansion, requiring `std` | Predicate compilation, not violation panics |
-| Consumer feature present, enforcing host cfg | Executable checks on calls that reach them | Evidence for the interpreted predicates on those calls |
+| No instrumentation cfg, with or without the backend feature | Ordinary code with supported specification markers removed | No executable-check evidence |
+| `anodized_panic` with the facade feature | Panic-enforcing checks, compatible with `no_std` | Evidence for the interpreted predicates on calls that reach them |
+| `anodized_print` with the facade feature | Printed violations; requires `std` and rejects specified `const fn` | Diagnostics without rejection of invalid calls |
 
-The default path supports a real target without `std`. Procedural macros still use the build host's standard library; that is not a target runtime dependency. Required validation and safety checks must remain ordinary code, independent of this feature.
+Both strip mode and panic enforcement support targets without `std`. Procedural macros use the build host's standard library, which adds no target runtime dependency. Required validation and safety checks remain ordinary code, independent of this feature.
 
-For a native verification invocation, `RUSTFLAGS="--cfg anodized_panic"` selects enforcement when the backend's host artifact is compiled. The repository tasks both set the mode and run a deliberate violation. Cross-target flags need not configure host procedural macros, and a target cfg listing cannot certify a cached host artifact.
+The build driver selects native enforcement with `RUSTFLAGS="--cfg anodized_panic"` and `--features quenchant-anodized/anodized`. The cfg applies throughout the dependency graph; no per-consumer feature can leave part of that graph stripped. A cfg without the facade feature fails compilation with `ANODIZED_BACKEND_DISABLED`. Feature unification and `--all-features` alone never instrument a consumer.
+
+The repository tasks select the mode and run deliberate violations. Cross-target flags need not configure host procedural macros, and a target cfg listing cannot certify a cached host artifact.
 
 ## Nested syntax and expansion boundary
 
-A trait or implementation uses the qualified outer attribute and bare nested `#[spec(...)]` markers, matching the backend's syntax. Empty nested markers use `#[spec()]`. Qualified nested markers are not an additional interface.
+Import `anodized::spec` and apply `#[spec(...)]` to the enclosing trait or implementation; its nested methods use bare `#[spec(...)]` markers. Empty nested markers use `#[spec()]`. Qualified nested markers are not an additional interface.
 
-When disabled, the wrapper removes nested markers as well as the outer annotation. Unrelated attributes and macro-language payloads retain their tokens. The double-underscore re-exports are the expansion ABI, not alternative public annotation spellings.
+When disabled, the wrapper removes nested markers as well as the outer annotation. Unrelated attributes and macro-language payloads retain their tokens. Enabled expansions resolve `::anodized::__`, `result`, and `types` through re-exports of the fork's runtime, with its default features disabled. No runtime implementation is copied into the facade.
 
 ## Specification, evidence, and future interpretation
 
@@ -54,7 +59,7 @@ A specification describes admitted behavior; satisfaction relates an implementat
 
 Omitting executable checking changes neither the authored obligation nor its authority. It also supplies no evidence for that obligation. A future verification adapter must consume authored source or a deliberately preserved representation and relate it to the selected build. Removed clauses are not presumed to remain in stripped HIR, and this facade establishes no cross-verifier correspondence or full-abstraction theorem.
 
-Upgrades must exercise the selected package's actual source, generated interface, and both consumer configurations. Matching version labels alone do not establish compatibility. The exact published macro pin is intentional until that evidence is available.
+The backend rows pair `version = "=0.7.0"` with an exact Git revision. Cargo uses the fork locally and removes the Git source when packaging; the fork's package version must therefore equal a published upstream version. Upstream 0.7.0 lacks the required `no_std`, const-specification, and logic-free refinement combination. Replace the Git rows when an upstream release carries those capabilities, or when the fork is published under organization-owned package names.
 
 ## License
 
