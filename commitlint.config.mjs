@@ -14,12 +14,7 @@ const TRAILER_TOKENS = [
   "Refs",
   "Reported-by",
   "Reviewed-by",
-  // The provenance block's own two tokens. Without them the block's first line
-  // reads as prose, so the leading-blank check fires on the line below it
-  // rather than on the block, and an agent commit is refused for a defect it
-  // does not have.
-  "Role",
-  "Session",
+  "Assisted-by",
   "Signed-off-by",
   "Tested-by",
 ];
@@ -64,7 +59,7 @@ const SCOPES = [
 // the session it points at, so it must never reach a published history. The
 // pattern matches by shape rather than by a list of tool names, so a harness
 // nobody here has heard of is refused on the same terms.
-const HARNESS_TRAILER_LINE = /^[A-Za-z][A-Za-z0-9]*-Session:/i;
+const HARNESS_TRAILER_LINE = /^(?:Role|Session|[A-Za-z][A-Za-z0-9-]*-Session):/i;
 
 const noHarnessTrailer = (parsed) => {
   const raw = parsed.raw ?? [parsed.header, parsed.body, parsed.footer].filter(Boolean).join("\n");
@@ -92,58 +87,36 @@ const commitAuthor = () => {
   } catch (error) {
     if (commit)
       throw new Error(`COMMITLINT_COMMIT=${commit}: cannot resolve its author`, { cause: error });
-    return "";
+    throw new Error("cannot resolve the commit author", { cause: error });
   }
 };
 
+// Identity selects the marks: an agent author carries exactly the owner
+// co-author line and one assistance line; a human co-author is credited with
+// Co-authored-by, assistance never is. CI reads the landed commit's own author
+// and marks rather than the runner's.
 const OWNER_COAUTHOR = "Co-authored-by: silvanshade <silvanshade@users.noreply.github.com>";
-
-// An agent commit carries exactly one line beyond its prose: the owner
-// co-author line, crediting the coordinating owner. The Role, Session, and
-// Assisted-by block that once rode beside it is retired: a session token is
-// contributor-concern that outlives the session it points at, and the role is
-// the assignment's, not the commit's. A commit that still carries one of those
-// lines is refused so the retired form cannot creep back through a template.
-// The form of the owner line binds whatever the author; its presence binds
-// agent authors only, resolved the way a prepare-commit-msg hook resolves it.
-const RETIRED_PROVENANCE_LINE = /^(?:Role|Session|Assisted-by):/i;
-
-const ownerCoauthorRequired = (parsed) => {
-  const raw = parsed.raw ?? "";
-  // Resolved first, so an unresolvable COMMITLINT_COMMIT fails even when the
-  // message is otherwise complete.
-  const author = commitAuthor();
-  const lines = raw.split("\n").map((line) => line.trimEnd());
-
-  const retired = lines.find((line) => RETIRED_PROVENANCE_LINE.test(line));
-  if (retired)
-    return [false, `the provenance block is retired; drop "${retired}" and keep ${OWNER_COAUTHOR}`];
-
-  const owners = lines.filter((line) => /^Co-authored-by:[ \t]+silvanshade/i.test(line));
-  const bad = owners.find((line) => line !== OWNER_COAUTHOR);
-  if (bad) return [false, `malformed owner co-author line "${bad}": exact form required`];
-  if (owners.length > 1)
-    return [false, `exactly one owner co-author line per commit, found ${owners.length}`];
-
-  if (!author.startsWith("agent-")) return [true, ""];
-  if (owners.length === 0) return [false, `an agent commit carries ${OWNER_COAUTHOR}`];
-  return [true, ""];
-};
-
-// Co-authored-by credits people, the owner and any other human alike; a line
-// naming a known assistant identity is refused outright. Match full assistant
-// names, service domains, or explicit bot markers. A word inside a human name
-// or personal email does not identify an assistant.
+const ASSISTANCE = "Assisted-by: LLM";
 const ASSISTANT_COAUTHOR =
   /^Co-authored-by:\s*(?:anthropic|claude(?: code)?|openai|chatgpt|codex|(?:github )?copilot|coderabbit(?:ai)?|gemini|cursor|llm)\s*(?:<[^<>]*>)?$|<[^<>@]+@(?:[^<>@]+\.)?(?:anthropic\.com|openai\.com|coderabbit\.ai)>|\[bot\]/i;
 
-const noAssistantCoauthor = (parsed) => {
-  const raw = parsed.raw ?? "";
-  const assistant = raw
-    .split("\n")
-    .map((line) => line.trimEnd())
-    .find((line) => /^Co-authored-by:/i.test(line) && ASSISTANT_COAUTHOR.test(line));
-  if (assistant) return [false, `an assistant is never a co-author: "${assistant}"`];
+const identityTrailers = (parsed) => {
+  const author = commitAuthor();
+  const lines = (parsed.raw ?? "").split("\n").map((line) => line.trimEnd());
+  const assists = lines.filter((line) => /^Assisted-by:/i.test(line));
+  const owners = lines.filter((line) =>
+    /^Co-authored-by:[ \t]+silvanshade(?:[ \t]|<|$)/i.test(line),
+  );
+  const coauthors = lines.filter((line) => /^Co-authored-by:/i.test(line));
+  if (coauthors.some((line) => ASSISTANT_COAUTHOR.test(line)))
+    return [false, "Co-authored-by credits humans; use Assisted-by: LLM for assistance"];
+  if (assists.some((line) => line !== ASSISTANCE) || assists.length > 1)
+    return [false, "assistance requires exactly one Assisted-by: LLM line"];
+  if (owners.some((line) => line !== OWNER_COAUTHOR) || owners.length > 1)
+    return [false, "owner credit requires exactly one canonical co-author line"];
+  const agent = /^agent-shade </.test(author);
+  if (agent && (owners.length !== 1 || coauthors.length !== 1 || assists.length !== 1))
+    return [false, "agent-shade requires exactly the owner co-author and Assisted-by: LLM"];
   return [true, ""];
 };
 
@@ -154,8 +127,7 @@ export default {
       rules: {
         "trailer-leading-blank": trailerLeadingBlank,
         "no-harness-trailer": noHarnessTrailer,
-        "owner-coauthor-required": ownerCoauthorRequired,
-        "no-assistant-coauthor": noAssistantCoauthor,
+        "identity-trailers": identityTrailers,
       },
     },
   ],
@@ -172,8 +144,7 @@ export default {
     "footer-leading-blank": [0, "always"],
     "trailer-leading-blank": [2, "always"],
     "no-harness-trailer": [2, "always"],
-    "owner-coauthor-required": [2, "always"],
-    "no-assistant-coauthor": [2, "always"],
+    "identity-trailers": [2, "always"],
     // Stock conventional types plus config, for changes to the repository's
     // configuration surfaces (lint vocabularies, tool settings).
     "type-enum": [

@@ -6,7 +6,7 @@ Public-facing files and messages MUST be independently usable. Keep workstation 
 
 ## Provenance
 
-Commit validation is defined by `commitlint.config.mjs`: an accepted type and scope, a nonempty purpose, and, on an agent-authored commit, exactly one trailer, `Co-authored-by: silvanshade <silvanshade@users.noreply.github.com>`, crediting the coordinating owner. The former four-line provenance block (role, opaque session token, owner co-author, `Assisted-by: LLM`) is retired and refused: a session token is contributor-concern that outlives the session it points at, and the role belongs to the assignment, not the commit. Harness forensics trailers (`<harness>-Session:`) and assistant identities in `Co-authored-by` stay refused on their own terms.
+Commit validation is defined by `commitlint.config.mjs`: an accepted type and scope, a nonempty purpose, and, on an agent-authored commit, exactly one `Co-authored-by: silvanshade <silvanshade@users.noreply.github.com>` plus exactly one `Assisted-by: LLM`. Human co-authors receive credit through `Co-authored-by`; assistance never does. Role, session-token, and harness-forensics trailers remain refused because they record contributor coordination rather than project history.
 
 Commit prose explains the change and its constraint; it is not a session transcript. NEVER place routing aliases or credentials in the artifact.
 
