@@ -58,7 +58,8 @@ jobs:
         uses: ./.github/actions/setup-rust # zizmor: ignore[self-repository]
         with:
           install-toolchain: &without-image ${{ needs.ci-image-ref.outputs.ref == '' }}
-          cache-save: ${{ env.CI_CACHE_SAVE == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+          cache-save: ${{ env.CI_CACHE_SAVE == 'true' }}
+          cache-key: ${{ env.CI_CACHE_KEY || 'rust-deps' }}
           cache-workspace-crates: true
       - &install-tools
         name: install job tools
@@ -101,14 +102,14 @@ jobs:
           key: dylint-library-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('rust-toolchain.toml') }}-${{ env.DYLINT_VERSION }}-${{ hashFiles('crates/quenchant-dylints/**', 'Cargo.toml', 'Cargo.lock') }}
       - &save-dylint-library
         name: save Dylint library
-        if: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.dylint-library-restore.outputs.cache-hit != 'true' }}
+        if: ${{ !cancelled() && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.dylint-library-restore.outputs.cache-hit != 'true' }}
         uses: &cache-save actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: *dylint-library
           key: ${{ steps.dylint-library-restore.outputs.cache-primary-key }}
       - &save-dylint-drivers
         name: save Dylint drivers
-        if: ${{ needs.ci-image-ref.outputs.ref == '' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.dylint-drivers-restore.outputs.cache-hit != 'true' }}
+        if: ${{ !cancelled() && needs.ci-image-ref.outputs.ref == '' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.dylint-drivers-restore.outputs.cache-hit != 'true' }}
         uses: *cache-save
         with:
           path: *dylint-drivers
@@ -228,6 +229,7 @@ jobs:
     container: *ci-image # zizmor: ignore[unpinned-images]
     env:
       CI_CACHE_SAVE: "true"
+      CI_CACHE_KEY: dylint-v1
       CI_INSTALL_TOOLS: *without-image
       CI_TOOLS: CI_TOOLS_DYLINT
       CI_REPORT_NAME: junit-dylint
@@ -242,7 +244,7 @@ jobs:
       - name: test Dylint package
         working-directory: &dylint-package crates/quenchant-dylints
         env:
-          CARGO_TARGET_DIR: ${{ github.workspace }}/target/dylint-tests
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
         run: cargo nextest run --profile ci
       - *upload-test-report
       - name: exercise enforcing specification exits
@@ -266,7 +268,31 @@ jobs:
       - name: load Dylint library over workspace
         run: cargo dylint --lib quenchant_dylints --no-deps -- --workspace --all-targets
       - name: resolve adequacy witnesses
+        env:
+          # Match package-directory builds, including the test inventory.
+          RUSTFLAGS: -C linker=dylint-link
         run: cargo run -p quenchant-gates -- witnesses --manifest-path Cargo.toml
+      # Diagnostic reruns price each compiler invocation without changing the
+      # normal lane. Remove this probe after the fixture audit is complete.
+      - name: refresh fixture-profiler packages
+        if: &profile-fixtures ${{ runner.debug == '1' && needs.ci-image-ref.outputs.ref == '' }}
+        run: sudo apt-get update
+      - name: install fixture profiler
+        if: *profile-fixtures
+        run: sudo apt-get install --yes strace
+      - name: profile UI compiler processes
+        if: *profile-fixtures
+        working-directory: *dylint-package
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/target
+        run: strace -f -qq -ttt -s 8192 -e trace=execve,exit_group -o "$RUNNER_TEMP/ui-processes.log" cargo nextest run --profile ci
+      - name: upload UI compiler profile
+        if: ${{ !cancelled() && runner.debug == '1' && needs.ci-image-ref.outputs.ref == '' }}
+        uses: *upload-artifact
+        with:
+          name: ui-compiler-profile
+          path: ${{ runner.temp }}/ui-processes.log
+          if-no-files-found: error
       - *save-dylint-library
       - *save-dylint-drivers
 
