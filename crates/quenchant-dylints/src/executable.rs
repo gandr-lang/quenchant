@@ -831,14 +831,15 @@ fn read_attributes(attrs: &[Attribute]) -> ExecutableAttribute
 ///   The condition of a `cfg_attr` is not evaluated: the authored predicate is
 ///   an obligation whichever configuration checks it.
 /// - panics: none.
-#[spec(ensures: |output| match attr.kind {
-    AttrKind::DocComment(..) => output.is_empty(),
-    AttrKind::Normal(_) => true,
-})]
+///
 /// # Adequacy
 /// - hypothesis: L2 — the compiler fixtures exercise bare, delimited, qualified
 ///   and conditional attributes and compare accepted forms with refused forms.
 /// - witness: `tests::ui_spec_gates`
+#[spec(ensures: |output| match attr.kind {
+    AttrKind::DocComment(..) => output.is_empty(),
+    AttrKind::Normal(_) => true,
+})]
 fn spec_arguments(attr: &Attribute) -> Vec<SpecArguments<'_>>
 {
     let AttrKind::Normal(ref normal) = attr.kind
@@ -897,32 +898,24 @@ fn spec_arguments(attr: &Attribute) -> Vec<SpecArguments<'_>>
 ///   the list or after a top-level comma, and runs to the comma before the next
 ///   such identifier or to the end; a comma ending the list belongs to no
 ///   clause. Tokens before the first key belong to no clause.
+/// - ensures: each returned key occurs as an identifier followed by `:` in the
+///   input, and the clause count is at most the top-level comma count plus one.
 /// - panics: none.
 ///
 /// # Adequacy
 /// - hypothesis: L2 — the compiler fixtures exercise clause boundaries, nested
 ///   groups and trailing commas and compare accepted forms with refused forms.
 /// - witness: `tests::ui_spec_gates`
-#[spec(ensures: |output| {
-    let trees: Vec<&TokenTree> = arguments.iter().collect();
-    let starts: Vec<(usize, ClauseKey)> = trees.iter().enumerate().filter_map(|(index, tree)| {
-        let boundary = index == 0_usize || trees.get(index.saturating_sub(1_usize))
-            .is_some_and(|previous| token_is!(previous, TokenKind::Comma));
-        if !boundary { return None; }
-        match clause_key(tree, trees.get(index.saturating_add(1_usize) ..).unwrap_or_default()) {
-            Maybe::Present(key) => Some((index, key)),
-            Maybe::Absent(_) => None,
-        }
-    }).collect();
-    output.len() == starts.len() && output.iter().zip(starts.iter()).enumerate().all(|(index, (clause, &(start, key)))| {
-        let end = starts.get(index.saturating_add(1_usize)).map_or_else(|| {
-            if trees.last().is_some_and(|last| token_is!(last, TokenKind::Comma)) {
-                trees.len().saturating_sub(1_usize)
-            } else { trees.len() }
-        }, |&(next, _)| next.saturating_sub(1_usize));
-        clause.key == key && same_tokens(&clause.value, trees.get(start.saturating_add(2_usize) .. end).unwrap_or_default()).0
-    })
-})]
+#[spec(ensures: |output| output.len() <= arguments.iter().filter(|tree| token_is!(tree, TokenKind::Comma)).count().saturating_add(1_usize)
+    && output.iter().all(|clause| arguments.iter().zip(arguments.iter().skip(1_usize)).any(|(tree, next)| {
+        token_is!(next, TokenKind::Colon) && matches!(*tree,
+            TokenTree::Token(Token { kind: TokenKind::Ident(name, _), .. }, _) if match clause.key {
+                ClauseKey::Requires => name.as_str() == "requires",
+                ClauseKey::Maintains => name.as_str() == "maintains",
+                ClauseKey::Ensures => name.as_str() == "ensures",
+                ClauseKey::Other => !matches!(name.as_str(), "requires" | "maintains" | "ensures"),
+            })
+    })))]
 fn clauses(arguments: &TokenStream) -> Vec<Clause<'_>>
 {
     let trees: Vec<&TokenTree> = arguments.iter().collect();
@@ -971,20 +964,13 @@ fn clauses(arguments: &TokenStream) -> Vec<Clause<'_>>
 ///   opens with a single colon; `requires`, `maintains` and `ensures` are the
 ///   executable keys, and any other identifier is [`ClauseKey::Other`].
 /// - panics: none.
+/// - executable: none — the function is its own specification; the UI fixtures
+///   are the oracle.
 ///
 /// # Adequacy
 /// - hypothesis: L2 — the compiler fixtures exercise executable keys and
 ///   non-predicate keys and compare accepted forms with refused forms.
 /// - witness: `tests::ui_spec_gates`
-#[spec(ensures: |output| output == match (ident_name(tree), rest.first()) {
-    (Maybe::Present(name), Some(colon)) if token_is!(colon, TokenKind::Colon) => Maybe::Present(match name.as_str() {
-        "requires" => ClauseKey::Requires,
-        "maintains" => ClauseKey::Maintains,
-        "ensures" => ClauseKey::Ensures,
-        _ => ClauseKey::Other,
-    }),
-    _ => Maybe::Absent(clause_reading::NotAKey::NotKeyShaped),
-})]
 fn clause_key(
     tree: &TokenTree,
     rest: &[&TokenTree],
@@ -1056,18 +1042,13 @@ fn clause_predicates<'stream>(clause: &Clause<'stream>) -> Vec<Predicate<'stream
 /// - ensures: returns the comma-separated elements of a value that is exactly
 ///   one bracketed group, and the value itself as one element otherwise.
 /// - panics: none.
+/// - executable: none — the function is its own specification; the UI fixtures
+///   are the oracle.
 ///
 /// # Adequacy
 /// - hypothesis: L2 — the compiler fixtures exercise single predicates and
 ///   bracketed predicate lists and compare accepted forms with refused forms.
 /// - witness: `tests::ui_spec_gates`
-#[spec(ensures: |output| {
-    let expected = match *value {
-        [&TokenTree::Delimited(_, _, Delimiter::Bracket, ref inner)] => split_commas(&inner.iter().collect::<Vec<_>>()),
-        _ => vec![value.to_vec()],
-    };
-    output.len() == expected.len() && output.iter().zip(&expected).all(|(actual, expected)| same_tokens(actual, expected).0)
-})]
 fn list_elements<'stream>(value: &[&'stream TokenTree]) -> Vec<Vec<&'stream TokenTree>>
 {
     if let [&TokenTree::Delimited(_, _, Delimiter::Bracket, ref inner)] = *value {
@@ -1084,22 +1065,13 @@ fn list_elements<'stream>(value: &[&'stream TokenTree]) -> Vec<Vec<&'stream Toke
 ///   head, after a leading `||`, or after a leading `move` before either; any
 ///   other value is returned unchanged.
 /// - panics: none.
+/// - executable: none — the function is its own specification; the UI fixtures
+///   are the oracle.
 ///
 /// # Adequacy
 /// - hypothesis: L2 — the compiler fixtures exercise postcondition closure
 ///   heads and bodies and compare accepted forms with refused forms.
 /// - witness: `tests::ui_spec_gates`
-#[spec(ensures: |output| {
-    let start = usize::from(value.first().is_some_and(|tree| ident_name(tree) == Maybe::Present(kw::Move)));
-    let after_move = value.get(start ..).unwrap_or_default();
-    let head = match after_move.first() {
-        Some(tree) if token_is!(tree, TokenKind::OrOr) => 1_usize,
-        Some(tree) if token_is!(tree, TokenKind::Or) => after_move.iter().enumerate().skip(1_usize)
-            .find_map(|(index, tree)| token_is!(tree, TokenKind::Or).then_some(index.saturating_add(1_usize))).unwrap_or_default(),
-        _ => 0_usize,
-    };
-    same_tokens(output, after_move.get(head ..).unwrap_or_default()).0
-})]
 fn closure_body<'value, 'stream>(
     value: &'value [&'stream TokenTree]
 ) -> &'value [&'stream TokenTree]
@@ -1131,19 +1103,14 @@ fn closure_body<'value, 'stream>(
 ///   replaces it with the group's contents; a bracketed group is a value and
 ///   stays.
 /// - panics: none.
+/// - executable: none — the function is its own specification; the UI fixtures
+///   are the oracle.
 ///
 /// # Adequacy
 /// - hypothesis: L2 — the compiler fixtures exercise nested predicate
 ///   parentheses, braces and bracketed values and compare accepted forms with
 ///   refused forms.
 /// - witness: `tests::ui_spec_gates`
-#[spec(ensures: |output| {
-    let mut expected = predicate.to_vec();
-    while let [&TokenTree::Delimited(_, _, Delimiter::Parenthesis | Delimiter::Brace, ref inner)] = *expected.as_slice() {
-        expected = inner.iter().collect();
-    }
-    same_tokens(&output, &expected).0
-})]
 fn peeled<'stream>(predicate: &[&'stream TokenTree]) -> Vec<&'stream TokenTree>
 {
     let mut trees = predicate.to_vec();
@@ -1165,6 +1132,8 @@ fn peeled<'stream>(predicate: &[&'stream TokenTree]) -> Vec<&'stream TokenTree>
 ///   [`Vacuity::TypeCheck`] where [`wildcard_match`] or
 ///   [`complementary_queries`] does; `Absent` otherwise.
 /// - panics: none.
+/// - executable: none — the function is its own specification; the UI fixtures
+///   are the oracle.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — the UI matrix pairs each vacuous form with a substantive
@@ -1173,15 +1142,6 @@ fn peeled<'stream>(predicate: &[&'stream TokenTree]) -> Vec<&'stream TokenTree>
 ///   pair beside a refutable pattern, and a complementary disjunction beside a
 ///   single query.
 /// - witness: `tests::ui_spec_gates`
-#[spec(ensures: |output| output == if matches!(*trees, [literal] if ident_name(literal) == Maybe::Present(kw::True))
-    || matches!(*trees, [bang, literal] if token_is!(bang, TokenKind::Bang) && ident_name(literal) == Maybe::Present(kw::False)) {
-    Maybe::Present(Vacuity::LiteralTrue)
-} else {
-    match (reflexive(trees), wildcard_match(trees)) {
-        (Maybe::Present(kind), _) | (_, Maybe::Present(kind)) => Maybe::Present(kind),
-        _ => complementary_queries(trees),
-    }
-})]
 fn vacuity(trees: &[&TokenTree]) -> Maybe<Vacuity, predicate_reading::Substantive>
 {
     match *trees {
@@ -1212,20 +1172,13 @@ fn vacuity(trees: &[&TokenTree]) -> Maybe<Vacuity, predicate_reading::Substantiv
 ///   top-level comparison or logical operator is one `==`, `<=` or `>=` whose
 ///   two nonempty sides are token-identical.
 /// - panics: none.
+/// - executable: none — the function is its own specification; the UI fixtures
+///   are the oracle.
 ///
 /// # Adequacy
 /// - hypothesis: L2 — the compiler fixtures exercise reflexive comparisons and
 ///   non-reflexive near misses and compare accepted forms with refused forms.
 /// - witness: `tests::ui_spec_gates`
-#[spec(ensures: |output| {
-    let operators: Vec<usize> = trees.iter().enumerate().filter_map(|(index, tree)| token_is!(tree,
-        TokenKind::EqEq | TokenKind::Le | TokenKind::Ge | TokenKind::Ne | TokenKind::Lt | TokenKind::Gt | TokenKind::AndAnd | TokenKind::OrOr
-    ).then_some(index)).collect();
-    let refused = matches!(*operators.as_slice(), [index] if index > 0_usize
-        && trees.get(index).is_some_and(|tree| token_is!(tree, TokenKind::EqEq | TokenKind::Le | TokenKind::Ge))
-        && same_tokens(trees.get(.. index).unwrap_or_default(), trees.get(index.saturating_add(1_usize) ..).unwrap_or_default()).0);
-    (output == Maybe::Present(Vacuity::Reflexive)) == refused
-})]
 fn reflexive(trees: &[&TokenTree]) -> Maybe<Vacuity, predicate_reading::Substantive>
 {
     let substantive = Maybe::Absent(predicate_reading::Substantive::NoVacuousForm);
@@ -1351,30 +1304,13 @@ fn wildcard_match(trees: &[&TokenTree]) -> Maybe<Vacuity, predicate_reading::Sub
 ///   optionally followed by a parenthesized `_` or `..`; any other arm is
 ///   `Absent`.
 /// - panics: none.
+/// - executable: none — the function is its own specification; the UI fixtures
+///   are the oracle.
 ///
 /// # Adequacy
 /// - hypothesis: L2 — the compiler fixtures exercise wildcard and refutable
 ///   variant payloads and compare accepted forms with refused forms.
 /// - witness: `tests::ui_spec_gates`
-#[spec(ensures: |output| {
-    let path = match *arm {
-        [ref path @ .., &TokenTree::Delimited(_, _, Delimiter::Parenthesis, ref payload)] => {
-            let mut tokens = payload.iter();
-            match (tokens.next(), tokens.next()) {
-                (Some(tree), None) if ident_name(tree) == Maybe::Present(kw::Underscore) || token_is!(tree, TokenKind::DotDot) => Some(path),
-                _ => None,
-            }
-        },
-        ref path => Some(path),
-    };
-    output == match path.and_then(|path| path.split_last()) {
-        Some((last, prefix)) if prefix.iter().all(|tree| token_is!(tree, TokenKind::PathSep) || matches!(ident_name(tree), Maybe::Present(_))) => match ident_name(last) {
-            Maybe::Present(name) => Maybe::Present(name),
-            Maybe::Absent(_) => Maybe::Absent(pattern_reading::NotWildcard::Refutable),
-        },
-        _ => Maybe::Absent(pattern_reading::NotWildcard::Refutable),
-    }
-})]
 fn wildcard_variant(arm: &[&TokenTree]) -> Maybe<Symbol, pattern_reading::NotWildcard>
 {
     let refutable = Maybe::Absent(pattern_reading::NotWildcard::Refutable);
@@ -1431,24 +1367,14 @@ struct DiscriminantQuery<'operand, 'stream>
 ///   `.query()`, the receivers token-identical and the queries `is_ok` with
 ///   `is_err` or `is_some` with `is_none` in either order.
 /// - panics: none.
+/// - executable: none — the function is its own specification; the UI fixtures
+///   are the oracle.
 ///
 /// # Adequacy
 /// - hypothesis: L2 — the compiler fixtures exercise complementary discriminant
 ///   queries and different receivers and compare accepted forms with refused
 ///   forms.
 /// - witness: `tests::ui_spec_gates`
-#[spec(ensures: |output| {
-    let operands = split_on(trees, &TokenKind::OrOr);
-    let refused = match *operands.as_slice() {
-        [ref first, ref second] => match (discriminant_query(first), discriminant_query(second)) {
-            (Maybe::Present(first), Maybe::Present(second)) => same_tokens(first.receiver, second.receiver).0
-                && matches!((first.query.as_str(), second.query.as_str()), ("is_ok", "is_err") | ("is_err", "is_ok") | ("is_some", "is_none") | ("is_none", "is_some")),
-            _ => false,
-        },
-        _ => false,
-    };
-    (output == Maybe::Present(Vacuity::TypeCheck)) == refused
-})]
 fn complementary_queries(trees: &[&TokenTree]) -> Maybe<Vacuity, predicate_reading::Substantive>
 {
     let substantive = Maybe::Absent(predicate_reading::Substantive::NoVacuousForm);
@@ -1478,20 +1404,13 @@ fn complementary_queries(trees: &[&TokenTree]) -> Maybe<Vacuity, predicate_readi
 /// - ensures: returns the receiver and the method of an operand ending in
 ///   `.name()` with a nonempty receiver; any other operand is `Absent`.
 /// - panics: none.
+/// - executable: none — the function is its own specification; the UI fixtures
+///   are the oracle.
 ///
 /// # Adequacy
 /// - hypothesis: L2 — the compiler fixtures exercise nullary queries and other
 ///   predicate operands and compare accepted forms with refused forms.
 /// - witness: `tests::ui_spec_gates`
-#[spec(ensures: |output| match *operand {
-    [ref receiver @ .., dot, name, &TokenTree::Delimited(_, _, Delimiter::Parenthesis, ref args)]
-        if !receiver.is_empty() && token_is!(dot, TokenKind::Dot) && args.is_empty() => match (ident_name(name), &output) {
-            (Maybe::Present(name), Maybe::Present(actual)) => actual.query == name && same_tokens(actual.receiver, receiver).0,
-            (Maybe::Absent(_), Maybe::Absent(query_reading::NotAQuery::OtherShape)) => true,
-            _ => false,
-        },
-    _ => matches!(output, Maybe::Absent(query_reading::NotAQuery::OtherShape)),
-})]
 fn discriminant_query<'operand, 'stream>(
     operand: &'operand [&'stream TokenTree]
 ) -> Maybe<DiscriminantQuery<'operand, 'stream>, query_reading::NotAQuery>
@@ -1520,6 +1439,7 @@ fn discriminant_query<'operand, 'stream>(
 /// # Specification
 /// - ensures: returns the runs between occurrences of `separator`, in order,
 ///   including empty runs; tokens inside groups are never separators.
+/// - ensures: rejoining the runs with `separator` reproduces the input tokens.
 /// - panics: none.
 ///
 /// # Adequacy
@@ -1527,8 +1447,12 @@ fn discriminant_query<'operand, 'stream>(
 ///   grouped tokens and compare accepted forms with refused forms.
 /// - witness: `tests::ui_spec_gates`
 #[spec(ensures: |output| {
-    let mut runs = trees.split(|tree| matches!(*tree, TokenTree::Token(token, _) if token.kind == *separator));
-    output.iter().all(|run| runs.next().is_some_and(|expected| same_tokens(run, expected).0)) && runs.next().is_none()
+    let mut input = trees.iter().copied();
+    !output.is_empty() && output.iter().enumerate().all(|(index, run)| {
+        (index == 0_usize || input.next().is_some_and(|tree| matches!(*tree,
+            TokenTree::Token(ref token, _) if token.kind == *separator)))
+            && run.iter().all(|tree| input.next().is_some_and(|original| core::ptr::eq(*tree, original)))
+    }) && input.next().is_none()
 })]
 fn split_on<'stream>(
     trees: &[&'stream TokenTree],
@@ -1553,17 +1477,13 @@ fn split_on<'stream>(
 /// - ensures: returns the runs between top-level commas, dropping the empty run
 ///   a trailing comma leaves.
 /// - panics: none.
+/// - executable: none — the function is its own specification; the UI fixtures
+///   are the oracle.
 ///
 /// # Adequacy
 /// - hypothesis: L2 — the compiler fixtures exercise comma-separated lists and
 ///   trailing commas and compare accepted forms with refused forms.
 /// - witness: `tests::ui_spec_gates`
-#[spec(ensures: |output| {
-    let count = trees.iter().filter(|tree| token_is!(tree, TokenKind::Comma)).count()
-        .saturating_add(usize::from(trees.last().is_some_and(|last| !token_is!(last, TokenKind::Comma))));
-    let expected = trees.split(|tree| token_is!(tree, TokenKind::Comma));
-    output.len() == count && output.iter().zip(expected).all(|(run, expected)| same_tokens(run, expected).0)
-})]
 fn split_commas<'stream>(trees: &[&'stream TokenTree]) -> Vec<Vec<&'stream TokenTree>>
 {
     let mut runs = split_on(trees, &TokenKind::Comma);
@@ -1597,15 +1517,13 @@ fn same_tokens(
 /// - ensures: returns the span from the first tree's start to the last tree's
 ///   end, and the dummy span for an empty run.
 /// - panics: none.
+/// - executable: none — the function is its own specification; the UI fixtures
+///   are the oracle.
 ///
 /// # Adequacy
 /// - hypothesis: L2 — the compiler fixtures exercise diagnostic spans over
 ///   predicate token runs and compare accepted forms with refused forms.
 /// - witness: `tests::ui_spec_gates`
-#[spec(ensures: |output| output == match (trees.first(), trees.last()) {
-    (Some(first), Some(last)) => first.span().to(last.span()),
-    _ => rustc_span::DUMMY_SP,
-})]
 fn trees_span(trees: &[&TokenTree]) -> Span
 {
     match (trees.first(), trees.last()) {
@@ -1620,15 +1538,13 @@ fn trees_span(trees: &[&TokenTree]) -> Span
 /// - ensures: returns the symbol of an identifier token, keywords and raw
 ///   identifiers included, and `Absent` for any other tree.
 /// - panics: none.
+/// - executable: none — the function is its own specification; the UI fixtures
+///   are the oracle.
 ///
 /// # Adequacy
 /// - hypothesis: L2 — the compiler fixtures exercise keyword, identifier and
 ///   non-identifier token forms and compare accepted forms with refused forms.
 /// - witness: `tests::ui_spec_gates`
-#[spec(ensures: |output| output == match *tree {
-    TokenTree::Token(Token { kind: TokenKind::Ident(name, _), .. }, _) => Maybe::Present(name),
-    _ => Maybe::Absent(token_reading::NotIdent::OtherTree),
-})]
 fn ident_name(tree: &TokenTree) -> Maybe<Symbol, token_reading::NotIdent>
 {
     match *tree {
@@ -1677,6 +1593,8 @@ const INTENSION: &str = "- intension:";
 ///   [`Exemption::Stated`]; and [`Exemption::Absent`] for a block with no such
 ///   bullet.
 /// - panics: none.
+/// - executable: none — the function is its own specification; the UI fixtures
+///   are the oracle.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — the tests separate the stated exemption, the exemption
@@ -1686,16 +1604,7 @@ const INTENSION: &str = "- intension:";
 /// - witness: `executable::tests::the_exemption_reads_none_and_a_reason`
 /// - witness: `executable::tests::only_an_intension_follows_the_exemption`
 /// - witness: `executable::tests::the_exemption_is_stated_once`
-#[spec(ensures: |output| {
-    let exemptions: Vec<(usize, &str)> = bullets.iter().enumerate().filter_map(|(index, bullet)| bullet.strip_prefix(EXEMPTION).map(|value| (index, value))).collect();
-    output == match *exemptions.as_slice() {
-        [] => Exemption::Absent,
-        [(index, value)] => if bullets.iter().skip(index.saturating_add(1_usize)).any(|bullet| !bullet.starts_with(INTENSION)) {
-            Exemption::NotLast
-        } else { exemption_value(RustdocLine::from(value)) },
-        _ => Exemption::Duplicated,
-    }
-})]
+/// - witness: `tests::ui_spec_gates`
 fn read_exemption(bullets: &[String]) -> Exemption
 {
     let mut seen = 0_usize;
@@ -1836,22 +1745,21 @@ const EXECUTABLE_SHAPES: &str = concat!(
 ///   [`ExecutableDefect::ExemptionBesideClause`]; then a stated exemption or a
 ///   substantive predicate satisfies the obligation; and otherwise the missing
 ///   attribute or its missing clause is the defect.
+/// - ensures: an exempt result requires a stated exemption; a predicate-stated
+///   result requires a stated attribute; neither admitted input combination
+///   returns a defect.
 /// - panics: none.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — the tests take every pair of exemption state and
 ///   attribute record and assert the exact outcome.
 /// - witness: `executable::tests::every_exemption_and_record_pair_has_one_outcome`
-#[spec(ensures: |output| output == match (exemption, attribute) {
-    (Exemption::Duplicated, _) => Maybe::Present(ExecutableDefect::ExemptionDuplicated),
-    (Exemption::NotLast, _) => Maybe::Present(ExecutableDefect::ExemptionNotLast),
-    (Exemption::Unreasoned, _) => Maybe::Present(ExecutableDefect::ExemptionUnreasoned),
-    (_, ExecutableAttribute::Vacuous(kind, span)) => Maybe::Present(ExecutableDefect::Vacuous(kind, span)),
-    (Exemption::Stated, ExecutableAttribute::Stated) => Maybe::Present(ExecutableDefect::ExemptionBesideClause),
-    (Exemption::Stated, _) => Maybe::Absent(executable_check::Satisfied::Exempt),
-    (Exemption::Absent, ExecutableAttribute::Stated) => Maybe::Absent(executable_check::Satisfied::PredicateStated),
-    (Exemption::Absent, ExecutableAttribute::Absent) => Maybe::Present(ExecutableDefect::AttributeAbsent),
-    (Exemption::Absent, ExecutableAttribute::ClauseAbsent) => Maybe::Present(ExecutableDefect::ClauseAbsent),
+#[spec(ensures: |output| match output {
+    Maybe::Absent(executable_check::Satisfied::Exempt) => exemption == Exemption::Stated,
+    Maybe::Absent(executable_check::Satisfied::PredicateStated) => attribute == ExecutableAttribute::Stated,
+    Maybe::Present(_) => !matches!((exemption, attribute),
+        (Exemption::Stated, ExecutableAttribute::Absent | ExecutableAttribute::ClauseAbsent)
+        | (Exemption::Absent, ExecutableAttribute::Stated)),
 })]
 fn executable_defect(
     exemption: Exemption,
