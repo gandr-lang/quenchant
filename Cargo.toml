@@ -106,11 +106,14 @@ features = ["span-locations"]
 # consumers:
 # - quenchant
 # - quenchant-arith
+# - quenchant-fixture-macros
+# - quenchant-gates
 # - quenchant-shape
 # - quenchant-dylints (dev)
 [workspace.dependencies.quenchant-anodized]
 path = "crates/quenchant-anodized"
 version = "=0.0.0"
+default-features = false
 
 # Nominal integer arithmetic, re-exported as `quenchant::arith`.
 # consumers:

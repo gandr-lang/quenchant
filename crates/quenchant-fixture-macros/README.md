@@ -33,6 +33,12 @@ EndpointClient.request();
 
 The supported input is the simple inherent-implementation shape used by these fixtures. An item without a recognizable implementation subject and body is emitted unchanged. The macro does not claim to parse or implement an arbitrary client API.
 
+## Executable specifications
+
+Executable predicates preserve the authored token prefix and check fragment lexing. They compare token spelling; the Dylint UI matrix exercises the authored/generated hygiene boundary. Lexical equality alone supplies no span-identity evidence.
+
+The crate opts into the executable-specification and adequacy policy lints alongside signature policy. The defaults-off `quenchant-anodized` facade uses the workspace’s backend feature and enforcing build cfg, without a separate fixture feature.
+
 ## License
 
 `Apache-2.0 WITH LLVM-exception`: the [license](../../LICENSE.Apache-2.0.txt) and its [exception](../../LICENSE.LLVM-exception.txt).

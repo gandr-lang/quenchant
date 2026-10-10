@@ -13,6 +13,7 @@
 use std::path::Path;
 use std::path::PathBuf;
 
+use anodized::spec;
 use quenchant_shape::shape::Maybe;
 
 use crate::Finding;
@@ -95,6 +96,7 @@ struct DocBlock
 /// - witness: `gates::witnesses::a_bullet_outside_the_adequacy_section_is_not_an_obligation`
 /// - witness: `gates::witnesses::a_declaration_only_block_carries_no_obligation`
 /// - witness: `gates::witnesses::unparseable_source_is_an_operational_error`
+#[spec(ensures: |ref output| output.as_ref().is_ok_and(|claims| claims.is_sorted() && claims.iter().all(|claim| claim.path == path)) || matches!(output, &Err(GateError::Parse { .. }))) ]
 #[inline]
 pub fn witness_claims(
     path: &Path,
@@ -134,6 +136,14 @@ pub fn witness_claims(
 /// - witness: `gates::witnesses::a_witness_owned_by_a_sibling_crate_names_the_sibling`
 /// - witness: `gates::witnesses::a_wrong_target_witness_suggests_the_owning_target`
 /// - witness: `gates::witnesses::a_witness_exposed_by_two_targets_is_ambiguous`
+#[spec(ensures: |ref output| output.iter().map(|finding| (finding.kind.as_str(), finding.package.as_str(), &finding.path, finding.line, finding.witness.as_str())).eq(claims.iter().filter_map(|claim| {
+    let kind = match catalog.targets(package, WitnessPath(&claim.witness)) {
+        Maybe::Absent(_) => "unresolved-witness",
+        Maybe::Present(targets) if targets.len() > 1 => "ambiguous-witness",
+        Maybe::Present(_) => return None,
+    };
+    Some((kind, package.0, &claim.path, claim.line, claim.witness.as_str()))
+})))]
 #[inline]
 #[must_use]
 pub fn resolve(
@@ -189,6 +199,18 @@ pub fn resolve(
 ///   the inventory offers neither.
 /// - provides: the prose half of an `unresolved-witness` finding.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — wrong-target and sibling-owned witnesses expose the
+///   appropriate repair candidate.
+/// - witness: `gates::witnesses::a_wrong_target_witness_suggests_the_owning_target`
+/// - witness: `gates::witnesses::a_witness_owned_by_a_sibling_crate_names_the_sibling`
+#[spec(ensures: |ref output| {
+    let near = catalog.near_misses(package, witness);
+    let foreign = catalog.foreign_packages(package, witness);
+    if near.is_empty() { foreign.iter().all(|name| output.contains(name)) }
+    else { near.iter().all(|alias| output.contains(alias)) }
+})]
 fn unresolved_detail(
     package: PackageName<'_>,
     witness: WitnessPath<'_>,
@@ -226,6 +248,23 @@ fn unresolved_detail(
 ///   there is no implementation to witness.
 /// - provides: the per-block half of [`witness_claims`].
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — section boundaries and declaration-only blocks exclude
+///   non-obligations.
+/// - witness: `gates::witnesses::a_bullet_outside_the_adequacy_section_is_not_an_obligation`
+/// - witness: `gates::witnesses::a_declaration_only_block_carries_no_obligation`
+#[spec(
+    captures: before = claims.clone(),
+    ensures: claims.starts_with(&before) && {
+        let section = block.lines.iter().skip_while(|entry| entry.1.trim() != HEADING).skip(1).take_while(|entry| !opens_heading(DocLine(&entry.1)).0);
+        if section.clone().any(|entry| entry.1.trim().starts_with("- declaration-only:")) { claims.len() == before.len() }
+        else { claims.iter().skip(before.len()).map(|claim| (claim.path.as_path(), claim.line, claim.witness.as_str())).eq(section.filter_map(|entry| match exact_witness(DocLine(&entry.1)) {
+            Maybe::Present(witness) => Some((path, entry.0, witness.0)),
+            Maybe::Absent(_) => None,
+        })) }
+    },
+)]
 fn collect_block(
     path: &Path,
     block: &DocBlock,
@@ -280,6 +319,7 @@ fn collect_block(
 /// - hypothesis: L3 — the tests separate `# `, `## `, a bare `#`, and a `#`
 ///   after other text.
 /// - witness: `gates::witnesses::any_heading_level_terminates_the_section`
+#[spec(ensures: |output| output.0 == (line.0.trim().starts_with('#') && line.0.trim().trim_start_matches('#').starts_with(' ')))]
 #[inline]
 #[must_use]
 pub fn opens_heading(line: DocLine<'_>) -> OpensHeading
@@ -302,6 +342,18 @@ pub fn opens_heading(line: DocLine<'_>) -> OpensHeading
 ///   `ClosingBacktickAbsent`, `EmptyPath`, and `InteriorBacktick`; these
 ///   nonmatches are left to the compiler-side grammar diagnostic.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — only one complete nonempty quoted witness enters
+///   resolution.
+/// - witness: `witnesses::tests::witness_values_require_one_complete_quoted_path`
+#[spec(ensures: |ref output| {
+    let valid = line.0.trim().strip_prefix("- witness: `").and_then(|rest| rest.strip_suffix('`')).filter(|path| !path.is_empty() && !path.contains('`'));
+    match *output {
+        Maybe::Present(path) => valid == Some(path.0),
+        Maybe::Absent(_) => valid.is_none(),
+    }
+})]
 fn exact_witness(line: DocLine<'_>) -> Maybe<WitnessPath<'_>, witness_syntax::Missing>
 {
     let Some(rest) = line.0.trim().strip_prefix("- witness: `")
@@ -329,6 +381,7 @@ fn exact_witness(line: DocLine<'_>) -> Maybe<WitnessPath<'_>, witness_syntax::Mi
 /// - ensures: yields one block per documented declaration, including the file's
 ///   own inner documentation, items nested in modules, impl items, trait items
 ///   and foreign items.
+/// - ensures: every returned block contains at least one documentation line.
 /// - provides: the doc groups the adequacy reader walks.
 /// - panics: none.
 ///
@@ -338,6 +391,12 @@ fn exact_witness(line: DocLine<'_>) -> Maybe<WitnessPath<'_>, witness_syntax::Mi
 /// - boundedness: every pop pushes only strict children of the popped node, and
 ///   a parsed file is a finite tree.
 /// - input recursion: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — nested declarations retain distinct obligations and their
+///   source positions.
+/// - witness: `witnesses::tests::nested_declarations_preserve_documentation_ownership`
+#[spec(ensures: |ref output| output.iter().all(|block| !block.lines.is_empty()))]
 fn doc_blocks(file: &syn::File) -> Vec<DocBlock>
 {
     let mut blocks = Vec::new();
@@ -393,6 +452,17 @@ fn doc_blocks(file: &syn::File) -> Vec<DocBlock>
 ///   both skipped, so a macro-generated `#[doc(hidden)]` contributes nothing.
 /// - provides: one entry of [`doc_blocks`]'s result.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — nested declaration docs retain their witness paths;
+///   hidden and non-string docs do not contribute.
+/// - witness: `witnesses::tests::nested_declarations_preserve_documentation_ownership`
+#[spec(
+    captures: before = blocks.len(),
+    ensures: blocks.len() == before.saturating_add(usize::from(attrs.iter().any(|attr| {
+        attr.path().is_ident("doc") && matches!(attr.meta, syn::Meta::NameValue(ref nv) if matches!(nv.value, syn::Expr::Lit(syn::ExprLit { lit: syn::Lit::Str(ref text), .. }) if text.value().lines().next().is_some()))
+    }))) && blocks.iter().skip(before).all(|block| !block.lines.is_empty()),
+)]
 fn push_block(
     blocks: &mut Vec<DocBlock>,
     attrs: &[syn::Attribute],
@@ -431,9 +501,7 @@ fn push_block(
 /// Attribute token positions anchor extracted documentation in the source file.
 ///
 /// # Specification
-/// - ensures: returns the line the attribute's span starts on, one-based as the
-///   parser reports it.
-/// - panics: none.
+/// trivial.
 fn attr_start_line(attr: &syn::Attribute) -> LineNumber
 {
     LineNumber(syn::spanned::Spanned::span(attr).start().line)
@@ -442,9 +510,7 @@ fn attr_start_line(attr: &syn::Attribute) -> LineNumber
 /// Item-kind dispatch preserves the attributes belonging to each declaration.
 ///
 /// # Specification
-/// - ensures: returns the item's own attribute slice for every item kind that
-///   carries one, and an empty slice for a kind the parser has added since.
-/// - panics: none.
+/// trivial.
 fn item_attrs(item: &syn::Item) -> &[syn::Attribute]
 {
     match *item {
@@ -470,9 +536,7 @@ fn item_attrs(item: &syn::Item) -> &[syn::Attribute]
 /// Implementation members retain their own attribute lists.
 ///
 /// # Specification
-/// - ensures: returns the impl item's own attribute slice for every kind that
-///   carries one, and an empty slice for a kind the parser has added since.
-/// - panics: none.
+/// trivial.
 fn impl_item_attrs(item: &syn::ImplItem) -> &[syn::Attribute]
 {
     match *item {
@@ -487,9 +551,7 @@ fn impl_item_attrs(item: &syn::ImplItem) -> &[syn::Attribute]
 /// Trait members retain their own attribute lists.
 ///
 /// # Specification
-/// - ensures: returns the trait item's own attribute slice for every kind that
-///   carries one, and an empty slice for a kind the parser has added since.
-/// - panics: none.
+/// trivial.
 fn trait_item_attrs(item: &syn::TraitItem) -> &[syn::Attribute]
 {
     match *item {
@@ -504,10 +566,7 @@ fn trait_item_attrs(item: &syn::TraitItem) -> &[syn::Attribute]
 /// Foreign declarations retain their own attribute lists.
 ///
 /// # Specification
-/// - ensures: returns the foreign item's own attribute slice for every kind
-///   that carries one, and an empty slice for a kind the parser has added
-///   since.
-/// - panics: none.
+/// trivial.
 fn foreign_item_attrs(item: &syn::ForeignItem) -> &[syn::Attribute]
 {
     match *item {
@@ -516,5 +575,82 @@ fn foreign_item_attrs(item: &syn::ForeignItem) -> &[syn::Attribute]
         | syn::ForeignItem::Static(ref inner) => &inner.attrs,
         | syn::ForeignItem::Type(ref inner) => &inner.attrs,
         | _ => &[],
+    }
+}
+
+#[cfg(test)]
+mod tests
+{
+    use super::*;
+
+    #[test]
+    fn witness_values_require_one_complete_quoted_path()
+    {
+        assert!(matches!(
+            exact_witness(DocLine(" - witness: `tests::present` ")),
+            Maybe::Present(WitnessPath("tests::present"))
+        ));
+        for (line, reason) in [
+            ("witness: `test`", witness_syntax::Missing::PrefixAbsent),
+            (
+                "- witness: `test",
+                witness_syntax::Missing::ClosingBacktickAbsent,
+            ),
+            ("- witness: ``", witness_syntax::Missing::EmptyPath),
+            (
+                "- witness: `one`, `two`",
+                witness_syntax::Missing::InteriorBacktick,
+            ),
+        ] {
+            assert!(
+                matches!(exact_witness(DocLine(line)), Maybe::Absent(actual) if actual == reason)
+            );
+        }
+    }
+
+    #[test]
+    fn nested_declarations_preserve_documentation_ownership()
+    {
+        let source = r##"
+#![doc = "# Adequacy\n- witness: `file`"]
+#[doc = "# Adequacy\n- witness: `module`"]
+mod nested {
+    #[doc = "# Adequacy\n- witness: `function`"]
+    fn operation() {}
+    struct Subject;
+    impl Subject {
+        #[doc = "# Adequacy\n- witness: `method`"]
+        fn method() {}
+    }
+    trait Interface {
+        #[doc = "# Adequacy\n- witness: `associated`"]
+        const VALUE: u8;
+    }
+    unsafe extern "C" {
+        #[doc = "# Adequacy\n- witness: `external`"]
+        fn foreign();
+    }
+    #[doc(hidden)]
+    #[doc = 7]
+    fn undocumented() {}
+}
+"##;
+        let path = Path::new("nested.rs");
+        let claims = witness_claims(path, SourceText(source)).unwrap();
+        assert_eq!(
+            claims
+                .iter()
+                .map(|claim| claim.witness.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "file",
+                "module",
+                "function",
+                "method",
+                "associated",
+                "external"
+            ]
+        );
+        assert!(claims.iter().all(|claim| claim.path == path));
     }
 }

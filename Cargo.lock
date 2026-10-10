@@ -878,6 +878,7 @@ name = "quenchant-fixture-macros"
 version = "0.0.0"
 dependencies = [
  "proc-macro2",
+ "quenchant-anodized",
 ]
 
 [[package]]
@@ -885,6 +886,7 @@ name = "quenchant-gates"
 version = "0.0.0"
 dependencies = [
  "proc-macro2",
+ "quenchant-anodized",
  "quenchant-shape",
  "regex",
  "serde_json",

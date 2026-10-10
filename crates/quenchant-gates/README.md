@@ -61,6 +61,12 @@ These commands accept `--root <repository>`; omission selects the working direct
 
 Each check carries a `# Specification`, closed refusal reasons in `Maybe`, and addressed operational errors. Deliberately invalid repository fixtures exercise the CLI as well as the pure comparisons. Git-backed checks inspect tracked working-tree text, not untracked files or historical file contents.
 
+## Executable specifications
+
+Executable predicates check catalog preservation, witness resolution, invocation policy, pin coherence, and typed failure boundaries. Formatter and process boundaries carry explicit exemptions where the returned value omits the observation needed for an independent runtime check. Their adequacy witnesses exercise the observable boundary instead.
+
+The library, binary, and integration-test crate roots enforce the five executable-specification policy lints during Dylint checks. Specifications use the defaults-off `quenchant-anodized` facade; `quenchant-anodized/anodized` enables the backend, and the enforcing tasks select `anodized_panic` for the complete build graph.
+
 ## Results
 
 A successful exit means the selected gate completed and found no violation. Policy findings and operational failures both produce unsuccessful exits, with different diagnostics explaining whether a verdict was reached. The CLI does not promise a distinct numeric exit code for every failure class.

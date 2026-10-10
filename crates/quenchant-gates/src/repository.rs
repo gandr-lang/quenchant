@@ -10,6 +10,7 @@ use std::path::PathBuf;
 use std::process::Command;
 use std::process::ExitCode;
 
+use anodized::spec;
 use quenchant_gates::GateError;
 use quenchant_gates::semantic::CommandLine;
 use quenchant_gates::semantic::ErrorMessage;
@@ -35,6 +36,7 @@ pub struct Passed;
 /// - hypothesis: L3 an absent input produces an addressed operational error
 ///   rather than acceptance.
 /// - witness: `repository::tests::unavailable_input_is_not_a_verdict`
+#[spec(ensures: |ref result| result.as_ref().err().is_none_or(|error| matches!(*error, GateError::Io { path: ref address, .. } if address == path)))]
 pub fn read_text(path: &Path) -> Result<String, GateError>
 {
     std::fs::read_to_string(path)
@@ -56,6 +58,7 @@ pub fn read_text(path: &Path) -> Result<String, GateError>
 /// - hypothesis: L3 a failing instrument remains an operational failure even
 ///   when it emits stdout.
 /// - witness: `repository::tests::failed_process_is_not_a_verdict`
+#[spec(ensures: |ref output| output.as_ref().err().is_none_or(|error| matches!(*error, GateError::Tool { .. })))]
 pub fn output(command: &mut Command) -> Result<String, GateError>
 {
     let identity = format!("{command:?}");
@@ -86,6 +89,7 @@ pub fn output(command: &mut Command) -> Result<String, GateError>
 /// # Adequacy
 /// - hypothesis: L3 malformed TOML cannot masquerade as absent pins.
 /// - witness: `repository::tests::invalid_toml_is_not_a_verdict`
+#[spec(ensures: |ref result| result.as_ref().err().is_none_or(|error| matches!(*error, GateError::Io { path: ref address, .. } | GateError::Parse { path: ref address, .. } if address == path)))]
 pub fn document(path: &Path) -> Result<toml_edit::DocumentMut, GateError>
 {
     let text = read_text(path)?;
@@ -107,6 +111,7 @@ pub fn document(path: &Path) -> Result<toml_edit::DocumentMut, GateError>
 /// # Adequacy
 /// - hypothesis: L3 a tracked path with spaces remains one address.
 /// - witness: `repository::public_boundary::tests::tracked_tree_and_history_are_checked`
+#[spec(ensures: |ref result| result.as_ref().is_ok_and(|paths| paths.iter().all(|path| path.is_relative())) || matches!(result, &Err(GateError::Tool { .. }))) ]
 pub fn tracked_paths(root: &Path) -> Result<Vec<PathBuf>, GateError>
 {
     let text = output(
@@ -139,6 +144,7 @@ pub fn tracked_paths(root: &Path) -> Result<Vec<PathBuf>, GateError>
     clippy::use_debug,
     reason = "the CLI emits the closed reason variant as structured refusal evidence"
 )]
+#[spec(captures: accepted = matches!(&result, &Ok(Maybe::Present(Passed))), ensures: |output| (output == ExitCode::SUCCESS) == accepted)]
 fn report<R>(
     name: SourceText<'_>,
     result: Result<Maybe<Passed, R>, GateError>,
@@ -172,6 +178,8 @@ where
 ///   their documented environment overrides.
 /// - fails: invalid arguments exit unsuccessfully before any gate or edit runs.
 /// - panics: none.
+/// - executable: none — the selected command can write repository files; its
+///   consumed arguments and external evidence cannot be replayed safely.
 ///
 /// # Adequacy
 /// - hypothesis: L3 malformed CLI options cannot weaken the selected check or

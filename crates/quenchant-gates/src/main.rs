@@ -15,6 +15,17 @@
 //! with distinct diagnostics. Failure to obtain an inventory remains an
 //! operational failure rather than evidence that its obligations passed.
 
+#![cfg_attr(
+    dylint_lib = "quenchant_dylints",
+    deny(
+        spec_attribute_present,
+        adequacy_present,
+        maybe_shape,
+        erased_error_signature,
+        spec_attribute_unqualified
+    )
+)]
+
 extern crate alloc;
 
 mod repository;
@@ -23,6 +34,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
 
+use anodized::spec;
 use quenchant_gates::Finding;
 use quenchant_gates::GateError;
 use quenchant_gates::anodized::Requirement;
@@ -42,6 +54,14 @@ const USAGE: &str = "usage: quenchant-gates <anodized | witnesses> --manifest-pa
 /// - fails: prints the usage text and exits unsuccessfully on an unrecognized
 ///   invocation, and prints the gate's own error on an operational failure.
 /// - panics: none.
+/// - executable: none — the exit code does not retain the selected operation’s
+///   evidence or emitted diagnostics; replay can perform repository edits.
+///
+/// # Adequacy
+/// - hypothesis: L3 — invalid options fail before running a gate and actual
+///   consumer outcomes remain distinct.
+/// - witness: `gates::repository::subcommands_refuse_broken_fixtures`
+/// - witness: `gates::repository::witness_inventory_uses_consumer_selection_over_shadowed_plugins`
 #[expect(
     clippy::print_stderr,
     reason = "the gate driver is a command-line program; its usage diagnostics are its output, \
@@ -116,6 +136,13 @@ fn main() -> ExitCode
 ///   fail, and an enforcing requirement accepts only panic checks.
 /// - fails: reports operational query errors separately from policy failure.
 /// - panics: none.
+/// - executable: none — the measured state is consumed into an exit code and
+///   write-only output; an independent observation would rerun Cargo.
+///
+/// # Adequacy
+/// - hypothesis: L3 — consumer flags change the measured state and enforcing
+///   policy refuses non-enforcing modes.
+/// - witness: `gates::anodized::consumer_configuration_and_encoded_flags_select_the_state`
 #[expect(
     clippy::print_stderr,
     clippy::print_stdout,
@@ -157,6 +184,13 @@ fn anodized_gate(
 ///   when the workspace cannot be discovered or its tests cannot be listed, so
 ///   an unmeasured run is never reported as a pass.
 /// - panics: none.
+/// - executable: none — the findings are consumed into write-only process
+///   output; checking them here would rerun the external inventory.
+///
+/// # Adequacy
+/// - hypothesis: L3 — a present witness passes, an absent witness fails, and a
+///   broken consumer cannot report a pass.
+/// - witness: `gates::repository::witness_inventory_uses_consumer_selection_over_shadowed_plugins`
 #[expect(
     clippy::print_stderr,
     clippy::print_stdout,
@@ -202,6 +236,12 @@ fn run_witnesses(manifest_path: &Path) -> ExitCode
 /// [`GateError::Tool`] when `cargo metadata` or a test listing fails,
 /// [`GateError::Io`] when a member's source cannot be read, and
 /// [`GateError::Parse`] when one of those sources is not parseable Rust.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the real consumer’s witness is resolved only against its
+///   own selected inventory.
+/// - witness: `gates::repository::witness_inventory_uses_consumer_selection_over_shadowed_plugins`
+#[spec(ensures: |ref output| output.as_ref().is_ok_and(|findings| findings.is_sorted()) || output.is_err())]
 fn inventory_gate(manifest_path: &Path) -> Result<Vec<Finding>, GateError>
 {
     let workspace = inventory::discover(manifest_path)?;

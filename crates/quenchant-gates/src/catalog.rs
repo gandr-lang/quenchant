@@ -13,6 +13,7 @@
 use alloc::collections::BTreeMap;
 use alloc::collections::BTreeSet;
 
+use anodized::spec;
 use quenchant_shape::shape::Maybe;
 
 use crate::GateError;
@@ -50,6 +51,7 @@ pub struct TestCatalog
     aliases: BTreeMap<String, BTreeMap<String, BTreeSet<String>>>,
 }
 
+#[spec]
 impl TestCatalog
 {
     /// Empty catalog before any runnable inventory has been incorporated.
@@ -83,6 +85,7 @@ impl TestCatalog
     /// - witness: `gates::catalog::a_nextest_listing_indexes_by_package_and_target`
     #[inline]
     #[must_use]
+    #[spec(ensures: |count| count.0 == self.aliases.values().map(BTreeMap::len).sum::<usize>())]
     pub fn alias_count(&self) -> AliasCount
     {
         AliasCount(
@@ -110,6 +113,14 @@ impl TestCatalog
     ///   the resulting alias set is asserted to hold both sides.
     /// - witness: `gates::catalog::two_listings_merge_into_one_inventory`
     #[inline]
+    #[spec(
+        captures: before = self.aliases.clone(),
+        ensures: before.iter().chain(other.aliases.iter()).all(|(package, aliases)| {
+            aliases.iter().all(|(alias, targets)| self.aliases.get(package).and_then(|own| own.get(alias)).is_some_and(|own| targets.is_subset(own)))
+        }) && self.aliases.iter().all(|(package, aliases)| aliases.iter().all(|(alias, targets)| targets.iter().all(|target| {
+            [&before, &other.aliases].iter().any(|source| source.get(package).and_then(|table| table.get(alias)).is_some_and(|known| known.contains(target)))
+        }))),
+    )]
     pub fn absorb(
         &mut self,
         other: &Self,
@@ -132,7 +143,16 @@ impl TestCatalog
     ///   creating either level that is absent; recording the same target twice
     ///   changes nothing.
     /// - panics: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — two targets exposing one alias remain distinct, so
+    ///   overwriting the first target changes the ambiguity verdict.
+    /// - witness: `gates::witnesses::a_witness_exposed_by_two_targets_is_ambiguous`
     #[inline]
+    #[spec(
+        captures: before = self.aliases.get(package.0).and_then(|aliases| aliases.get(alias.0)).cloned().unwrap_or_default(),
+        ensures: self.aliases.get(package.0).and_then(|aliases| aliases.get(alias.0)).is_some_and(|targets| targets.contains(target.0) && before.is_subset(targets) && targets.len() == before.len().saturating_add(usize::from(!before.contains(target.0)))),
+    )]
     pub fn insert(
         &mut self,
         package: PackageName<'_>,
@@ -156,7 +176,19 @@ impl TestCatalog
     /// - provides: `target_lookup::Missing::PackageUnlisted` means the package
     ///   has no catalog entry; `AliasUnlisted` means its entry lacks the alias.
     /// - panics: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — exact aliases, absent packages, and absent aliases in
+    ///   known packages distinguish the two absence reasons from a target set.
+    /// - witness: `gates::catalog::a_nextest_listing_indexes_by_package_and_target`
     #[inline]
+    #[spec(ensures: |ref output| match *output {
+        Maybe::Present(targets) => self.aliases.get(package.0)
+            .and_then(|aliases| aliases.get(witness.0)) == Some(targets),
+        Maybe::Absent(target_lookup::Missing::PackageUnlisted) => !self.aliases.contains_key(package.0),
+        Maybe::Absent(target_lookup::Missing::AliasUnlisted) => self.aliases.get(package.0)
+            .is_some_and(|aliases| !aliases.contains_key(witness.0)),
+    })]
     pub fn targets(
         &self,
         package: PackageName<'_>,
@@ -191,6 +223,7 @@ impl TestCatalog
     /// - witness: `gates::witnesses::a_witness_owned_by_a_sibling_crate_names_the_sibling`
     #[inline]
     #[must_use]
+    #[spec(ensures: |ref output| output.iter().eq(self.aliases.iter().filter(|&(name, aliases)| name != package.0 && aliases.contains_key(witness.0)).map(|(name, _)| name)))]
     pub fn foreign_packages(
         &self,
         package: PackageName<'_>,
@@ -221,6 +254,7 @@ impl TestCatalog
     /// - witness: `gates::witnesses::a_wrong_target_witness_suggests_the_owning_target`
     #[inline]
     #[must_use]
+    #[spec(ensures: |ref output| output.iter().eq(self.aliases.get(package.0).into_iter().flat_map(|table| table.keys()).filter(|alias| alias.as_str() != witness.0 && leaf_segment(TestAlias::from(*alias)) == leaf_segment(TestAlias::from(witness.0)))))]
     pub fn near_misses(
         &self,
         package: PackageName<'_>,
@@ -265,6 +299,7 @@ impl TestCatalog
     /// - witness: `gates::catalog::a_nextest_listing_indexes_by_package_and_target`
     /// - witness: `gates::catalog::an_unsupported_listing_is_an_operational_error`
     #[inline]
+    #[spec(ensures: |ref output| output.as_ref().err().is_none_or(|error| matches!(*error, GateError::Tool { .. }))) ]
     pub fn from_nextest_json(source: SourceText<'_>) -> Result<Self, GateError>
     {
         let document: serde_json::Value = serde_json::from_str(source.0).map_err(|error| {
@@ -340,8 +375,14 @@ impl TestCatalog
 ///   only the integration kind takes a target prefix.
 /// - provides: the alias-shape decision for every listed test.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — library and integration listings distinguish unqualified
+///   module paths from target-prefixed aliases.
+/// - witness: `gates::catalog::a_nextest_listing_indexes_by_package_and_target`
 #[inline]
 #[must_use]
+#[spec(ensures: |output| output.0 == (kind.0 == "test"))]
 pub fn is_integration(kind: TargetKind<'_>) -> IntegrationTarget
 {
     IntegrationTarget(kind.0 == "test")
@@ -362,6 +403,11 @@ pub fn is_integration(kind: TargetKind<'_>) -> IntegrationTarget
 /// - witness: `gates::catalog::a_nextest_listing_indexes_by_package_and_target`
 #[inline]
 #[must_use]
+#[spec(ensures: |ref output| if integration.0 {
+    output.strip_prefix(target.0).and_then(|suffix| suffix.strip_prefix("::")) == Some(name.0)
+} else {
+    output == name.0
+})]
 pub fn alias_for(
     integration: IntegrationTarget,
     target: TargetName<'_>,
@@ -380,6 +426,15 @@ pub fn alias_for(
 /// - ensures: returns the text after the last `::`, and the whole path when it
 ///   holds none.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — a wrong target with the same final segment yields the
+///   recorded qualified alias instead of an unrelated repair hint.
+/// - witness: `gates::witnesses::a_wrong_target_witness_suggests_the_owning_target`
+#[spec(ensures: |output| match path.0.rsplit_once("::") {
+    Some((_, leaf)) => output.0 == leaf,
+    None => output.0 == path.0,
+})]
 fn leaf_segment(path: TestAlias<'_>) -> TestAlias<'_>
 {
     TestAlias::from(path.0.rsplit("::").next().unwrap_or(path.0))
