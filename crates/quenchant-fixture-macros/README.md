@@ -13,7 +13,7 @@ From another crate in this workspace:
 quenchant-fixture-macros = { path = "../quenchant-fixture-macros", version = "=0.0.0" }
 ```
 
-Normal consumers do not need this package. The Dylint harness links the actual compiled macro artifact into its separately compiled fixtures.
+Normal consumers do not need this package. The Dylint harness selects the fixture packages with `cargo test --no-run` and reads their exact artifact paths from Cargo JSON. This package’s development dependencies supply the real C++ bridge, serde, and clap libraries used by the UI matrix. The selected build includes fixture infrastructure and its libraries; the compiler-plugin harness is built by its own test invocation.
 
 ## Example
 

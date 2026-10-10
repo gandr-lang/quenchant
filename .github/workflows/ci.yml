@@ -229,7 +229,8 @@ jobs:
     container: *ci-image # zizmor: ignore[unpinned-images]
     env:
       CI_CACHE_SAVE: "true"
-      CI_CACHE_KEY: dylint-v1
+      # The fixture graph excludes plugin/harness artifacts from its cache.
+      CI_CACHE_KEY: dylint-v2
       CI_INSTALL_TOOLS: *without-image
       CI_TOOLS: CI_TOOLS_DYLINT
       CI_REPORT_NAME: junit-dylint
@@ -272,27 +273,6 @@ jobs:
           # Match package-directory builds, including the test inventory.
           RUSTFLAGS: -C linker=dylint-link
         run: cargo run -p quenchant-gates -- witnesses --manifest-path Cargo.toml
-      # Diagnostic reruns price each compiler invocation without changing the
-      # normal lane. Remove this probe after the fixture audit is complete.
-      - name: refresh fixture-profiler packages
-        if: &profile-fixtures ${{ runner.debug == '1' && needs.ci-image-ref.outputs.ref == '' }}
-        run: sudo apt-get update
-      - name: install fixture profiler
-        if: *profile-fixtures
-        run: sudo apt-get install --yes strace
-      - name: profile UI compiler processes
-        if: *profile-fixtures
-        working-directory: *dylint-package
-        env:
-          CARGO_TARGET_DIR: ${{ github.workspace }}/target
-        run: strace -f -qq -ttt -s 8192 -e trace=execve,exit_group -o "$RUNNER_TEMP/ui-processes.log" cargo nextest run --profile ci
-      - name: upload UI compiler profile
-        if: ${{ !cancelled() && runner.debug == '1' && needs.ci-image-ref.outputs.ref == '' }}
-        uses: *upload-artifact
-        with:
-          name: ui-compiler-profile
-          path: ${{ runner.temp }}/ui-processes.log
-          if-no-files-found: error
       - *save-dylint-library
       - *save-dylint-drivers
 

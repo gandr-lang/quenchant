@@ -28,14 +28,10 @@ dylint_linting.workspace = true
 quenchant-anodized.workspace = true
 quenchant-shape.workspace = true
 
-# The harness uses the facade in its selected mode. UI fixtures commission
-# their enabled facade, foreign macro, serde, and clap artifacts through an
-# explicit build.
+# The fixture package owns foreign libraries acquired by the explicit UI build.
+# These dependencies belong to the test harness itself.
 [dev-dependencies]
-clap.workspace = true
-cxx.workspace = true
 dylint_testing.workspace = true
-serde.workspace = true
 serde_json.workspace = true
 
 [lints]

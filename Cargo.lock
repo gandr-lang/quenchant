@@ -862,14 +862,11 @@ dependencies = [
 name = "quenchant-dylints"
 version = "0.0.0"
 dependencies = [
- "clap",
  "clippy_utils",
- "cxx",
  "dylint_linting",
  "dylint_testing",
  "quenchant-anodized",
  "quenchant-shape",
- "serde",
  "serde_json",
 ]
 
@@ -877,8 +874,11 @@ dependencies = [
 name = "quenchant-fixture-macros"
 version = "0.0.0"
 dependencies = [
+ "clap",
+ "cxx",
  "proc-macro2",
  "quenchant-anodized",
+ "serde",
 ]
 
 [[package]]

@@ -1167,8 +1167,6 @@ non_owning_generics = [
                 "quenchant-arith",
                 "-p",
                 "quenchant-shape",
-                "-p",
-                "quenchant-dylints",
                 "--features",
                 "quenchant-anodized/anodized",
                 "--target-dir",
