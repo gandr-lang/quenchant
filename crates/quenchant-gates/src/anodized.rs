@@ -21,6 +21,8 @@
 use std::path::Path;
 use std::process::Command;
 
+use anodized::spec;
+
 /// Compiler-query output, distinct from flag arguments or authored source.
 #[repr(transparent)]
 #[derive(Clone, Copy, Debug)]
@@ -66,6 +68,12 @@ impl core::fmt::Display for EnforcementState
     ///   is two words.
     /// - fails: propagates the formatter's own write failure.
     /// - panics: none.
+    /// - executable: none — the formatter exposes a write-only sink; neither
+    ///   emitted text nor a failed write is independently observable here.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — a refusing sink must propagate its formatting error.
+    /// - witness: `tests::rendering_propagates_sink_failure`
     #[inline]
     fn fmt(
         &self,
@@ -103,6 +111,7 @@ pub enum Verdict
     Fail,
 }
 
+#[spec]
 impl EnforcementState
 {
     /// Observation and enforcing policy have different acceptance sets.
@@ -117,6 +126,7 @@ impl EnforcementState
     /// - witness: `anodized::tests::every_state_obeys_lane_policy`
     #[inline]
     #[must_use]
+    #[spec(ensures: |output| (output == Verdict::Pass) == (self == Self::Enforcing || (requirement == Requirement::Observe && !matches!(self, Self::Discarded | Self::Incompatible))))]
     pub fn verdict(
         self,
         requirement: Requirement,
@@ -161,6 +171,12 @@ impl core::fmt::Display for GateError
     ///   diagnostic.
     /// - fails: propagates the formatter's own write failure.
     /// - panics: none.
+    /// - executable: none — the formatter exposes a write-only sink; neither
+    ///   emitted text nor a failed write is independently observable here.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — a refusing sink must propagate its formatting error.
+    /// - witness: `tests::rendering_propagates_sink_failure`
     #[inline]
     fn fmt(
         &self,
@@ -199,6 +215,8 @@ impl core::error::Error for GateError
 /// - fails: returns a manifest, process, query, or output error rather than an
 ///   unmeasured passing verdict.
 /// - panics: none.
+/// - executable: none — the returned mode omits the child process’s cfg
+///   transcript; checking its origin would rerun a stateful external query.
 ///
 /// # Errors
 /// Returns the corresponding [`GateError`] for each failed boundary operation.
@@ -261,6 +279,7 @@ pub fn invocation_state(manifest: &Path) -> Result<EnforcementState, GateError>
 /// - witness: `anodized::tests::every_mode_combination_matches_backend_constraints`
 /// - witness: `anodized::tests::similar_or_valued_cfgs_do_not_enable_modes`
 /// - witness: `anodized::tests::missing_compiler_evidence_is_an_error`
+#[spec(ensures: |ref output| output.is_ok() == ["target_arch=\"", "target_os=\"", "target_pointer_width=\""].iter().all(|prefix| cfgs.0.lines().any(|line| line.trim().starts_with(prefix))))]
 #[inline]
 pub fn enforcement_state(cfgs: CfgText<'_>) -> Result<EnforcementState, GateError>
 {

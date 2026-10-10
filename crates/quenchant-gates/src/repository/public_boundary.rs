@@ -8,6 +8,7 @@ use std::io::ErrorKind;
 use std::path::Path;
 use std::process::Command;
 
+use anodized::spec;
 use quenchant_gates::GateError;
 use quenchant_gates::semantic::ErrorMessage;
 use quenchant_gates::semantic::SourceText;
@@ -84,6 +85,7 @@ quenchant_shape::reason_enum! {
 /// - hypothesis: L3 directed material classes and near misses distinguish
 ///   missing or widened recognizers.
 /// - witness: `repository::public_boundary::tests::material_classes_and_near_misses`
+#[spec(ensures: |ref output| output.as_ref().is_ok_and(|patterns| patterns.iter().map(|&(kind, _)| kind).eq([Material::HomePath, Material::PrivateHost, Material::PrivateAddress, Material::InternalUri, Material::Credential, Material::PrivateKey, Material::SessionToken, Material::SessionIdentity])) || matches!(output, &Err(GateError::Parse { .. }))) ]
 fn patterns() -> Result<Vec<(Material, regex::Regex)>, GateError>
 {
     let expressions = [
@@ -154,6 +156,7 @@ enum Surface
 /// - hypothesis: L3 classes, near misses, and provenance-surface separation
 ///   distinguish skipped and overbroad matches.
 /// - witness: `repository::public_boundary::tests::material_classes_and_near_misses`
+#[spec(ensures: |ref output| matches!(*output, Maybe::Present(_)) != text.0.lines().any(|line| patterns.iter().any(|&(kind, ref pattern)| !(kind == Material::SessionToken && matches!(surface, Surface::Message)) && pattern.is_match(line))))]
 fn scan(
     text: SourceText<'_>,
     address: SourceText<'_>,
@@ -190,6 +193,9 @@ fn scan(
 /// - ensures: non-UTF8 text retains ASCII boundary checks; NUL-bearing binary
 ///   files are excluded.
 /// - panics: none.
+/// - executable: none — acceptance combines mutable working-tree files and Git
+///   history; the returned verdict retains neither observation, and a second
+///   scan would measure a different repository snapshot.
 ///
 /// # Errors
 /// `GateError::Tool`, `GateError::Io`, and `GateError::Parse` prevent an
@@ -297,6 +303,7 @@ pub fn check(root: &Path) -> Result<Maybe<Passed, refusal::Refused>, GateError>
 ///   distinguish widened or weakened recognition.
 /// - witness: `repository::public_boundary::tests::conflict_marker_boundaries`
 /// - witness: `repository::public_boundary::tests::non_utf8_text_keeps_its_ascii_boundaries`
+#[spec(ensures: |ref output| output.as_ref().err().is_none_or(|error| matches!(*error, GateError::Io { .. } | GateError::Tool { .. })))]
 pub fn conflicts(root: &Path) -> Result<Maybe<Passed, conflict::Refused>, GateError>
 {
     for path in super::tracked_paths(root)? {

@@ -3,6 +3,7 @@
 use std::path::Path;
 use std::process::Command;
 
+use anodized::spec;
 use quenchant_gates::GateError;
 use quenchant_gates::semantic::CommandLine;
 use quenchant_gates::semantic::ErrorMessage;
@@ -75,6 +76,7 @@ quenchant_shape::reason_enum! {
 ///   drift in either direction.
 /// - witness: `repository::publish_allowlist::tests::exact_publication_boundary`
 /// - witness: `repository::publish_allowlist::tests::malformed_metadata_is_operational`
+#[spec(ensures: |ref output| output.as_ref().err().is_none_or(|error| matches!(*error, GateError::Tool { .. })))]
 fn inspect(text: SourceText<'_>) -> Result<Maybe<Passed, refusal::Refused>, GateError>
 {
     let malformed = |message: &str| {
@@ -157,6 +159,7 @@ fn inspect(text: SourceText<'_>) -> Result<Maybe<Passed, refusal::Refused>, Gate
 /// - hypothesis: L3 a real workspace member outside the allowlist is rejected
 ///   through the command path.
 /// - witness: `gates::repository::subcommands_refuse_broken_fixtures`
+#[spec(ensures: |ref output| output.as_ref().err().is_none_or(|error| matches!(*error, GateError::Tool { .. })))]
 pub fn check(manifest: &Path) -> Result<Maybe<Passed, refusal::Refused>, GateError>
 {
     let text = super::output(

@@ -5,6 +5,7 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
+use anodized::spec;
 use quenchant_gates::GateError;
 use quenchant_gates::semantic::ErrorMessage;
 use quenchant_gates::semantic::SourceText;
@@ -72,6 +73,23 @@ quenchant_shape::reason_enum! {
 /// - hypothesis: L3 pin presence, type, and TOML-layout boundaries distinguish
 ///   empty or wrong-table lookups.
 /// - witness: `repository::pins::tests::pin_presence_and_drift`
+#[spec(ensures: |ref output| {
+    let keys: &[&str] = match name {
+        Pin::Channel => &["toolchain", "channel"],
+        Pin::ClippyTag => &["workspace", "dependencies", "clippy_utils", "tag"],
+        Pin::Linting => &["workspace", "dependencies", "dylint_linting", "version"],
+        Pin::Testing => &["workspace", "dependencies", "dylint_testing", "version"],
+        Pin::Driver => &["tools", "cargo:cargo-dylint"],
+        Pin::Linker => &["tools", "cargo:dylint-link"],
+        Pin::ConsumerBinary => &["env", "QUENCHANT_REV"],
+    };
+    let expected = keys.iter().try_fold(document.as_item(), |item, key| item.get(*key)).and_then(|item| item.as_str().or_else(|| item.get("version").and_then(toml_edit::Item::as_str))).filter(|value| !value.is_empty());
+    match *output {
+        Maybe::Present(value) => expected == Some(value.0),
+        Maybe::Absent(refusal::Refused::Missing(missing)) => expected.is_none() && missing == name,
+        Maybe::Absent(_) => false,
+    }
+})]
 fn pin(
     document: &toml_edit::DocumentMut,
     name: Pin,
@@ -116,6 +134,7 @@ fn pin(
 /// - hypothesis: L3 missing prefix, empty/extra component, and nondecimal cases
 ///   distinguish permissive tag guards.
 /// - witness: `repository::pins::tests::stable_tag_boundaries`
+#[spec(ensures: |ref output| matches!(*output, Maybe::Present(_)) == tag.0.strip_prefix("rust-").is_some_and(|release| release.split('.').count() == 3 && release.split('.').all(|part| !part.is_empty() && part.bytes().all(|byte| byte.is_ascii_digit()))))]
 fn stable_tag(tag: SourceText<'_>) -> Maybe<Passed, refusal::Refused>
 {
     let valid = tag.0.strip_prefix("rust-").is_some_and(|release| {
@@ -151,6 +170,7 @@ fn stable_tag(tag: SourceText<'_>) -> Maybe<Passed, refusal::Refused>
 ///   comparison witnesses; the live pin gate exercises the selected release
 ///   query.
 /// - witness: `repository::pins::tests::pin_presence_and_drift`
+#[spec(requires: matches!(stable_tag(tag), Maybe::Present(_)))]
 fn upstream(tag: SourceText<'_>) -> Result<toml_edit::DocumentMut, GateError>
 {
     let endpoint = format!(
@@ -184,6 +204,10 @@ fn upstream(tag: SourceText<'_>) -> Result<toml_edit::DocumentMut, GateError>
 /// - hypothesis: L3 independently drifted pins and missing values distinguish
 ///   weakened comparisons and vacuous success.
 /// - witness: `repository::pins::tests::pin_presence_and_drift`
+#[spec(ensures: |ref output| matches!(*output, Maybe::Present(_)) == match (pin(manifest, Pin::ClippyTag), pin(toolchain, Pin::Channel), pin(remote, Pin::Channel), pin(manifest, Pin::Linting)) {
+    (Maybe::Present(tag), Maybe::Present(channel), Maybe::Present(expected), Maybe::Present(linting)) => matches!(stable_tag(tag), Maybe::Present(_)) && channel == expected && [(manifest, Pin::Testing), (tools, Pin::Driver), (tools, Pin::Linker)].iter().all(|&(document, name)| pin(document, name) == Maybe::Present(linting)),
+    _ => false,
+})]
 fn compare(
     manifest: &toml_edit::DocumentMut,
     tools: &toml_edit::DocumentMut,
@@ -251,6 +275,13 @@ fn compare(
 /// - hypothesis: L3 absent, ambiguous, short, uppercase, and unequal revision
 ///   cases distinguish selection and equality defects.
 /// - witness: `repository::pins::tests::consumer_revision_boundaries`
+#[spec(ensures: |ref output| matches!(*output, Maybe::Present(_)) == {
+    let libraries = manifest.get("workspace").and_then(|item| item.get("metadata")).and_then(|item| item.get("dylint")).and_then(|item| item.get("libraries")).and_then(toml_edit::Item::as_array_of_tables);
+    libraries.is_some_and(|libraries| {
+        let mut revisions = libraries.iter().filter(|table| table.get("git").and_then(toml_edit::Item::as_str).is_some_and(|git| git.trim_end_matches(".git").trim_end_matches('/') == "https://github.com/gandr-lang/quenchant") && table.get("pattern").and_then(toml_edit::Item::as_str) == Some("crates/quenchant-dylints")).filter_map(|table| table.get("rev").and_then(toml_edit::Item::as_str));
+        revisions.next().is_some_and(|revision| revision.len() == 40 && revision.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte)) && pin(tools, Pin::ConsumerBinary) == Maybe::Present(SourceText(revision))) && revisions.next().is_none()
+    })
+})]
 fn consumer(
     manifest: &toml_edit::DocumentMut,
     tools: &toml_edit::DocumentMut,
@@ -332,6 +363,7 @@ fn input(
 ///   offline evidence document.
 /// - fails: input access, parsing, and upstream process failures return
 ///   `GateError`.
+/// - ensures: a drift refusal retains unequal expected and actual values.
 /// - panics: none.
 ///
 /// # Errors
@@ -342,6 +374,7 @@ fn input(
 /// - hypothesis: L3 deliberately drifted fixture files reach the same
 ///   comparison used by the live command.
 /// - witness: `gates::repository::subcommands_refuse_broken_fixtures`
+#[spec(ensures: |ref output| !matches!(output, &Ok(Maybe::Absent(refusal::Refused::Drift { ref expected, ref actual, .. })) if expected == actual))]
 pub fn check(
     root: &Path,
     options: &BTreeMap<String, String>,
@@ -394,6 +427,7 @@ pub fn check(
 ///
 /// # Specification
 /// - ensures: both replacements preserve unrelated TOML fields and comments.
+/// - ensures: refusal leaves both input documents unchanged.
 /// - provides: a missing pin or non-nightly upstream channel refuses the edit.
 /// - panics: none.
 ///
@@ -401,6 +435,13 @@ pub fn check(
 /// - hypothesis: L3 unrelated tag fields and comments survive an exact pin
 ///   update; absent keys refuse before mutation.
 /// - witness: `repository::pins::tests::bump_preserves_unrelated_configuration`
+#[spec(
+    captures: [before_manifest = manifest.to_string(), before_toolchain = toolchain.to_string()],
+    ensures: |ref output| match *output {
+        Maybe::Present(_) => pin(manifest, Pin::ClippyTag) == Maybe::Present(tag) && pin(toolchain, Pin::Channel) == Maybe::Present(channel),
+        Maybe::Absent(_) => manifest.to_string() == before_manifest && toolchain.to_string() == before_toolchain,
+    },
+)]
 fn replace(
     manifest: &mut toml_edit::DocumentMut,
     toolchain: &mut toml_edit::DocumentMut,
@@ -462,6 +503,10 @@ fn replace(
 ///   replacement and missing-key mutation; filesystem write failures remain an
 ///   operational boundary.
 /// - witness: `repository::pins::tests::bump_preserves_unrelated_configuration`
+#[spec(ensures: |ref output| match stable_tag(SourceText(&format!("rust-{}", version.0))) {
+    Maybe::Present(_) => true,
+    Maybe::Absent(ref reason) => matches!(output, &Ok(Maybe::Absent(ref actual)) if actual == reason),
+})]
 pub fn bump(
     root: &Path,
     version: SourceText<'_>,

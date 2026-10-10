@@ -2,6 +2,7 @@
 
 use std::path::Path;
 
+use anodized::spec;
 use quenchant_gates::GateError;
 use quenchant_gates::semantic::ErrorMessage;
 use quenchant_gates::semantic::SourceText;
@@ -70,6 +71,7 @@ quenchant_shape::reason_enum! {
 ///   pin-length and allowlist boundaries distinguish weakened conjunctions.
 /// - witness: `repository::action_pins::tests::yaml_forms_and_pin_boundaries`
 /// - witness: `repository::action_pins::tests::invalid_yaml_and_non_scalar_uses`
+#[spec(ensures: |ref output| output.as_ref().err().is_none_or(|error| matches!(*error, GateError::Parse { path: ref address, .. } if address == path)))]
 fn inspect(
     path: &Path,
     text: SourceText<'_>,
@@ -141,6 +143,7 @@ fn inspect(
 /// - hypothesis: L3 a nested composite action with an unlisted reference cannot
 ///   escape workflow-only traversal.
 /// - witness: `repository::action_pins::tests::nested_action_is_checked`
+#[spec(ensures: |ref output| output.as_ref().err().is_none_or(|error| matches!(*error, GateError::Io { .. } | GateError::Parse { .. })))]
 pub fn check(root: &Path) -> Result<Maybe<Passed, refusal::Refused>, GateError>
 {
     let mut pending = vec![root.join(".github")];

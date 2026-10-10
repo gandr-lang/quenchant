@@ -13,6 +13,17 @@
 //! identity so similarly named tests cannot silently satisfy each other's
 //! obligations.
 
+#![cfg_attr(
+    dylint_lib = "quenchant_dylints",
+    deny(
+        spec_attribute_present,
+        adequacy_present,
+        maybe_shape,
+        erased_error_signature,
+        spec_attribute_unqualified
+    )
+)]
+
 extern crate alloc;
 
 pub mod anodized;
@@ -93,6 +104,12 @@ impl fmt::Display for Finding
     ///   order, the path and line first so an editor can jump to it.
     /// - fails: propagates the formatter's own write failure.
     /// - panics: none.
+    /// - executable: none — the formatter exposes a write-only sink; neither
+    ///   emitted text nor a failed write is independently observable here.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — a refusing sink must propagate its formatting error.
+    /// - witness: `tests::rendering_propagates_sink_failure`
     #[inline]
     fn fmt(
         &self,
@@ -210,6 +227,12 @@ impl fmt::Display for GateError
     ///   invocation and the diagnostic retained with it.
     /// - fails: propagates the formatter's own write failure.
     /// - panics: none.
+    /// - executable: none — the formatter exposes a write-only sink; neither
+    ///   emitted text nor a failed write is independently observable here.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — a refusing sink must propagate its formatting error.
+    /// - witness: `tests::rendering_propagates_sink_failure`
     #[inline]
     fn fmt(
         &self,
@@ -235,4 +258,49 @@ impl fmt::Display for GateError
 
 impl core::error::Error for GateError
 {
+}
+#[cfg(test)]
+mod tests
+{
+    use core::fmt::Write as _;
+
+    use super::*;
+
+    #[test]
+    fn rendering_propagates_sink_failure()
+    {
+        struct Refusing;
+        impl fmt::Write for Refusing
+        {
+            /// Reject the attempted diagnostic write.
+            ///
+            /// # Specification
+            /// trivial.
+            fn write_str(
+                &mut self,
+                _: &str,
+            ) -> fmt::Result
+            {
+                Err(fmt::Error)
+            }
+        }
+        let finding = Finding::new(
+            "unresolved-witness".into(),
+            "sample".into(),
+            Path::new("src/lib.rs"),
+            LineNumber(7),
+            "tests::missing".into(),
+            "not inventoried".into(),
+        );
+        let failure = GateError::tool("listing".into(), "failed".into());
+        let values: [&dyn fmt::Display; 4] = [
+            &finding,
+            &failure,
+            &anodized::GateError::MissingCompilerCfgs,
+            &anodized::EnforcementState::Enforcing,
+        ];
+        for value in values {
+            assert_eq!(write!(Refusing, "{value}"), Err(fmt::Error));
+        }
+    }
 }

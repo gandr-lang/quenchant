@@ -10,7 +10,18 @@
 //! item's documentation. Empty generated bodies are intentional fixture data,
 //! not a client implementation offered to applications.
 #![cfg_attr(doc, doc = include_str!("../README.md"))]
+#![cfg_attr(
+    dylint_lib = "quenchant_dylints",
+    deny(
+        spec_attribute_present,
+        adequacy_present,
+        maybe_shape,
+        erased_error_signature,
+        spec_attribute_unqualified
+    )
+)]
 
+use anodized::spec;
 use proc_macro2::Delimiter;
 use proc_macro2::Group;
 use proc_macro2::TokenStream;
@@ -37,14 +48,18 @@ struct MacroSource<'source>(&'source str);
 /// - panics: none.
 ///
 /// # Adequacy
-/// - hypothesis: L3 — the expansion is read for the two properties the matrix
-///   depends on, that the generated method's name is the author's own token and
-///   that the client subject is derived from the author's, plus the arm that
-///   declines an item it cannot read.
+/// - hypothesis: L3 — spelling observations distinguish derived subject names,
+///   generated method names, and unchanged declined items. Compiler hygiene is
+///   exercised by the Dylint UI matrix, not established by these observations.
 /// - witness: `tests::the_generated_method_takes_the_author_identifier`
 /// - witness: `tests::an_unreadable_item_is_re_emitted_alone`
 #[inline]
 #[proc_macro_attribute]
+#[spec(
+    captures: [authored = item.to_string(), token_count = item.clone().into_iter().count()],
+    ensures: |ref output| output.clone().into_iter().take(token_count)
+        .collect::<proc_macro::TokenStream>().to_string() == authored,
+)]
 pub fn client(
     _attribute: proc_macro::TokenStream,
     item: proc_macro::TokenStream,
@@ -58,6 +73,7 @@ pub fn client(
 ///
 /// # Specification
 /// - requires: `item` is the token stream of the annotated item.
+/// - ensures: the output's prefix retains all input tokens in order.
 /// - ensures: returns `item` alone when no `impl` subject or brace-delimited
 ///   body is found, and otherwise returns `item` followed by a unit struct and
 ///   an `impl` on it holding one `pub fn <name>(&self) {}` per method the body
@@ -68,10 +84,15 @@ pub fn client(
 /// - panics: none.
 ///
 /// # Adequacy
-/// - hypothesis: L3 — the tests separate the generated method's name token from
-///   the macro's own tokens, the derived subject name, and the declined item.
+/// - hypothesis: L3 — spelling observations distinguish the derived subject,
+///   generated method names, and declined item; they do not compare spans.
 /// - witness: `tests::the_generated_method_takes_the_author_identifier`
 /// - witness: `tests::an_unreadable_item_is_re_emitted_alone`
+#[spec(
+    captures: [authored = item.to_string(), token_count = item.clone().into_iter().count()],
+    ensures: |ref output| output.clone().into_iter().take(token_count)
+        .collect::<TokenStream>().to_string() == authored,
+)]
 fn client_expansion(item: TokenStream) -> TokenStream
 {
     let mut subject = None;
@@ -129,6 +150,16 @@ fn client_expansion(item: TokenStream) -> TokenStream
 ///   the compiler's own syntax error rather than a silent success.
 /// - provides: the macro-owned half of every generated item.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — valid syntax yields its expected tokens; empty input and
+///   an unmatched delimiter yield empty streams. These observations separate
+///   lexing and rejection without claiming compiler-hygiene evidence.
+/// - witness: `tests::generator_fragments_preserve_tokens_and_reject_unlexable_input`
+#[spec(ensures: |ref output| source.0.parse::<TokenStream>().map_or_else(
+    |_| output.is_empty(),
+    |expected| output.to_string() == expected.to_string(),
+))]
 fn parsed(source: MacroSource<'_>) -> TokenStream
 {
     source.0.parse::<TokenStream>().unwrap_or_default()
@@ -174,5 +205,13 @@ mod tests
             expansion.contains("fn free"),
             "the declined item is still re-emitted: {expansion}"
         );
+    }
+
+    #[test]
+    fn generator_fragments_preserve_tokens_and_reject_unlexable_input()
+    {
+        assert_eq!(parsed(MacroSource("pub fn")).to_string(), "pub fn");
+        assert!(parsed(MacroSource("")).is_empty());
+        assert!(parsed(MacroSource("(")).is_empty());
     }
 }

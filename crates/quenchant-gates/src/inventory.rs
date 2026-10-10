@@ -20,6 +20,8 @@ use std::path::Path;
 use std::path::PathBuf;
 use std::process::Command;
 
+use anodized::spec;
+
 use crate::Finding;
 use crate::GateError;
 use crate::catalog::TestCatalog;
@@ -79,6 +81,12 @@ pub struct Workspace
 ///
 /// # Errors
 /// [`GateError::Tool`] when `cargo metadata` fails or cannot be read.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the consumer CLI resolves a real package and rejects
+///   invalid source.
+/// - witness: `gates::repository::witness_inventory_uses_consumer_selection_over_shadowed_plugins`
+#[spec(ensures: |ref output| output.as_ref().is_ok_and(|workspace| workspace.members.iter().map(|member| &member.name).is_sorted()) || matches!(output, &Err(GateError::Tool { .. }))) ]
 #[inline]
 pub fn discover(manifest_path: &Path) -> Result<Workspace, GateError>
 {
@@ -187,6 +195,12 @@ pub fn discover(manifest_path: &Path) -> Result<Workspace, GateError>
 ///   [`HoldsPackageSource`] wrapper, before expanding a target into a source
 ///   root.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — build scripts are excluded while library and unspecified
+///   kinds remain source roots.
+/// - witness: `inventory::tests::target_kinds_bound_the_authored_source_scan`
+#[spec(ensures: |output| output.0 != target.get("kind").and_then(serde_json::Value::as_array).is_some_and(|kinds| kinds.iter().any(|kind| kind.as_str() == Some("custom-build"))))]
 fn target_holds_package_source(target: &serde_json::Value) -> HoldsPackageSource
 {
     HoldsPackageSource(
@@ -217,6 +231,12 @@ fn target_holds_package_source(target: &serde_json::Value) -> HoldsPackageSource
 ///
 /// # Errors
 /// [`GateError::Tool`] when a listing command fails, or lists nothing.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the selected runner resolves the real witness; its
+///   compilation failure cannot pass.
+/// - witness: `gates::repository::witness_inventory_uses_consumer_selection_over_shadowed_plugins`
+#[spec(ensures: |ref output| output.as_ref().is_ok_and(|listed| usize::from(listed.alias_count()) > 0) || matches!(output, &Err(GateError::Tool { .. }))) ]
 #[inline]
 pub fn catalog(workspace: &Workspace) -> Result<TestCatalog, GateError>
 {
@@ -273,6 +293,12 @@ pub fn catalog(workspace: &Workspace) -> Result<TestCatalog, GateError>
 /// # Errors
 /// [`GateError::Io`] or [`GateError::Parse`] when a member's sources cannot be
 /// read.
+///
+/// # Adequacy
+/// - hypothesis: L3 — an absent consumer witness yields an addressed refusal
+///   rather than acceptance.
+/// - witness: `gates::repository::witness_inventory_uses_consumer_selection_over_shadowed_plugins`
+#[spec(ensures: |ref output| output.as_ref().is_ok_and(|findings| findings.is_sorted()) || matches!(output, &Err(GateError::Io { .. } | GateError::Parse { .. }))) ]
 #[inline]
 pub fn run(
     workspace: &Workspace,
@@ -305,6 +331,12 @@ pub fn run(
 ///
 /// # Errors
 /// [`GateError::Io`] when a directory cannot be listed.
+///
+/// # Adequacy
+/// - hypothesis: L3 — overlapping source roots yield each eligible path once
+///   and exclude hidden build data.
+/// - witness: `inventory::tests::source_scope_is_sorted_unique_and_excludes_build_data`
+#[spec(ensures: |ref output| output.as_ref().is_ok_and(|files| files.iter().zip(files.iter().skip(1)).all(|(left, right)| left < right) && files.iter().all(|path| path.extension() == Some(OsStr::new("rs")))) || matches!(output, &Err(GateError::Io { .. }))) ]
 fn member_sources(member: &Member) -> Result<Vec<PathBuf>, GateError>
 {
     let mut files = Vec::new();
@@ -338,6 +370,12 @@ fn member_sources(member: &Member) -> Result<Vec<PathBuf>, GateError>
 /// - boundedness: every pop pushes only strict subdirectories of the popped
 ///   directory, and a directory tree is finite.
 /// - input recursion: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — hidden paths, build output, non-Rust files, and missing
+///   directories distinguish traversal boundaries.
+/// - witness: `inventory::tests::source_scope_is_sorted_unique_and_excludes_build_data`
+#[spec(ensures: |ref output| output.as_ref().is_ok_and(|files| files.is_sorted() && files.iter().all(|path| path.starts_with(directory) && path.extension() == Some(OsStr::new("rs")))) || matches!(output, &Err(GateError::Io { .. }))) ]
 #[inline]
 pub fn source_files(directory: &Path) -> Result<Vec<PathBuf>, GateError>
 {
@@ -409,6 +447,10 @@ enum ListingRunner
 ///   plugin; invalid source remains an operational error from that selected
 ///   runner.
 /// - witness: `gates::repository::witness_inventory_uses_consumer_selection_over_shadowed_plugins`
+#[spec(ensures: |ref output| output.as_ref().is_ok_and(|runner| match *runner {
+    ListingRunner::Nextest { ref executable, .. } => executable.is_absolute(),
+    ListingRunner::CargoTest { .. } => true,
+}) || matches!(output, &Err(GateError::Tool { .. }))) ]
 fn listing_runner(scope: &Path) -> Result<ListingRunner, GateError>
 {
     let toolchain = active_toolchain(scope)?;
@@ -482,6 +524,7 @@ fn listing_runner(scope: &Path) -> Result<ListingRunner, GateError>
 ///   caller supplies an unavailable compiler and Cargo path; inventory
 ///   succeeds.
 /// - witness: `gates::repository::witness_inventory_uses_consumer_selection_over_shadowed_plugins`
+#[spec(ensures: |ref output| output.as_ref().is_ok_and(|toolchain| !toolchain.is_empty() && !toolchain.contains(char::is_whitespace)) || matches!(output, &Err(GateError::Tool { .. }))) ]
 fn active_toolchain(scope: &Path) -> Result<String, GateError>
 {
     let active = capture(
@@ -513,6 +556,7 @@ fn active_toolchain(scope: &Path) -> Result<String, GateError>
 ///   inventories under the consumer compiler despite an unrelated launch
 ///   compiler.
 /// - witness: `gates::repository::witness_inventory_uses_consumer_selection_over_shadowed_plugins`
+#[spec(ensures: |ref output| output.get_envs().any(|(name, value)| name == "CARGO" && value.is_none()))]
 fn runner_command(runner: &ListingRunner) -> Command
 {
     match *runner {
@@ -530,6 +574,16 @@ fn runner_command(runner: &ListingRunner) -> Command
 /// - ensures: every subprocess uses the retained compiler context, including
 ///   dynamic-library search paths; producer `CARGO` does not redirect it.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the real consumer runner is insulated from its caller’s
+///   unrelated compiler and Cargo.
+/// - witness: `gates::repository::witness_inventory_uses_consumer_selection_over_shadowed_plugins`
+#[spec(ensures: |ref output| {
+    let (ListingRunner::Nextest { ref toolchain, .. } | ListingRunner::CargoTest { ref toolchain }) = *runner;
+    output.get_program() == "rustup" && output.get_args().eq([OsStr::new("run"), OsStr::new(toolchain), executable])
+        && output.get_envs().any(|(name, value)| name == "CARGO" && value.is_none())
+})]
 fn context_command(
     runner: &ListingRunner,
     executable: &OsStr,
@@ -551,6 +605,15 @@ fn context_command(
 /// - ensures: the selected nextest supplies aggregate JSON; the explicit
 ///   ordinary Cargo route supplies executable artifacts for native listing.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the selected consumer runner returns an inventory that
+///   resolves an actual witness.
+/// - witness: `gates::repository::witness_inventory_uses_consumer_selection_over_shadowed_plugins`
+#[spec(ensures: |ref output| output.get_args().skip(3).eq(match *runner {
+    ListingRunner::Nextest { .. } => ["nextest", "list", "--message-format", "json"],
+    ListingRunner::CargoTest { .. } => ["test", "--no-run", "--message-format", "json"],
+}.map(OsStr::new)))]
 fn list_command(runner: &ListingRunner) -> Command
 {
     let mut command = runner_command(runner);
@@ -581,6 +644,12 @@ fn list_command(runner: &ListingRunner) -> Command
 /// # Errors
 /// [`GateError::Tool`], carrying the scope in its command line so a failure
 /// says which of the per-toolchain listings it came from.
+///
+/// # Adequacy
+/// - hypothesis: L3 — consumer success, missing witnesses, and compilation
+///   failure remain distinct outcomes.
+/// - witness: `gates::repository::witness_inventory_uses_consumer_selection_over_shadowed_plugins`
+#[spec(ensures: |ref output| output.as_ref().err().is_none_or(|error| matches!(*error, GateError::Tool { .. })))]
 fn merge_listing(
     catalog: &mut TestCatalog,
     command: &mut Command,
@@ -619,6 +688,12 @@ fn merge_listing(
 ///
 /// # Errors
 /// [`GateError::Tool`] when a built binary cannot be listed.
+///
+/// # Adequacy
+/// - hypothesis: L3 — a real native harness listing contributes the claimed
+///   test under its package and target.
+/// - witness: `inventory::tests::native_harness_listing_retains_package_and_target`
+#[spec(ensures: |ref output| output.as_ref().err().is_none_or(|error| matches!(*error, GateError::Tool { .. })))]
 fn merge_cargo_test_listing(
     catalog: &mut TestCatalog,
     stdout: SourceText<'_>,
@@ -706,6 +781,12 @@ fn merge_cargo_test_listing(
 ///   through to the legacy reader instead of yielding a directory.
 /// - provides: the package a fallback-listed test binary is attributed to.
 /// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — modern named identifiers and legacy identifiers retain
+///   their package names.
+/// - witness: `inventory::tests::package_identifier_forms_retain_ownership`
+#[spec(ensures: |ref output| id.0.rsplit_once('#').is_some_and(|(_, rest)| rest.split('@').next() == Some(output.as_str()) && !output.contains('/')) || id.0.split_whitespace().next().unwrap_or(id.0).rsplit('/').next() == Some(output.as_str()))]
 fn package_name_of(id: PackageId<'_>) -> String
 {
     let id = id.0;
@@ -741,6 +822,12 @@ fn package_name_of(id: PackageId<'_>) -> String
 ///
 /// # Errors
 /// [`GateError::Tool`] on a failed spawn or an unsuccessful exit.
+///
+/// # Adequacy
+/// - hypothesis: L3 — a selected runner’s compilation failure remains an
+///   operational error with its executable identity.
+/// - witness: `gates::repository::witness_inventory_uses_consumer_selection_over_shadowed_plugins`
+#[spec(ensures: |ref output| output.as_ref().err().is_none_or(|error| matches!(*error, GateError::Tool { .. })))]
 fn capture(
     command: &mut Command,
     label: CommandLine<'_>,
@@ -754,4 +841,112 @@ fn capture(
         return Err(GateError::tool(label, ErrorMessage::from(&stderr)));
     }
     Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+}
+
+#[cfg(test)]
+mod tests
+{
+    use quenchant_shape::shape::Maybe;
+
+    use super::*;
+    use crate::semantic::WitnessPath;
+
+    #[test]
+    fn target_kinds_bound_the_authored_source_scan()
+    {
+        for (target, admitted) in [
+            (serde_json::json!({}), true),
+            (serde_json::json!({"kind": []}), true),
+            (serde_json::json!({"kind": ["lib", "test"]}), true),
+            (serde_json::json!({"kind": ["custom-build"]}), false),
+            (serde_json::json!({"kind": ["lib", "custom-build"]}), false),
+        ] {
+            assert_eq!(target_holds_package_source(&target).0, admitted);
+        }
+    }
+
+    #[test]
+    fn source_scope_is_sorted_unique_and_excludes_build_data()
+    {
+        let root =
+            std::env::temp_dir().join(format!("quenchant-source-scope-{}", std::process::id()));
+        for directory in ["nested", "target", ".hidden"] {
+            std::fs::create_dir_all(root.join(directory)).unwrap();
+        }
+        for path in [
+            "z.rs",
+            "nested/a.rs",
+            "target/build.rs",
+            ".hidden/data.rs",
+            ".hidden.rs",
+            "notes.txt",
+        ] {
+            std::fs::write(root.join(path), "").unwrap();
+        }
+        let expected = vec![root.join("nested/a.rs"), root.join("z.rs")];
+        assert_eq!(source_files(&root).unwrap(), expected);
+        let member = Member {
+            name: "scope".into(),
+            directory: root.clone(),
+            source_roots: vec![root.clone(), root.join("nested"), root.join("absent")],
+            pins_toolchain: PinsToolchain(false),
+        };
+        assert_eq!(member_sources(&member).unwrap(), expected);
+        let missing = root.join("absent");
+        assert!(
+            matches!(source_files(&missing), Err(GateError::Io { path, .. }) if path == missing)
+        );
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn package_identifier_forms_retain_ownership()
+    {
+        for id in [
+            "registry+https://example.com/index#sample@1.2.3",
+            "sample 1.2.3 (registry+https://example.com/index)",
+        ] {
+            assert_eq!(package_name_of(PackageId(id)), "sample");
+        }
+    }
+
+    #[test]
+    fn native_harness_listing_retains_package_and_target()
+    {
+        let scope = Path::new(env!("CARGO_MANIFEST_DIR"));
+        let runner = ListingRunner::CargoTest {
+            toolchain: active_toolchain(scope).unwrap(),
+        };
+        let artifact = serde_json::json!({
+            "reason": "compiler-artifact",
+            "profile": { "test": true },
+            "executable": std::env::current_exe().unwrap(),
+            "target": { "name": "native", "kind": ["lib"] },
+            "package_id": "native 0.0.0 (path+file:///native)",
+        })
+        .to_string();
+        let mut catalog = TestCatalog::new();
+        merge_cargo_test_listing(
+            &mut catalog,
+            SourceText(&artifact),
+            CommandLine("native harness"),
+            scope,
+            &runner,
+        )
+        .unwrap();
+        assert_eq!(
+            catalog.targets(
+                PackageName("native"),
+                WitnessPath("inventory::tests::package_identifier_forms_retain_ownership")
+            ),
+            Maybe::Present(&core::iter::once(String::from("native::native")).collect()),
+        );
+        assert!(matches!(
+            catalog.targets(
+                PackageName("unrelated"),
+                WitnessPath("inventory::tests::package_identifier_forms_retain_ownership")
+            ),
+            Maybe::Absent(_)
+        ));
+    }
 }
