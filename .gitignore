@@ -9,3 +9,5 @@ target/
 /.weave/
 /.codegraph/
 /.DS_Store
+# Compiler crash dumps carry absolute paths of the machine that built.
+rustc-ice*
