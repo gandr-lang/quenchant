@@ -55,7 +55,7 @@ default-features = false
 # Argument-parser derives the field absence rule recognizes as wire form
 # through `FromArgMatches`; the UI matrix links the real crate.
 # consumers:
-# - quenchant-dylints (dev)
+# - quenchant-fixture-macros (dev)
 [workspace.dependencies.clap]
 version = "4.6.7"
 features = ["derive"]
@@ -73,7 +73,7 @@ version = "=0.1.98"
 
 # The real bridge macro verifies pre-expansion linting in a UI fixture.
 # consumers:
-# - quenchant-dylints (dev)
+# - quenchant-fixture-macros (dev)
 [workspace.dependencies.cxx]
 version = "=1.0.202"
 default-features = false
@@ -157,7 +157,7 @@ features = ["perf", "std"]
 # Serialization traits and derives the field absence rule recognizes as wire
 # form; the UI matrix links the real crate.
 # consumers:
-# - quenchant-dylints (dev)
+# - quenchant-fixture-macros (dev)
 [workspace.dependencies.serde]
 version = "1.0.229"
 features = ["derive"]

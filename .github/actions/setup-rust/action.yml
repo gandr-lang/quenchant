@@ -5,9 +5,9 @@ description: >
   Rust dependency cache. The job's checkout step runs first; this
   action is everything after it.
 inputs:
-  # Only main warms caches that later pull requests can restore.
+  # Main warms shared caches; branch runs can retain their own build state.
   cache-save:
-    description: "Save the rustup toolchain and the dependency cache in this job"
+    description: "Save build artifacts in this ref; save the toolchain on main"
     default: "false"
   # Keep the workspace crates' artifacts in the dependency cache; cargo's
   # fingerprints then no-op the unchanged ones on the next restore.
@@ -19,6 +19,9 @@ inputs:
   cache-workspace-crates:
     description: "Keep the workspace crates in the Rust dependency cache"
     default: "false"
+  cache-key:
+    description: "Artifact lane; independent producers must not race for one key"
+    default: rust-deps
 runs:
   using: composite
   steps:
@@ -68,11 +71,12 @@ runs:
         # from scratch. Bumping the prefix rotates the lane at once.
         # The prefix names this repository's cache lane and content shape.
         prefix-key: quenchant-v2-rust-deps
-        # One dependency cache across every Rust job; the gate lane's
-        # block shares this key, so the cache holds the whole
-        # workspace's artifacts under the single toolchain.
-        shared-key: rust-deps
+        # Each producer keeps its own graph. Cache entries are immutable, so a
+        # faster workspace job must not win the Dylint job's cache reservation.
+        shared-key: ${{ inputs.cache-key }}
         cache-all-crates: false
         cache-workspace-crates: ${{ inputs.cache-workspace-crates }}
-        cache-on-failure: false
-        save-if: ${{ inputs.cache-save == 'true' && github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+        # Cargo fingerprints reject incomplete compiler output; test failure
+        # does not invalidate artifacts from successful compilation.
+        cache-on-failure: true
+        save-if: ${{ inputs.cache-save == 'true' }}

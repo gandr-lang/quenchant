@@ -64,6 +64,14 @@ The Dylint package's own tests and Clippy invocation run from its package direct
 
 CI installs mise-managed tools in both workspace-test and Dylint jobs so witness inventory uses the consumer-selected nextest. Tool setup retains Rustup proxies on `PATH`, preserving compiler-plugin toolchain selection. Nested consumer fixtures clear the parent nextest profile because that profile belongs to the test workspace, not the fixture. Dylint CI targets use absolute workspace-rooted paths so temporary compiler fixtures retain a writable output location. Image-consuming jobs inherit `contents: read` and `packages: read` through one permissions anchor; GHCR pulls authenticate with the job's `GITHUB_TOKEN`. Jobs without containers retain their existing permissions.
 
+Rust, test, and workflow changes run every hosted lane on pull requests and merge groups. Manual dispatch exercises the same lanes. The Dylint job uploads plain and enforcing JUnit reports separately, before the next invocation replaces `target/nextest/ci/junit.xml`; compiler build directories do not determine that report path.
+
+Workspace and Dylint jobs retain separate immutable artifact-cache lanes. The Dylint lane shares ordinary test, Clippy, and witness artifacts under the same linker flags; enforcing tests keep their own target directory. UI dependency builds occupy a sibling Cargo target tree, outside the profile's disposable `deps` entries. Successful compiler artifacts remain cacheable after a test failure. Main warms caches visible to other branches; pull-request and manual runs can retain their own ref-scoped build state.
+
+Local tasks and CI use the pinned Cargo's [content-based freshness](https://doc.rust-lang.org/nightly/cargo/reference/unstable.html#checksum-freshness) so a fresh checkout can reuse unchanged workspace artifacts. Source checksums replace timestamp-only freshness; changed content and compiler flags still invalidate builds. Source timestamps are not backdated. Build-script input tracking retains Cargo's mtime behavior, and whole-crate policy checks keep incremental compilation disabled.
+
+The UI dependency build selects fixture packages, with foreign-library development dependencies owned by `quenchant-fixture-macros`. Both nextest profiles prioritize compiler-backed UI groups over in-memory tests, keeping plugin and fixture-dependency builds concurrent.
+
 The compiler plugin loads locally:
 
 ```toml

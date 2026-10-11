@@ -1114,9 +1114,16 @@ non_owning_generics = [
     {
         let test_binary =
             std::env::current_exe().expect("the running test binary has a path on disk");
+        // Cache pruning treats entries inside a profile's deps directory as
+        // compiler artifacts. A complete nested Cargo tree belongs beside
+        // that profile, where its own fingerprints and dependencies survive.
         let target = test_binary
             .parent()
             .expect("the test binary lives in Cargo's deps directory")
+            .parent()
+            .expect("the deps directory lives in a Cargo profile directory")
+            .parent()
+            .expect("the profile directory lives in a Cargo target directory")
             .join("ui-specification-deps");
         let inherited = std::env::var_os("CARGO_ENCODED_RUSTFLAGS").map_or_else(
             || {
@@ -1150,8 +1157,6 @@ non_owning_generics = [
                 "quenchant-arith",
                 "-p",
                 "quenchant-shape",
-                "-p",
-                "quenchant-dylints",
                 "--features",
                 "quenchant-anodized/anodized",
                 "--target-dir",
