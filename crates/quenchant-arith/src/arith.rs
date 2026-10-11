@@ -154,20 +154,6 @@ mod sealed
 ///   strict operator panics are L3 pointwise residues.
 /// - witness: `arith::tests::u128_boundaries`
 /// - witness: `arith::tests::i8_negative_boundaries`
-#[cfg_attr(
-    any(anodized_panic, anodized_print),
-    expect(
-        non_upper_case_globals,
-        reason = "The backend emits lowercase associated qualifier constants."
-    )
-)]
-#[cfg_attr(
-    any(anodized_panic, anodized_print),
-    expect(
-        clippy::missing_inline_in_public_items,
-        reason = "The backend generates public default trait helpers without inline attributes."
-    )
-)]
 #[spec]
 pub trait Integer: sealed::Sealed + Copy + Default + Eq + core::fmt::Debug
 {

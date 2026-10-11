@@ -18,8 +18,9 @@ pub use anodized::result;
 #[cfg(feature = "anodized")]
 pub use anodized::types;
 #[cfg(feature = "anodized")]
-#[doc(hidden)]
-pub use anodized_macros::spec as __instrument;
+pub use anodized_macros::spec;
+#[cfg(not(feature = "anodized"))]
 #[doc(hidden)]
 pub use quenchant_spec_macros::__erase;
+#[cfg(not(feature = "anodized"))]
 pub use quenchant_spec_macros::spec;

@@ -31,27 +31,32 @@ assert_eq!(accept(), Ok(()));
 
 Postcondition patterns such as `|ref output|` borrow the returned value for inspection without adding `Copy` or `Clone` bounds. The backend also supports owned patterns that it can reconstruct after checking.
 
-With the facade feature enabled, `anodized::types::Spec` exposes the fork's refinement trait. Generated refinement implementations exist only under an instrumentation cfg, so tests calling `predicate` select that mode. Strip mode supplies no duplicate refinement implementation.
+With the facade feature enabled, `anodized::types::Spec` exposes the fork's refinement trait. Generated refinement implementations exist in both plain and enforcing backend builds. Without the feature, refinement annotations are erased.
 
 ## Build modes
 
 | Configuration | What the consumer receives | What it establishes |
 | ------------- | -------------------------- | ------------------- |
-| No instrumentation cfg, with or without the backend feature | Ordinary code with supported specification markers removed | No executable-check evidence |
+| No instrumentation cfg, backend feature off | Ordinary code with supported specification markers removed; no backend dependency | No executable-check evidence |
+| No instrumentation cfg, backend feature on | Predicates type-checked but not evaluated; captures evaluated as in the fork | No executable-check evidence |
 | `anodized_panic` with the facade feature | Panic-enforcing checks, compatible with `no_std` | Evidence for the interpreted predicates on calls that reach them |
 | `anodized_print` with the facade feature | Printed violations; requires `std` and rejects specified `const fn` | Diagnostics without rejection of invalid calls |
 
-Both strip mode and panic enforcement support targets without `std`. Procedural macros use the build host's standard library, which adds no target runtime dependency. Required validation and safety checks remain ordinary code, independent of this feature.
+Erasure, backend-on plain mode, and panic enforcement support targets without `std`. Procedural macros use the build host's standard library, which adds no target runtime dependency. Required validation and safety checks remain ordinary code, independent of this feature.
 
-The build driver selects native enforcement with `RUSTFLAGS="--cfg anodized_panic"` and `--features quenchant-anodized/anodized`. The cfg applies throughout the dependency graph; no per-consumer feature can leave part of that graph stripped. A cfg without the facade feature fails compilation with `ANODIZED_BACKEND_DISABLED`. Feature unification and `--all-features` alone never instrument a consumer.
+The build driver selects native enforcement with `RUSTFLAGS="--cfg anodized_panic"` and `--features quenchant-anodized/anodized`. The cfg applies throughout the dependency graph; no per-consumer feature can leave part of that graph stripped. Set the same cfg in `RUSTDOCFLAGS` when running rustdoc. A cfg without the facade feature fails compilation with `ANODIZED_BACKEND_DISABLED`. Feature unification and `--all-features` alone never enable violation checking.
 
 The repository tasks select the mode and run deliberate violations. Cross-target flags need not configure host procedural macros, and a target cfg listing cannot certify a cached host artifact.
+
+Backend-on plain mode retains predicate-only helpers, imports, and bindings by reusing the fork emitter instead of erasing clauses or duplicating its parser. Captures retain the fork's evaluation semantics. Revisit that choice if the backend offers a separate compile-only emitter with equivalent reference and capture behavior.
+
+Feature-off erasure is intended for downstream dependency builds, where rustc caps dependency lints.
 
 ## Nested syntax and expansion boundary
 
 Import `anodized::spec` and apply `#[spec(...)]` to the enclosing trait or implementation; its nested methods use bare `#[spec(...)]` markers. Empty nested markers use `#[spec()]`. Qualified nested markers are not an additional interface.
 
-When disabled, the wrapper removes nested markers as well as the outer annotation. Unrelated attributes and macro-language payloads retain their tokens. Enabled expansions resolve `::anodized::__`, `result`, and `types` through re-exports of the fork's runtime, with its default features disabled. No runtime implementation is copied into the facade.
+With the backend feature off, the wrapper removes nested markers as well as the outer annotation. Unrelated attributes and macro-language payloads retain their tokens. With the feature on, the facade exports the fork's attribute in every cfg mode; expansions resolve `::anodized::__`, `result`, and `types` through re-exports of the fork's runtime, with its default features disabled. No parser or runtime implementation is copied into the facade.
 
 ## Specification, evidence, and future interpretation
 

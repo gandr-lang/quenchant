@@ -107,6 +107,9 @@ mod tests {
             .args(["test", "--offline", "--no-default-features"])
             .env("CARGO_TARGET_DIR", root.join("target"))
             .env("RUSTFLAGS", format!("-D warnings {flags}"))
+            .env("RUSTDOCFLAGS", format!("-D warnings {flags}"))
+            .env_remove("CARGO_ENCODED_RUSTDOCFLAGS")
+            .env_remove("CARGO_BUILD_RUSTDOCFLAGS")
             .env_remove("CARGO_ENCODED_RUSTFLAGS")
             .env_remove("CARGO_BUILD_RUSTFLAGS")
             .env_remove("CARGO_BUILD_TARGET")
@@ -130,5 +133,110 @@ mod tests {
             assert!(stderr.contains("postcondition failed"), "{stderr}");
         }
     }
+
+    let graph = std::process::Command::new(env!("CARGO"))
+        .current_dir(&root)
+        .args([
+            "tree",
+            "--offline",
+            "--no-default-features",
+            "--prefix",
+            "none",
+        ])
+        .env_remove("CARGO_ENCODED_RUSTFLAGS")
+        .env_remove("RUSTFLAGS")
+        .output()
+        .unwrap();
+    assert!(
+        graph.status.success(),
+        "{}",
+        String::from_utf8_lossy(&graph.stderr)
+    );
+    let graph = String::from_utf8(graph.stdout).unwrap();
+    assert!(
+        graph.lines().all(|line| !matches!(
+            line.split_whitespace().next(),
+            Some("anodized" | "anodized-core" | "anodized-macros")
+        )),
+        "feature-off dependency graph contains the backend:
+{graph}",
+    );
+
+    std::fs::create_dir_all(root.join("src/bin")).unwrap();
+    std::fs::write(
+        root.join("src/bin/references.rs"),
+        r#"use anodized::spec;
+use core::cmp::Ordering as PredicateOrder;
+use core::sync::atomic::{AtomicUsize, Ordering};
+
+static CAPTURES: AtomicUsize = AtomicUsize::new(0);
+static PREDICATES: AtomicUsize = AtomicUsize::new(0);
+
+fn predicate_only(value: u8) -> bool {
+    PREDICATES.fetch_add(1, Ordering::Relaxed);
+    value > 0
+}
+
+fn capture(value: u8) -> u8 {
+    CAPTURES.fetch_add(1, Ordering::Relaxed);
+    value
+}
+
+#[spec(
+    requires: predicate_only(value),
+    captures: before = capture(value),
+    ensures: |output| output.cmp(&before) == PredicateOrder::Equal,
+)]
+fn retained(value: u8) -> u8 { value }
+
+#[spec(requires: predicate_only(state))]
+fn parameter_only(state: u8) {}
+
+const fn const_predicate_only(value: u8) -> bool { value > 0 }
+
+#[spec(requires: const_predicate_only(value), ensures: |output| const_predicate_only(output))]
+const fn retained_const(value: u8) -> u8 { value }
+
+fn main() {
+    const VALUE: u8 = retained_const(7);
+    assert_eq!(VALUE, 7);
+    assert_eq!(retained_const(9), 9);
+    assert_eq!(retained(11), 11);
+    parameter_only(13);
+    assert_eq!(CAPTURES.load(Ordering::Relaxed), 1);
+    assert_eq!(PREDICATES.load(Ordering::Relaxed), if cfg!(anodized_panic) { 2 } else { 0 });
+}
+"#,
+    )
+    .unwrap();
+    for flags in ["", "--cfg anodized_panic"] {
+        let output = std::process::Command::new(env!("CARGO"))
+            .current_dir(&root)
+            .args([
+                "run",
+                "--offline",
+                "--no-default-features",
+                "--bin",
+                "references",
+                "--features",
+                "quenchant-anodized/anodized",
+            ])
+            .env("CARGO_TARGET_DIR", root.join("target"))
+            .env("RUSTFLAGS", format!("-D warnings {flags}"))
+            .env_remove("CARGO_ENCODED_RUSTFLAGS")
+            .env_remove("CARGO_BUILD_RUSTFLAGS")
+            .env_remove("CARGO_BUILD_TARGET")
+            .output()
+            .unwrap();
+        assert!(
+            output.status.success(),
+            "predicate references flags={flags:?}:
+{}
+{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+    }
+
     std::fs::remove_dir_all(root).unwrap();
 }

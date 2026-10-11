@@ -34,13 +34,13 @@ assert_eq!(accept(), Ok(()));
 # }
 ```
 
-The hidden setup supplies the facade namespace for this package's executable documentation. In an application, the facade dependency supplies it.
+The hidden setup supplies a standalone helper namespace for this implementation package's executable documentation. Applications use the facade's selected attribute export.
 
 ## Selection belongs to the build driver
 
-`spec` emits two mutually exclusive `cfg_attr` routes rooted at `anodized`. `any(anodized_panic, anodized_print)` selects `__instrument`; its negation selects `__erase`. Consumers declare no feature. The facade's feature only makes the backend available to the build driver.
+With the facade backend feature off, this package supplies `spec`, which emits two mutually exclusive `cfg_attr` routes rooted at `anodized`: `any(anodized_panic, anodized_print)` selects `__instrument`; its negation selects `__erase`. The facade rejects an instrumentation cfg without its backend feature. With the feature on, the facade instead exports the fork's attribute directly, retaining type-checked predicates in plain mode as well as supporting enforcement. Consumers declare no mode feature.
 
-The enabled route forwards the original item and predicate tokens without reinterpreting the predicate language. The facade guide describes host-artifact selection, the named error for a missing backend, and the execution witnesses.
+The forwarding route, exercised through the standalone helper namespace, passes the original item and predicate tokens without reinterpreting the predicate language. The facade guide describes host-artifact selection, the named error for a missing backend, and the execution witnesses.
 
 ## Removing markers without rewriting the program
 
