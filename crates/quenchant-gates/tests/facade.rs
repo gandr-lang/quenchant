@@ -238,5 +238,94 @@ fn main() {
         );
     }
 
+    std::fs::write(
+        root.join("src/bin/helpers.rs"),
+        r#"#![feature(proc_macro_hygiene)]
+use anodized::{spec, spec_helper};
+use core::sync::atomic::{AtomicUsize, Ordering};
+
+#[spec_helper]
+use core::cmp::Ordering as PredicateOrder;
+
+static INITIALIZERS: AtomicUsize = AtomicUsize::new(0);
+static PREDICATES: AtomicUsize = AtomicUsize::new(0);
+
+#[spec_helper]
+#[derive(Clone, Copy, PartialEq)]
+enum ConstEquality { Equal, Different }
+
+#[spec_helper]
+const fn const_eq(left: u8, right: u8) -> ConstEquality {
+    if left == right { ConstEquality::Equal } else { ConstEquality::Different }
+}
+
+#[spec_helper]
+fn positive(value: u8) -> bool {
+    PREDICATES.fetch_add(1, Ordering::Relaxed);
+    value.cmp(&0) == PredicateOrder::Greater
+}
+
+#[spec(requires: {
+    #[spec_helper]
+    let threshold = INITIALIZERS.fetch_add(1, Ordering::Relaxed);
+    positive(value) && usize::from(value) > threshold
+}, ensures: |output| const_eq(output, value) == ConstEquality::Equal)]
+fn checked(value: u8) -> u8 { value }
+
+fn local_binding() {
+    #[spec_helper]
+    const LIMIT: u8 = 9;
+    #[spec(requires: value < LIMIT)]
+    fn bounded(value: u8) -> u8 { value }
+    assert_eq!(bounded(7), 7);
+}
+
+fn main() {
+    assert_eq!(checked(7), 7);
+    local_binding();
+    let backend = std::env::args().nth(1).as_deref() == Some("backend");
+    let enforcing = cfg!(any(anodized_panic, anodized_print));
+    assert_eq!(INITIALIZERS.load(Ordering::Relaxed), usize::from(enforcing));
+    assert_eq!(PREDICATES.load(Ordering::Relaxed), usize::from(enforcing));
+    println!("spec_helper: backend={backend} enforcing={enforcing}");
+}
+"#,
+    )
+    .unwrap();
+    for (features, flags) in [
+        ("", ""),
+        ("quenchant-anodized/anodized", ""),
+        ("quenchant-anodized/anodized", "--cfg anodized_panic"),
+        ("quenchant-anodized/anodized", "--cfg anodized_print"),
+    ] {
+        let mut command = std::process::Command::new(env!("CARGO"));
+        command
+            .current_dir(&root)
+            .args([
+                "run",
+                "--offline",
+                "--no-default-features",
+                "--bin",
+                "helpers",
+            ])
+            .env("CARGO_TARGET_DIR", root.join("target"))
+            .env("RUSTFLAGS", format!("-D warnings {flags}"))
+            .env_remove("CARGO_ENCODED_RUSTFLAGS")
+            .env_remove("CARGO_BUILD_RUSTFLAGS")
+            .env_remove("CARGO_BUILD_TARGET");
+        if !features.is_empty() {
+            command.args(["--features", features, "--", "backend"]);
+        }
+        let output = command.output().unwrap();
+        assert!(
+            output.status.success(),
+            "specification helpers features={features:?} flags={flags:?}:
+{}
+{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr),
+        );
+    }
+
     std::fs::remove_dir_all(root).unwrap();
 }

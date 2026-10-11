@@ -42,6 +42,8 @@ With the facade backend feature off, this package supplies `spec`, which emits t
 
 The forwarding route, exercised through the standalone helper namespace, passes the original item and predicate tokens without reinterpreting the predicate language. The facade guide describes host-artifact selection, the named error for a missing backend, and the execution witnesses.
 
+The facade also exports `spec_helper`: this package's erasing attribute when the backend feature is off, and its hidden retaining entry point when the feature is on. Both reject arguments. Retention preserves original tokens; erasure emits none, so removed helpers need not resolve their imports or types. Local `let` statements require Rust's nightly `proc_macro_hygiene` feature; parameters use the facade's documented backend-on route.
+
 ## Removing markers without rewriting the program
 
 `__erase` uses an explicit stack of delimiter frames. It removes the bare nested `spec` attribute form, not qualified paths or arbitrary metadata. It does not evaluate predicates, replay callbacks, or remove ordinary validation.

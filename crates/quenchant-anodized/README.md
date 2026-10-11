@@ -35,12 +35,11 @@ With the facade feature enabled, `anodized::types::Spec` exposes the fork's refi
 
 ## Build modes
 
-| Configuration | What the consumer receives | What it establishes |
-| ------------- | -------------------------- | ------------------- |
-| No instrumentation cfg, backend feature off | Ordinary code with supported specification markers removed; no backend dependency | No executable-check evidence |
-| No instrumentation cfg, backend feature on | Predicates type-checked but not evaluated; captures evaluated as in the fork | No executable-check evidence |
-| `anodized_panic` with the facade feature | Panic-enforcing checks, compatible with `no_std` | Evidence for the interpreted predicates on calls that reach them |
-| `anodized_print` with the facade feature | Printed violations; requires `std` and rejects specified `const fn` | Diagnostics without rejection of invalid calls |
+| Surface | Backend feature off | Backend on, no cfg | Backend on, `anodized_panic` | Backend on, `anodized_print` |
+| ------- | ------------------- | ------------------ | ---------------------------- | ---------------------------- |
+| `#[spec]` | Erases supported markers; no backend dependency | Type-checks predicates without evaluating them; evaluates captures | Enforces predicates by panicking | Prints violations; requires `std` and rejects specified `const fn` |
+| `#[spec_helper]` | Erases the annotated item or binding, including its initializer | Retains the original tokens | Retains the original tokens | Retains the original tokens |
+| Evidence | No executable-check evidence | No executable-check evidence | Interpreted predicates on calls that reach them | Diagnostics without rejecting invalid calls |
 
 Erasure, backend-on plain mode, and panic enforcement support targets without `std`. Procedural macros use the build host's standard library, which adds no target runtime dependency. Required validation and safety checks remain ordinary code, independent of this feature.
 
@@ -51,6 +50,34 @@ The repository tasks select the mode and run deliberate violations. Cross-target
 Backend-on plain mode retains predicate-only helpers, imports, and bindings by reusing the fork emitter instead of erasing clauses or duplicating its parser. Captures retain the fork's evaluation semantics. Revisit that choice if the backend offers a separate compile-only emitter with equivalent reference and capture behavior.
 
 Feature-off erasure is intended for downstream dependency builds, where rustc caps dependency lints.
+
+## Specification-only helpers
+
+Import `anodized::spec_helper` beside `spec`. Annotate helpers and imports used only by predicates so feature-off builds also compile under `-D warnings`:
+
+```rust
+use anodized::{spec, spec_helper};
+
+#[spec_helper]
+#[derive(PartialEq)]
+enum ConstEquality { Equal, Different }
+
+#[spec_helper]
+const fn const_eq(left: u8, right: u8) -> ConstEquality {
+    if left == right { ConstEquality::Equal } else { ConstEquality::Different }
+}
+
+#[spec(ensures: |output| const_eq(output, value) == ConstEquality::Equal)]
+fn preserve(value: u8) -> u8 { value }
+
+assert_eq!(preserve(7), 7);
+```
+
+`spec_helper` names an auxiliary to `spec`, rather than a runtime check or a build selector. The facade selects its erasing or retaining export from its own backend feature; consumer cfgs and feature names are unnecessary. A consumer-side `cfg` would duplicate that selection, and allowing unused items would retain unnecessary code. Revisit the separate attribute if the backend gains a specification-only declaration form.
+
+The attribute accepts no arguments. It supports items such as functions, types, imports, and local constants. On a local `let` statement, Rust additionally requires nightly `#![feature(proc_macro_hygiene)]`. In retained mode, initializers keep their ordinary evaluation semantics; in strip mode they disappear. Helpers must not perform required validation or other necessary effects.
+
+Function parameters are not attribute-macro invocation sites. A predicate-only parameter in a trait implementation keeps its signature and uses the backend-on route: predicates retain the parameter reference in plain and enforcing builds. `spec_helper` does not remove parameters or suppress warnings on the enclosing function. Nested loop predicates are outside the backend's executable-check support; annotating a local binding does not supply that missing interpretation.
 
 ## Nested syntax and expansion boundary
 

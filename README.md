@@ -13,7 +13,7 @@ Written for code that is generated as much as written. A synthesizing agent repr
 | [quenchant](crates/quenchant/README.md) | `quenchant::arith`, `quenchant::shape` | Umbrella package re-exporting the publishable libraries under one namespace |
 | [quenchant-arith](crates/quenchant-arith/README.md) | `quenchant_arith::arith` | Nominal integers with explicit strict, checked, wrapping, saturating, and unchecked arithmetic |
 | [quenchant-shape](crates/quenchant-shape/README.md) | `quenchant_shape::shape` and exported macros | Reason-preserving absence, closed reason sites, and transparent domain types |
-| [quenchant-anodized](crates/quenchant-anodized/README.md) | `anodized::spec` | Specification facade with optional development instrumentation |
+| [quenchant-anodized](crates/quenchant-anodized/README.md) | `anodized::spec`, `anodized::spec_helper` | Specification facade with optional development instrumentation |
 | [quenchant-spec-macros](crates/quenchant-spec-macros/README.md) | Used through the facade | Dependency-free token forwarding and disabled-mode marker removal |
 | [quenchant-dylints](crates/quenchant-dylints/README.md) | Dylint compiler plugin | Signature, layout, recursion, ownership, specification, and evidence-shape checks |
 | [quenchant-gates](crates/quenchant-gates/README.md) | `quenchant-gates` executable | Invocation-state and witness checks; repository boundary, pin, action, and publication refusals |
@@ -86,5 +86,7 @@ Co-author trailers credit people only. Commit validation rejects known assistant
 ## Distribution and licensing
 
 Publication is manual. Five library/macro packages are eligible for crates.io; the gate executable and Dylint plugin are Git-distributed, and fixture macros are internal. These three packages retain `publish = false`; all eight remain workspace members under the normal gate wall. `mise run check:publish-dry-run` selects publishable members from their manifests and runs locked Cargo publication checks in dependency order, resolving unpublished siblings through Cargo's temporary packaging registry. The gate verifies every tarball with the pinned compiler and aborts upload; `mise run check` and the CI build/test lane both run it. Registry queries require network access even for a dry run.
+
+Tarball verification uses a fresh target directory under `target/publish` for each invocation. Cargo treats each local-registry package name/version as immutable; a fresh registry path prevents cached sources or compiled artifacts from another revision of an unpublished sibling from satisfying the check. Ordinary workspace dependency caches remain reusable.
 
 Every package is licensed `Apache-2.0 WITH LLVM-exception`. The workspace states that value once and each manifest inherits it. The exception covers the Dylint library's compiler linking and GPL-2.0 compatibility, so no package needs a second license. The [Apache-2.0](LICENSE.Apache-2.0.txt) text and its [exception](LICENSE.LLVM-exception.txt) sit at the repository root as the single copy.

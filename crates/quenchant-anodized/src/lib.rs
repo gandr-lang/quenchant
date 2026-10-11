@@ -22,5 +22,9 @@ pub use anodized_macros::spec;
 #[cfg(not(feature = "anodized"))]
 #[doc(hidden)]
 pub use quenchant_spec_macros::__erase;
+#[cfg(feature = "anodized")]
+pub use quenchant_spec_macros::__retain_helper as spec_helper;
 #[cfg(not(feature = "anodized"))]
 pub use quenchant_spec_macros::spec;
+#[cfg(not(feature = "anodized"))]
+pub use quenchant_spec_macros::spec_helper;
