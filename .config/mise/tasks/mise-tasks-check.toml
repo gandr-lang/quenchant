@@ -107,8 +107,11 @@ env.CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER = "dylint-link"
 env.CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER = "dylint-link"
 # Cargo's encoded flags win even when empty. Otherwise encode the ordinary
 # whitespace-separated flags before appending this policy-only cfg. Dylint's
-# workspace wrapper alone does not configure external dependencies.
-env.CARGO_ENCODED_RUSTFLAGS = "{% if env.CARGO_ENCODED_RUSTFLAGS is defined %}{% set flags = env.CARGO_ENCODED_RUSTFLAGS %}{% else %}{% set flags = env.RUSTFLAGS | default(value='') | trim | regex_replace(pattern='\\\\s+', rep='\u001f') %}{% endif %}{{ flags }}{% if flags %}\u001f{% endif %}--cfg=quenchant_compiler_policy"
+# workspace wrapper alone does not configure external dependencies. The clause
+# cost gate follows calls into other crates' bodies, which metadata carries for
+# every function only under `-Zalways-encode-mir`; `-Zinline-mir=no` keeps
+# standard-library calls as calls in every profile.
+env.CARGO_ENCODED_RUSTFLAGS = "{% if env.CARGO_ENCODED_RUSTFLAGS is defined %}{% set flags = env.CARGO_ENCODED_RUSTFLAGS %}{% else %}{% set flags = env.RUSTFLAGS | default(value='') | trim | regex_replace(pattern='\\\\s+', rep='\u001f') %}{% endif %}{{ flags }}{% if flags %}\u001f{% endif %}--cfg=quenchant_compiler_policy\u001f-Zalways-encode-mir\u001f-Zinline-mir=no"
 run = "cargo dylint --lib quenchant_dylints --no-deps -- --workspace --all-targets"
 
 # `RUSTDOCFLAGS="-D warnings"` makes every rustdoc lint fatal for the targets

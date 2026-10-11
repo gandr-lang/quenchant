@@ -59,6 +59,7 @@ mod specification;
 #[cfg(test)]
 mod specification_tests;
 mod termination;
+mod walk_summary;
 
 use std::collections::HashMap;
 
@@ -1042,7 +1043,11 @@ non_owning_generics = [
     fn ui_spec_cost()
     {
         let mut flags = fixture_extern_flags();
-        flags.push("-Dunknown-lints".to_owned());
+        // Followed bodies are read from metadata; the policy invocation
+        // builds every crate this way.
+        flags.extend(
+            ["-Dunknown-lints", "-Zalways-encode-mir", "-Zinline-mir=no"].map(str::to_owned),
+        );
         dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_spec_cost")
             .rustc_flags(flags)
             .run();

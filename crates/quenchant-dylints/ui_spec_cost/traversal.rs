@@ -21,6 +21,15 @@ struct Slope
     keys: BTreeSet<u32>,
     table: BTreeMap<u32, u32>,
     fixed: [u32; 4],
+    window: Window,
+}
+
+/// A value whose derived equality compares its vector.
+#[derive(Clone, Debug, Default, PartialEq)]
+#[repr(transparent)]
+struct Window
+{
+    cells: Vec<u32>,
 }
 
 impl Slope
@@ -81,6 +90,26 @@ impl Slope
         self.table.len()
     }
 
+    // Refused: a call that hands the state to a body that walks it.
+
+    #[spec(ensures: |ret| ret == tally(&self.cells))]
+    fn tallied(&self) -> usize
+    {
+        self.cells.len()
+    }
+
+    #[spec(ensures: |ret| ret == self.probe())]
+    fn probed(&self) -> usize
+    {
+        self.cells.len()
+    }
+
+    #[spec(ensures: |ret| ret == self.window)]
+    fn window(&self) -> Window
+    {
+        self.window.clone()
+    }
+
     // Accepted: bounded reads of the same state.
 
     #[spec(ensures: |ret| ret.is_none_or(|index| self.frontiers.binary_search(&index).is_ok() && self.frontiers.last() == Some(&index)))]
@@ -114,12 +143,29 @@ impl Slope
             .collect()
     }
 
-    #[spec(ensures: |ret| ret == tally(&self.cells))]
-    fn tallied(&self) -> usize
+    #[spec(ensures: |ret| ret == self.measured())]
+    fn remeasured(&self) -> usize
     {
         self.cells.len()
     }
 
+    #[spec(captures: mark = self.cells.len(), ensures: |_| self.since(mark) == value)]
+    fn record(
+        &mut self,
+        value: u32,
+    )
+    {
+        self.cells.push(value);
+    }
+
+    #[spec(ensures: |ret| ret == tally(&cells))]
+    fn tallied_input(
+        &self,
+        cells: Vec<u32>,
+    ) -> usize
+    {
+        cells.len()
+    }
     #[expect(
         spec_clause_traversal,
         reason = "the fixture's slope never holds more than four cells"
@@ -134,6 +180,50 @@ impl Slope
     fn snapshot(&self) -> Vec<u32>
     {
         self.cells.clone()
+    }
+
+    // Counts the cells inside a closure the body builds.
+    fn probe(&self) -> usize
+    {
+        let count = || self.cells.iter().count();
+        count()
+    }
+
+    // Walks the cells only in its own clause, which is reported where it is
+    // written and not charged to its callers.
+    #[expect(
+        spec_clause_traversal,
+        reason = "the fixture's slope never holds more than four cells"
+    )]
+    #[spec(ensures: |ret| ret == self.cells.iter().count())]
+    fn measured(&self) -> usize
+    {
+        self.cells.len()
+    }
+
+    /// The cells recorded after `mark`, summed.
+    ///
+    /// # Clause cost
+    /// - bound: reads only the cells recorded after `mark`.
+    fn since(
+        &self,
+        mark: usize,
+    ) -> u32
+    {
+        self.cells
+            .iter()
+            .skip(mark)
+            .copied()
+            .fold(0_u32, u32::wrapping_add)
+    }
+
+    /// Every cell, summed.
+    ///
+    /// # Clause cost
+    /// The heading alone states no bound.
+    fn unbounded(&self) -> u32
+    {
+        self.cells.iter().copied().fold(0_u32, u32::wrapping_add)
     }
 }
 
@@ -154,7 +244,7 @@ fn total(values: &[u32]) -> u32
     values.iter().copied().fold(0_u32, u32::saturating_add)
 }
 
-// A helper the clause calls is not followed.
+// A helper the clause calls is followed into its body.
 fn tally(cells: &[u32]) -> usize
 {
     cells.iter().count()
