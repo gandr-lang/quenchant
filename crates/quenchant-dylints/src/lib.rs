@@ -41,6 +41,7 @@ extern crate rustc_span;
 mod adequacy;
 mod arithmetic;
 mod callgraph;
+mod clause_cost;
 mod erased_error;
 mod executable;
 mod graph;
@@ -58,6 +59,7 @@ mod specification;
 #[cfg(test)]
 mod specification_tests;
 mod termination;
+mod walk_summary;
 
 use std::collections::HashMap;
 
@@ -334,6 +336,8 @@ pub fn register_lints(
     let collected = attributes.clone();
     let spelling = SpecificationSpelling::default();
     let collected_spelling = spelling.clone();
+    let clause_regions = clause_cost::ClauseRegions::default();
+    let collected_regions = clause_regions.clone();
     lint_store.register_lints(&[
         SINGLE_FIELD_STRUCT_NEEDS_TRANSPARENT_REPR,
         PRIMITIVE_SIGNATURE,
@@ -345,6 +349,7 @@ pub fn register_lints(
         SPECIFICATION_PRESENT,
         SPEC_ATTRIBUTE_PRESENT,
         SPEC_ATTRIBUTE_UNQUALIFIED,
+        clause_cost::SPEC_CLAUSE_TRAVERSAL,
         arithmetic::PRIMITIVE_ARITHMETIC,
         erased_error::ERASED_ERROR_SIGNATURE,
         maybe_shape::MAYBE_SHAPE,
@@ -360,7 +365,15 @@ pub fn register_lints(
         Box::new(AttributeCollector::new(collected.clone()))
     }));
     lint_store.register_pre_expansion_pass(Box::new(move || Box::new(collected_spelling.clone())));
+    lint_store.register_pre_expansion_pass(Box::new(move || {
+        Box::new(clause_cost::ClauseCollector::new(collected_regions.clone()))
+    }));
     lint_store.register_late_pass(Box::new(move |_| Box::new(spelling.clone())));
+    lint_store.register_late_pass(Box::new(move |_| {
+        Box::new(clause_cost::SpecClauseTraversal::new(
+            clause_regions.clone(),
+        ))
+    }));
     lint_store.register_late_pass(Box::new(move |_| {
         Box::new(WorkflowBoundaries::new(allow_list.clone()))
     }));
@@ -1022,6 +1035,20 @@ non_owning_generics = [
         let mut flags = fixture_extern_flags();
         flags.push("-Dunknown-lints".to_owned());
         dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_spec_gates")
+            .rustc_flags(flags)
+            .run();
+    }
+
+    #[test]
+    fn ui_spec_cost()
+    {
+        let mut flags = fixture_extern_flags();
+        // Followed bodies are read from metadata; the policy invocation
+        // builds every crate this way.
+        flags.extend(
+            ["-Dunknown-lints", "-Zalways-encode-mir", "-Zinline-mir=no"].map(str::to_owned),
+        );
+        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_spec_cost")
             .rustc_flags(flags)
             .run();
     }

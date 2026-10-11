@@ -1,0 +1,142 @@
+error: this specification clause iterates over state reached through the receiver or a mutable parameter
+  --> $DIR/traversal.rs:39:34
+   |
+LL |     #[spec(ensures: |ret| ret == self.cells.iter().any(|&cell| cell == value))]
+   |                                  ^^^^^^^^^^^^^^^^^
+   |
+   = help: check the claim once where the state is built, check only what the call returns, or call a combinator whose `# Clause cost` section states its bound; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
+note: the lint level is defined here
+  --> $DIR/traversal.rs:2:52
+   |
+LL | #![cfg_attr(dylint_lib = "quenchant_dylints", deny(spec_clause_traversal))]
+   |                                                    ^^^^^^^^^^^^^^^^^^^^^
+
+error: this specification clause searches state reached through the receiver or a mutable parameter
+  --> $DIR/traversal.rs:48:50
+   |
+LL |     #[spec(ensures: |ret| ret.is_none_or(|index| self.frontiers.contains(&index)))]
+   |                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: check the claim once where the state is built, check only what the call returns, or call a combinator whose `# Clause cost` section states its bound; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
+
+error: this specification clause searches state reached through the receiver or a mutable parameter
+  --> $DIR/traversal.rs:54:22
+   |
+LL |     #[spec(requires: self.frontiers.is_sorted())]
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: check the claim once where the state is built, check only what the call returns, or call a combinator whose `# Clause cost` section states its bound; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
+
+error: this specification clause copies state reached through the receiver or a mutable parameter
+  --> $DIR/traversal.rs:60:31
+   |
+LL |     #[spec(captures: before = self.cells.clone(), ensures: |_| self.cells.len() == before.len().saturating_add(1))]
+   |                               ^^^^^^^^^^^^^^^^^^
+   |
+   = help: check the claim once where the state is built, check only what the call returns, or call a combinator whose `# Clause cost` section states its bound; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
+
+error: this specification clause compares state reached through the receiver or a mutable parameter
+  --> $DIR/traversal.rs:69:27
+   |
+LL |     #[spec(ensures: |ret| *ret == self.frontiers)]
+   |                           ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: check the claim once where the state is built, check only what the call returns, or call a combinator whose `# Clause cost` section states its bound; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
+
+error: this specification clause iterates over state reached through the receiver or a mutable parameter
+  --> $DIR/traversal.rs:75:54
+   |
+LL |     #[spec(ensures: |ret| { let mut count = 0_usize; for _ in &self.cells { count = count.saturating_add(1); } ret == count })]
+   |                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: check the claim once where the state is built, check only what the call returns, or call a combinator whose `# Clause cost` section states its bound; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
+
+error: this specification clause iterates over state reached through the receiver or a mutable parameter
+  --> $DIR/traversal.rs:81:34
+   |
+LL |     #[spec(ensures: |ret| ret == self.snapshot().iter().count())]
+   |                                  ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: check the claim once where the state is built, check only what the call returns, or call a combinator whose `# Clause cost` section states its bound; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
+
+error: this specification clause calls `Slope::snapshot`, which copies state reached through the receiver or a mutable parameter
+  --> $DIR/traversal.rs:81:34
+   |
+LL |     #[spec(ensures: |ret| ret == self.snapshot().iter().count())]
+   |                                  ^^^^^^^^^^^^^^^
+   |
+note: the walk is here
+  --> $DIR/traversal.rs:182:20
+   |
+LL |         self.cells.clone()
+   |                    ^^^^^^^
+   = help: check the claim once where the state is built, check only what the call returns, or call a combinator whose `# Clause cost` section states its bound; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
+
+error: this specification clause iterates over state reached through the receiver or a mutable parameter
+  --> $DIR/traversal.rs:87:50
+   |
+LL |     #[cfg_attr(all(), spec(ensures: |ret| ret == self.table.values().count()))]
+   |                                                  ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: check the claim once where the state is built, check only what the call returns, or call a combinator whose `# Clause cost` section states its bound; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
+
+error: this specification clause calls `tally`, which iterates over state reached through the receiver or a mutable parameter
+  --> $DIR/traversal.rs:95:34
+   |
+LL |     #[spec(ensures: |ret| ret == tally(&self.cells))]
+   |                                  ^^^^^^^^^^^^^^^^^^
+   |
+note: the walk is here
+  --> $DIR/traversal.rs:250:11
+   |
+LL |     cells.iter().count()
+   |           ^^^^^^
+   = help: check the claim once where the state is built, check only what the call returns, or call a combinator whose `# Clause cost` section states its bound; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
+
+error: this specification clause calls `Slope::probe`, which iterates over state reached through the receiver or a mutable parameter
+  --> $DIR/traversal.rs:101:34
+   |
+LL |     #[spec(ensures: |ret| ret == self.probe())]
+   |                                  ^^^^^^^^^^^^
+   |
+note: the walk is here
+  --> $DIR/traversal.rs:188:35
+   |
+LL |         let count = || self.cells.iter().count();
+   |                                   ^^^^^^
+   = help: check the claim once where the state is built, check only what the call returns, or call a combinator whose `# Clause cost` section states its bound; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
+
+error: this specification clause calls `<Window as std::cmp::PartialEq>::eq`, which compares state reached through the receiver or a mutable parameter
+  --> $DIR/traversal.rs:107:27
+   |
+LL |     #[spec(ensures: |ret| ret == self.window)]
+   |                           ^^^^^^^^^^^^^^^^^^
+   |
+note: the walk is here
+  --> $DIR/traversal.rs:32:5
+   |
+LL | #[derive(Clone, Debug, Default, PartialEq)]
+   |                                 --------- in this derive macro expansion
+...
+LL |     cells: Vec<u32>,
+   |     ^^^^^^^^^^^^^^^
+   = help: check the claim once where the state is built, check only what the call returns, or call a combinator whose `# Clause cost` section states its bound; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
+
+error: this `# Clause cost` section states no `- bound:`
+  --> $DIR/traversal.rs:224:5
+   |
+LL |     fn unbounded(&self) -> u32
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: state the bound below the heading as `- bound: <why a clause may call this on accumulated state>`
+
+error: this specification clause iterates over state reached through the receiver or a mutable parameter
+  --> $DIR/traversal.rs:231:21
+   |
+LL | #[spec(ensures: |_| cells.iter().any(|&cell| cell == value))]
+   |                     ^^^^^^^^^^^^
+   |
+   = help: check the claim once where the state is built, check only what the call returns, or call a combinator whose `# Clause cost` section states its bound; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
+
+error: aborting due to 14 previous errors
+

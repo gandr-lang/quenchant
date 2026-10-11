@@ -90,13 +90,14 @@ run = "cargo run -p quenchant-gates --locked -- witnesses --manifest-path Cargo.
 # compilation is off because the driver reads whole-crate HIR: an incremental
 # rebuild can skip the units the lints need to see. A toolchain bump
 # invalidates the driver -- `rm -rf ~/.dylint_drivers target/dylint` before the
-# wall runs again. The five executable-specification and adequacy lints are
-# denied here for every workspace target, rather than in individual crate roots.
+# wall runs again. The six executable-specification, adequacy and clause-cost
+# lints are denied here for every workspace target, rather than in individual
+# crate roots.
 # CI invokes this task to use the same policy and compiler environment.
 ["check:dylint"]
 description = "Load the workspace's own Dylint library over the workspace"
 env.CARGO_INCREMENTAL = "0"
-env.DYLINT_RUSTFLAGS = "-D spec_attribute_present -D adequacy_present -D maybe_shape -D erased_error_signature -D spec_attribute_unqualified"
+env.DYLINT_RUSTFLAGS = "-D spec_attribute_present -D adequacy_present -D maybe_shape -D erased_error_signature -D spec_attribute_unqualified -D spec_clause_traversal"
 # The plugin must link through dylint-link even when cargo dylint builds it
 # from the workspace root, where its crate-local Cargo configuration is absent.
 # Cargo's linker variable is per target, so each host the wall runs on is
@@ -106,8 +107,11 @@ env.CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER = "dylint-link"
 env.CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER = "dylint-link"
 # Cargo's encoded flags win even when empty. Otherwise encode the ordinary
 # whitespace-separated flags before appending this policy-only cfg. Dylint's
-# workspace wrapper alone does not configure external dependencies.
-env.CARGO_ENCODED_RUSTFLAGS = "{% if env.CARGO_ENCODED_RUSTFLAGS is defined %}{% set flags = env.CARGO_ENCODED_RUSTFLAGS %}{% else %}{% set flags = env.RUSTFLAGS | default(value='') | trim | regex_replace(pattern='\\\\s+', rep='\u001f') %}{% endif %}{{ flags }}{% if flags %}\u001f{% endif %}--cfg=quenchant_compiler_policy"
+# workspace wrapper alone does not configure external dependencies. The clause
+# cost gate follows calls into other crates' bodies, which metadata carries for
+# every function only under `-Zalways-encode-mir`; `-Zinline-mir=no` keeps
+# standard-library calls as calls in every profile.
+env.CARGO_ENCODED_RUSTFLAGS = "{% if env.CARGO_ENCODED_RUSTFLAGS is defined %}{% set flags = env.CARGO_ENCODED_RUSTFLAGS %}{% else %}{% set flags = env.RUSTFLAGS | default(value='') | trim | regex_replace(pattern='\\\\s+', rep='\u001f') %}{% endif %}{{ flags }}{% if flags %}\u001f{% endif %}--cfg=quenchant_compiler_policy\u001f-Zalways-encode-mir\u001f-Zinline-mir=no"
 run = "cargo dylint --lib quenchant_dylints --no-deps -- --workspace --all-targets"
 
 # `RUSTDOCFLAGS="-D warnings"` makes every rustdoc lint fatal for the targets
