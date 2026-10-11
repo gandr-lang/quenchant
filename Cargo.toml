@@ -34,7 +34,7 @@ publish = ["crates-io"]
 # - quenchant-spec-macros (dev)
 [workspace.dependencies.anodized]
 git = "https://github.com/gandr-lang/anodized"
-rev = "74640cf336ceb54ea6bba07db8bfb66f3cedd9c5"
+rev = "5483862f402da57329dd22e8e2f272fde576af87"
 version = "=0.7.0"
 default-features = false
 
@@ -48,7 +48,7 @@ default-features = false
 # - quenchant-spec-macros (dev)
 [workspace.dependencies.anodized-macros]
 git = "https://github.com/gandr-lang/anodized"
-rev = "74640cf336ceb54ea6bba07db8bfb66f3cedd9c5"
+rev = "5483862f402da57329dd22e8e2f272fde576af87"
 version = "=0.7.0"
 default-features = false
 

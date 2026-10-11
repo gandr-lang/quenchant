@@ -149,13 +149,6 @@ mod tests
         assert_eq!(stripped_const(Receipt::Altered), Receipt::Altered);
     }
 
-    #[cfg_attr(
-        any(anodized_panic, anodized_print),
-        expect(
-            non_upper_case_globals,
-            reason = "The backend emits lowercase associated qualifier constants."
-        )
-    )]
     #[spec]
     /// A nested method obligation belongs to the enclosing trait annotation.
     trait Inspect
