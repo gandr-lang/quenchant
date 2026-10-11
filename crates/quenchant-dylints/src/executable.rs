@@ -189,13 +189,13 @@ impl_lint_pass!(AttributeCollector => [SPEC_ATTRIBUTE_PRESENT]);
 declare_lint! {
     /// ### What it does
     ///
-    /// Requires an imported, single-segment spelling of the resolved anodized
-    /// specification attribute, including its quenchant facade.
+    /// Requires imported, single-segment spellings of the resolved anodized
+    /// specification attributes, including the facade's `spec_helper`.
     ///
     /// ### Why is this bad?
     ///
     /// Multiple spellings obscure the shared specification surface. An import
-    /// makes its dependency explicit while every declaration reads `#[spec]`.
+    /// makes the dependency explicit for both `#[spec]` and `#[spec_helper]`.
     ///
     /// ### Limitations
     ///
@@ -219,7 +219,7 @@ declare_lint! {
     /// ```
     pub SPEC_ATTRIBUTE_UNQUALIFIED,
     Allow,
-    "the specification attribute is written #[spec] with an import"
+    "specification attributes use an imported, single-segment path"
 }
 
 /// Authored qualified paths shared between collection and resolved expansion
@@ -367,29 +367,32 @@ impl SpecificationSpelling
             else {
                 continue;
             };
-            if cx.tcx.opt_item_name(macro_id) != Some(Symbol::intern("spec"))
-                || !cx.tcx.parent(macro_id).is_crate_root()
-                || !matches!(
-                    cx.tcx.crate_name(macro_id.krate).as_str(),
-                    "anodized_macros" | "quenchant_spec_macros"
-                )
-            {
+            if !cx.tcx.parent(macro_id).is_crate_root() {
                 continue;
             }
+            let Some(name) = cx.tcx.opt_item_name(macro_id)
+            else {
+                continue;
+            };
+            let (message, help) = match (cx.tcx.crate_name(macro_id.krate).as_str(), name.as_str())
+            {
+                | ("anodized_macros" | "quenchant_spec_macros", "spec") => (
+                    "write #[spec(...)] with use anodized::spec; instead of a path-qualified specification attribute",
+                    "import the specification macro in this scope, then use #[spec(...)]",
+                ),
+                | ("quenchant_spec_macros", "spec_helper" | "__retain_helper") => (
+                    "write #[spec_helper] with use anodized::spec_helper; instead of a path-qualified specification attribute",
+                    "import the specification helper macro in this scope, then use #[spec_helper]",
+                ),
+                | _ => continue,
+            };
             let path = self
                 .0
                 .lock()
                 .unwrap_or_else(PoisonError::into_inner)
                 .remove(&NameSpan::from(data.call_site));
             if let Some(path) = path {
-                span_lint_and_help(
-                    cx,
-                    SPEC_ATTRIBUTE_UNQUALIFIED,
-                    path,
-                    "write #[spec(...)] with use anodized::spec; instead of a path-qualified specification attribute",
-                    None,
-                    "import the specification macro in this scope, then use #[spec(...)]",
-                );
+                span_lint_and_help(cx, SPEC_ATTRIBUTE_UNQUALIFIED, path, message, None, help);
             }
         }
     }

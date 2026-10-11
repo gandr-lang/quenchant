@@ -1,0 +1,63 @@
+error: write #[spec_helper] with use anodized::spec_helper; instead of a path-qualified specification attribute
+  --> $DIR/helper_qualified.rs:11:3
+   |
+LL | #[anodized::spec_helper]
+   |   ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: import the specification helper macro in this scope, then use #[spec_helper]
+note: the lint level is defined here
+  --> $DIR/helper_qualified.rs:1:52
+   |
+LL | #![cfg_attr(dylint_lib = "quenchant_dylints", deny(spec_attribute_unqualified))]
+   |                                                    ^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: write #[spec_helper] with use anodized::spec_helper; instead of a path-qualified specification attribute
+  --> $DIR/helper_qualified.rs:16:3
+   |
+LL | #[::anodized::spec_helper]
+   |   ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: import the specification helper macro in this scope, then use #[spec_helper]
+
+error: write #[spec_helper] with use anodized::spec_helper; instead of a path-qualified specification attribute
+  --> $DIR/helper_qualified.rs:19:3
+   |
+LL | #[facade::spec_helper]
+   |   ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: import the specification helper macro in this scope, then use #[spec_helper]
+
+error: write #[spec_helper] with use anodized::spec_helper; instead of a path-qualified specification attribute
+  --> $DIR/helper_qualified.rs:22:3
+   |
+LL | #[exported::helper]
+   |   ^^^^^^^^^^^^^^^^
+   |
+   = help: import the specification helper macro in this scope, then use #[spec_helper]
+
+error: write #[spec_helper] with use anodized::spec_helper; instead of a path-qualified specification attribute
+  --> $DIR/helper_qualified.rs:27:30
+   |
+LL | #[cfg_attr(debug_assertions, anodized::spec_helper)]
+   |                              ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: import the specification helper macro in this scope, then use #[spec_helper]
+
+error: write #[spec_helper] with use anodized::spec_helper; instead of a path-qualified specification attribute
+  --> $DIR/helper_qualified.rs:32:57
+   |
+LL | #[cfg_attr(debug_assertions, cfg_attr(debug_assertions, anodized::spec_helper))]
+   |                                                         ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: import the specification helper macro in this scope, then use #[spec_helper]
+
+error: write #[spec_helper] with use anodized::spec_helper; instead of a path-qualified specification attribute
+  --> $DIR/helper_qualified.rs:39:7
+   |
+LL |     #[anodized::spec_helper]
+   |       ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: import the specification helper macro in this scope, then use #[spec_helper]
+
+error: aborting due to 7 previous errors
+

@@ -185,7 +185,7 @@ Neither gate decides whether a predicate expresses the clause beside it, whether
 
 ### Specification attribute spelling
 
-`spec_attribute_unqualified` requires `use anodized::spec;` and `#[spec(...)]` instead of a qualified attribute path. It joins authored paths to the resolved anodized macro or quenchant facade, so leading `::`, crate aliases, and re-exported paths cannot evade it. An unrelated macro named `spec` is not a specification invocation. Active `cfg_attr` paths, including nested conditions, are checked.
+`spec_attribute_unqualified` requires imported `#[spec(...)]` and `#[spec_helper]` attributes instead of qualified paths. It joins authored paths to resolved macro identities, so leading `::`, crate aliases, and re-exported paths cannot evade it. Unrelated macros with either name are ignored. Active `cfg_attr` paths, including nested conditions, are checked.
 
 The lint is `allow` by default. Select it with `-D spec_attribute_unqualified` or at a crate root:
 
@@ -194,6 +194,8 @@ The lint is `allow` by default. Select it with `-D spec_attribute_unqualified` o
 ```
 
 Item and module lint levels still apply. A bare renamed import is outside the rule: it checks qualification, not import names. Inactive attributes, macro-generated attributes, and nested markers consumed without their own macro expansion are not resolved authored invocations and are not checked. The UI matrix uses the facade as `anodized` and checks the backend macro separately; it covers qualified paths, conditional paths, methods and traits, imports, unrelated macros, default activation, and scoped allowances.
+
+The resolved check follows surviving item definitions. Run it with the facade backend enabled to check `spec_helper`: feature-off erasure leaves no definition to resolve. Local `let` statements likewise supply no item definition; their spelling remains a source-review obligation.
 
 ### Specification gate activation
 

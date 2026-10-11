@@ -4,6 +4,87 @@
     doc = "Conditional specification attributes and token-preserving erasure."
 )]
 
+/// Erase a specification-only item or local binding in feature-off builds.
+///
+/// # Specification
+/// - ensures: emits no item, binding, or initializer when called without
+///   arguments.
+/// - fails: arguments emit a compiler error.
+/// - panics: none.
+/// - executable: none — a proc-macro cannot apply its own attribute; consumer
+///   compilation exercises both facade-selected interpretations.
+///
+/// # Errors
+/// Attribute arguments are not supported.
+///
+/// ```compile_fail
+/// use quenchant_spec_macros::spec_helper;
+/// #[spec_helper(unexpected)]
+/// fn helper() {}
+/// ```
+///
+/// # Adequacy
+/// - hypothesis: L0/L3 — unresolved helper names distinguish erasure from
+///   retention; the retained helper's exact result distinguishes token loss.
+/// - witness: `helpers::tests::specification_only_items_follow_the_selected_mode`
+#[inline]
+#[proc_macro_attribute]
+pub fn spec_helper(
+    arguments: proc_macro::TokenStream,
+    _item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream
+{
+    __retain_helper(arguments, proc_macro::TokenStream::new())
+}
+
+/// Retain specification-only tokens when the facade compiles its backend in.
+///
+/// # Specification
+/// - ensures: retains the original tokens without interpreting nested markers.
+/// - fails: arguments emit a compiler error.
+/// - panics: none.
+/// - executable: none — a proc-macro cannot apply its own attribute; consumer
+///   compilation exercises both facade-selected interpretations.
+///
+/// # Errors
+/// Attribute arguments are not supported.
+///
+/// ```compile_fail
+/// use quenchant_spec_macros::__retain_helper as spec_helper;
+/// #[spec_helper(unexpected)]
+/// fn helper() {}
+/// ```
+///
+/// # Adequacy
+/// - hypothesis: L3 — retained helpers and local constants remain
+///   name-resolvable and preserve their exact value.
+/// - witness: `helpers::tests::specification_only_items_follow_the_selected_mode`
+#[inline]
+#[doc(hidden)]
+#[proc_macro_attribute]
+pub fn __retain_helper(
+    arguments: proc_macro::TokenStream,
+    item: proc_macro::TokenStream,
+) -> proc_macro::TokenStream
+{
+    if arguments.is_empty() {
+        return item;
+    }
+    proc_macro::TokenStream::from_iter([
+        proc_macro::TokenTree::Ident(proc_macro::Ident::new(
+            "compile_error",
+            proc_macro::Span::call_site(),
+        )),
+        proc_macro::TokenTree::Punct(proc_macro::Punct::new('!', proc_macro::Spacing::Alone)),
+        proc_macro::TokenTree::Group(proc_macro::Group::new(
+            proc_macro::Delimiter::Brace,
+            proc_macro::TokenStream::from(proc_macro::TokenTree::Literal(
+                proc_macro::Literal::string("spec_helper does not accept arguments"),
+            )),
+        )),
+    ])
+}
+
 /// Select instrumentation from the cfg of the build driving the consumer.
 ///
 /// # Specification

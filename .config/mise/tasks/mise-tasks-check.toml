@@ -35,10 +35,17 @@ run = "cargo run --quiet --locked -p quenchant-gates -- publish-allowlist"
 # Publication queries require registry access even in dry-run mode. Dirty trees
 # are accepted so local checks verify edits before a commit. Rustup run pins
 # host macros compiled outside the checkout during tarball verification.
+# Local-registry packages have immutable name/version identities. A fresh
+# registry path prevents cached source or artifacts from another revision of
+# an unpublished sibling from satisfying tarball verification.
 ["check:publish-dry-run"]
 description = "Verify every publishable package without uploading"
 depends = ["check:publish"]
-run = "rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} cargo publish --workspace --dry-run --locked --allow-dirty --target-dir target/publish"
+run = [
+  "rm -rf -- target/publish",
+  "mkdir -p target/publish",
+  "rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} cargo publish --workspace --dry-run --locked --allow-dirty --target-dir \"$(mktemp -d target/publish/run.XXXXXXXXXX)\"",
+]
 
 ["check:deny"]
 description = "Check dependency advisories, versions, licenses, and sources"
