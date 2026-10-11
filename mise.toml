@@ -28,6 +28,9 @@ binstall_quickinstall = true
 package_manager = "aube"
 
 [env]
+# Content fingerprints survive checkout timestamp changes without backdating source.
+CARGO_UNSTABLE_CHECKSUM_FRESHNESS = "true"
+CARGO_BUILD_FINGERPRINT = "content"
 # Rustup resolves the repository pin from its standard CARGO_HOME installation.
 # Proxies precede the resolved toolchain so Rustup supplies RUSTUP_TOOLCHAIN to
 # compiler-plugin builds. An absent installation or pin fails activation.

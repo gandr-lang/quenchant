@@ -25,6 +25,9 @@ concurrency:
 env:
   CARGO_INCREMENTAL: "0"
   CARGO_TERM_COLOR: always
+  # Match local content fingerprints; Cargo still checks changed inputs and flags.
+  CARGO_UNSTABLE_CHECKSUM_FRESHNESS: "true"
+  CARGO_BUILD_FINGERPRINT: content
   CARGO_NEXTEST_VERSION: "0.9.143"
   DYLINT_VERSION: "6.0.4"
   MISE_CARGO_BINSTALL_QUICKINSTALL: "true"

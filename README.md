@@ -68,6 +68,8 @@ Rust, test, and workflow changes run every hosted lane on pull requests and merg
 
 Workspace and Dylint jobs retain separate immutable artifact-cache lanes. The Dylint lane shares ordinary test, Clippy, and witness artifacts under the same linker flags; enforcing tests keep their own target directory. UI dependency builds occupy a sibling Cargo target tree, outside the profile's disposable `deps` entries. Successful compiler artifacts remain cacheable after a test failure. Main warms caches visible to other branches; pull-request and manual runs can retain their own ref-scoped build state.
 
+Local tasks and CI use the pinned Cargo's [content-based freshness](https://doc.rust-lang.org/nightly/cargo/reference/unstable.html#checksum-freshness) so a fresh checkout can reuse unchanged workspace artifacts. Source checksums replace timestamp-only freshness; changed content and compiler flags still invalidate builds. Source timestamps are not backdated. Build-script input tracking retains Cargo's mtime behavior, and whole-crate policy checks keep incremental compilation disabled.
+
 The UI dependency build selects fixture packages, with foreign-library development dependencies owned by `quenchant-fixture-macros`. Both nextest profiles prioritize compiler-backed UI groups over in-memory tests, keeping plugin and fixture-dependency builds concurrent.
 
 The compiler plugin loads locally:
