@@ -1,0 +1,79 @@
+error: this specification clause iterates over state reached through the receiver or a mutable parameter
+  --> $DIR/traversal.rs:30:34
+   |
+LL |     #[spec(ensures: |ret| ret == self.cells.iter().any(|&cell| cell == value))]
+   |                                  ^^^^^^^^^^^^^^^^^
+   |
+   = help: check the claim once where the state is built, check only what the call returns, or call a helper that reads what changed since a captured point; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
+note: the lint level is defined here
+  --> $DIR/traversal.rs:2:52
+   |
+LL | #![cfg_attr(dylint_lib = "quenchant_dylints", deny(spec_clause_traversal))]
+   |                                                    ^^^^^^^^^^^^^^^^^^^^^
+
+error: this specification clause searches state reached through the receiver or a mutable parameter
+  --> $DIR/traversal.rs:39:50
+   |
+LL |     #[spec(ensures: |ret| ret.is_none_or(|index| self.frontiers.contains(&index)))]
+   |                                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: check the claim once where the state is built, check only what the call returns, or call a helper that reads what changed since a captured point; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
+
+error: this specification clause searches state reached through the receiver or a mutable parameter
+  --> $DIR/traversal.rs:45:22
+   |
+LL |     #[spec(requires: self.frontiers.is_sorted())]
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: check the claim once where the state is built, check only what the call returns, or call a helper that reads what changed since a captured point; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
+
+error: this specification clause copies state reached through the receiver or a mutable parameter
+  --> $DIR/traversal.rs:51:31
+   |
+LL |     #[spec(captures: before = self.cells.clone(), ensures: |_| self.cells.len() == before.len().saturating_add(1))]
+   |                               ^^^^^^^^^^^^^^^^^^
+   |
+   = help: check the claim once where the state is built, check only what the call returns, or call a helper that reads what changed since a captured point; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
+
+error: this specification clause compares state reached through the receiver or a mutable parameter
+  --> $DIR/traversal.rs:60:27
+   |
+LL |     #[spec(ensures: |ret| *ret == self.frontiers)]
+   |                           ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: check the claim once where the state is built, check only what the call returns, or call a helper that reads what changed since a captured point; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
+
+error: this specification clause iterates over state reached through the receiver or a mutable parameter
+  --> $DIR/traversal.rs:66:54
+   |
+LL |     #[spec(ensures: |ret| { let mut count = 0_usize; for _ in &self.cells { count = count.saturating_add(1); } ret == count })]
+   |                                                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: check the claim once where the state is built, check only what the call returns, or call a helper that reads what changed since a captured point; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
+
+error: this specification clause iterates over state reached through the receiver or a mutable parameter
+  --> $DIR/traversal.rs:72:34
+   |
+LL |     #[spec(ensures: |ret| ret == self.snapshot().iter().count())]
+   |                                  ^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: check the claim once where the state is built, check only what the call returns, or call a helper that reads what changed since a captured point; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
+
+error: this specification clause iterates over state reached through the receiver or a mutable parameter
+  --> $DIR/traversal.rs:78:50
+   |
+LL |     #[cfg_attr(all(), spec(ensures: |ret| ret == self.table.values().count()))]
+   |                                                  ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: check the claim once where the state is built, check only what the call returns, or call a helper that reads what changed since a captured point; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
+
+error: this specification clause iterates over state reached through the receiver or a mutable parameter
+  --> $DIR/traversal.rs:141:21
+   |
+LL | #[spec(ensures: |_| cells.iter().any(|&cell| cell == value))]
+   |                     ^^^^^^^^^^^^
+   |
+   = help: check the claim once where the state is built, check only what the call returns, or call a helper that reads what changed since a captured point; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
+
+error: aborting due to 9 previous errors
+

@@ -718,7 +718,7 @@ impl EarlyLintPass for AttributeCollector
 }
 
 /// The argument list of one authored `spec` attribute.
-enum SpecArguments<'attr>
+pub enum SpecArguments<'attr>
 {
     /// The attribute is written without arguments.
     Bare,
@@ -843,7 +843,7 @@ fn read_attributes(attrs: &[Attribute]) -> ExecutableAttribute
     AttrKind::DocComment(..) => output.is_empty(),
     AttrKind::Normal(_) => true,
 })]
-fn spec_arguments(attr: &Attribute) -> Vec<SpecArguments<'_>>
+pub fn spec_arguments(attr: &Attribute) -> Vec<SpecArguments<'_>>
 {
     let AttrKind::Normal(ref normal) = attr.kind
     else {

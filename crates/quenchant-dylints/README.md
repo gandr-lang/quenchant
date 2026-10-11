@@ -78,6 +78,7 @@ For normal work, prefer the repository's `mise run check:tests` task, which sele
 | `option_field` | Fields of authored structs and enum variants preserve absence reasons unless the item is a serde or clap target, where `Option` is wire form |
 | `spec_attribute_present` | A clause-bearing specification carries a `#[spec]` predicate that can fail, or a reasoned exemption; opt-in |
 | `spec_attribute_unqualified` | A resolved specification attribute uses an imported, single-segment path rather than a qualified path; opt-in |
+| `spec_clause_traversal` | A `#[spec]` clause does not iterate, search, copy, or compare a container reached through the receiver or a mutable parameter; opt-in |
 | `adequacy_present` | A clause-bearing specification carries an `# Adequacy` section; opt-in |
 | `maybe_shape` | A crate-defined enum does not reimplement `Maybe`'s shape of two variants over two type parameters; opt-in |
 | `erased_error_signature` | A crate-defined signature does not return a `Result` whose error is erased behind `dyn Error`, `anyhow`, or `eyre`; opt-in |
@@ -196,6 +197,23 @@ The lint is `allow` by default. Select it with `-D spec_attribute_unqualified` o
 Item and module lint levels still apply. A bare renamed import is outside the rule: it checks qualification, not import names. Inactive attributes, macro-generated attributes, and nested markers consumed without their own macro expansion are not resolved authored invocations and are not checked. The UI matrix uses the facade as `anodized` and checks the backend macro separately; it covers qualified paths, conditional paths, methods and traits, imports, unrelated macros, default activation, and scoped allowances.
 
 The resolved check follows surviving item definitions. Run it with the facade backend enabled to check `spec_helper`: feature-off erasure leaves no definition to resolve. Local `let` statements likewise supply no item definition; their spelling remains a source-review obligation.
+
+### Specification clause cost
+
+An enforcing build evaluates every clause on every call. A clause that walks state accumulated across calls costs as much as everything the state has seen: a frontier query that scans every frontier runs in quadratic time over a parse. `spec_clause_traversal` refuses four walks inside a `#[spec]` clause when the walked container is reached through `self` or a `&mut` parameter:
+
+- iterates: a method call whose result is an iterator, or a `for` loop;
+- searches: `contains` or `is_sorted`, `is_sorted_by`, `is_sorted_by_key` on a sequence (`Vec`, `VecDeque`, `String`, slice, `str`);
+- copies: `clone`, `to_owned`, or `to_vec` of a container;
+- compares: `==` or `!=` between containers, or `eq` and `ne` calls.
+
+Bounded reads pass: `len`, `last`, `get`, `binary_search`, map and set `contains`. So do walks over a fixed-size array, a shared input, the call's output, or anything the function body does. The predicate charges what the clause itself costs. Clauses are found by source span inside recorded `spec` attributes, both plain and under `cfg_attr`, because the attributes do not survive expansion. Calls into helpers are not followed, so a helper that reads only what changed since a captured point is the intended route.
+
+There are three remedies: check the structural claim once where the state is built, check only what the call returns, or check what changed since a mark captured on entry. A walk that stays bounded in practice is an exception: `#[expect(spec_clause_traversal, reason = "...")]`. The lint is `allow` by default; select it at a crate root:
+
+```rust
+#![cfg_attr(dylint_lib = "quenchant_dylints", deny(spec_clause_traversal))]
+```
 
 ### Specification gate activation
 
