@@ -2,6 +2,7 @@
 //!
 //! ```text
 //! quenchant-gates <anodized | witnesses> --manifest-path <Cargo.toml>
+//! quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--comment <file>] [--selection <file>]
 //! quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]
 //! quenchant-gates toolchain-bump --version <stable> [--root <repository>]
 //! ```
@@ -9,7 +10,9 @@
 //! An explicit consumer manifest selects both gates' scope, including for an
 //! installed binary launched elsewhere. `anodized` classifies invocation cfgs
 //! and can require panic-enabled checking; `witnesses` resolves the consumer's
-//! runnable inventory.
+//! runnable inventory; `obligations` reports the re-verification a change owes
+//! and writes the pull-request comment and the nextest selection that
+//! discharges it.
 //!
 //! Policy violations and operational failures both produce unsuccessful exits
 //! with distinct diagnostics. Failure to obtain an inventory remains an
@@ -30,9 +33,12 @@ use quenchant_gates::anodized::Requirement;
 use quenchant_gates::anodized::Verdict;
 use quenchant_gates::anodized::invocation_state;
 use quenchant_gates::inventory;
+use quenchant_gates::obligations;
+use quenchant_gates::semantic::DocText;
+use quenchant_gates::semantic::GitRevision;
 
 /// Invalid argument shapes receive the complete supported command syntax.
-const USAGE: &str = "usage: quenchant-gates <anodized | witnesses> --manifest-path <Cargo.toml> [--require-enforcing]\n       quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]\n       quenchant-gates toolchain-bump --version <stable> [--root <repository>]";
+const USAGE: &str = "usage: quenchant-gates <anodized | witnesses> --manifest-path <Cargo.toml> [--require-enforcing]\n       quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--comment <file>] [--selection <file>]\n       quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]\n       quenchant-gates toolchain-bump --version <stable> [--root <repository>]";
 
 /// Argument interpretation selects one consumer or repository operation.
 ///
@@ -77,6 +83,9 @@ fn main() -> ExitCode
             quenchant_gates::semantic::SourceText(&subcommand),
             arguments,
         );
+    }
+    if subcommand == "obligations" {
+        return run_obligations(arguments);
     }
     let Some(flag) = arguments.next()
     else {
@@ -236,4 +245,115 @@ fn inventory_gate(manifest_path: &Path) -> Result<Vec<Finding>, GateError>
     let workspace = inventory::discover(manifest_path)?;
     let catalog = inventory::catalog(&workspace)?;
     inventory::run(&workspace, &catalog)
+}
+
+/// The options of the `obligations` subcommand that take a value.
+const OBLIGATION_OPTIONS: [&str; 7] = [
+    "--manifest-path",
+    "--base",
+    "--records",
+    "--rustdoc",
+    "--previous",
+    "--comment",
+    "--selection",
+];
+
+/// Report a change's re-verification obligations and write their discharge
+/// inputs.
+///
+/// # Specification
+/// - requires: arguments are `--option value` pairs among
+///   [`OBLIGATION_OPTIONS`], each at most once, with `--manifest-path`,
+///   `--base`, `--records` and `--rustdoc` present.
+/// - ensures: prints [`obligations::render_text`] of the report; writes
+///   [`obligations::render_comment`] to `--comment` and the lines of
+///   [`obligations::selection`] to `--selection` when given; succeeds, whatever
+///   the obligations, once all of that is done.
+/// - fails: prints the usage on a malformed invocation and the error on an
+///   operational failure, and exits unsuccessfully either way.
+/// - panics: none.
+/// - executable: none — the outcome is printed and written output, consumed
+///   into an exit code.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixture repository's invocations print the
+///   obligations and write the comment and selection the tests read back.
+/// - witness: `gates::obligations::changing_a_named_item_obligates_the_specification`
+/// - witness: `gates::obligations::the_tag_table_replay_lists_both_preconditions`
+#[expect(
+    clippy::print_stderr,
+    clippy::print_stdout,
+    reason = "the report is the subcommand's console output; CI reads it in the job log"
+)]
+fn run_obligations(mut arguments: core::iter::Skip<std::env::Args>) -> ExitCode
+{
+    let mut options = alloc::collections::BTreeMap::new();
+    while let Some(flag) = arguments.next() {
+        let Some(value) = arguments.next()
+        else {
+            eprintln!("obligations: `{flag}` takes a value\n{USAGE}");
+            return ExitCode::FAILURE;
+        };
+        if !OBLIGATION_OPTIONS.contains(&flag.as_str())
+            || options.insert(flag.clone(), value).is_some()
+        {
+            eprintln!("obligations: unsupported or repeated option `{flag}`\n{USAGE}");
+            return ExitCode::FAILURE;
+        }
+    }
+    let (Some(manifest_path), Some(base), Some(records), Some(rustdoc)) = (
+        options.get("--manifest-path"),
+        options.get("--base"),
+        options.get("--records"),
+        options.get("--rustdoc"),
+    )
+    else {
+        eprintln!(
+            "obligations: `--manifest-path`, `--base`, `--records` and `--rustdoc` are required\n{USAGE}"
+        );
+        return ExitCode::FAILURE;
+    };
+    let previous = match options.get("--previous") {
+        | Some(path) => match std::fs::read_to_string(path) {
+            | Ok(text) => text,
+            | Err(error) => {
+                eprintln!("obligations could not read the previous comment {path}: {error}");
+                return ExitCode::FAILURE;
+            },
+        },
+        | None => String::new(),
+    };
+    let inputs = obligations::Inputs {
+        manifest_path: Path::new(manifest_path),
+        base: GitRevision::from(base),
+        records: Path::new(records),
+        rustdoc: Path::new(rustdoc),
+        previous: DocText::from(&previous),
+    };
+    let report = match obligations::run(&inputs) {
+        | Ok(report) => report,
+        | Err(error) => {
+            eprintln!("obligations could not run: {error}");
+            return ExitCode::FAILURE;
+        },
+    };
+    print!("{}", obligations::render_text(&report));
+    let mut outputs = Vec::new();
+    if let Some(path) = options.get("--comment") {
+        outputs.push((path, obligations::render_comment(&report)));
+    }
+    if let Some(path) = options.get("--selection") {
+        let mut lines = obligations::selection(&report).join("\n");
+        if !lines.is_empty() {
+            lines.push('\n');
+        }
+        outputs.push((path, lines));
+    }
+    for (path, contents) in outputs {
+        if let Err(error) = std::fs::write(path, contents) {
+            eprintln!("obligations could not write {path}: {error}");
+            return ExitCode::FAILURE;
+        }
+    }
+    ExitCode::SUCCESS
 }

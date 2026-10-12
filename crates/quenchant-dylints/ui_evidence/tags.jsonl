@@ -1,0 +1,8 @@
+{"column":1,"docs":[11,11],"end":18,"file":"ui_evidence/tags.rs","line":12,"path":"tags::Row","record":"item","revision":"ab0c7e75d2a7500e0847dd381d5a19bd","start":11}
+{"column":5,"docs":[14,14],"end":15,"file":"ui_evidence/tags.rs","line":15,"path":"tags::Row::tag","record":"item","revision":"e984f20e1b19765fdaa4026e43186405","start":14}
+{"column":5,"docs":[16,16],"end":17,"file":"ui_evidence/tags.rs","line":17,"path":"tags::Row::bounded","record":"item","revision":"49bb84cb360946c8286c8cc5bf078e9a","start":16}
+{"column":1,"docs":[20,28],"end":36,"file":"ui_evidence/tags.rs","line":30,"path":"tags::row","record":"item","revision":"1e0b81f1c73278aafa97c55357a8d50e","start":20}
+{"column":1,"docs":[38,47],"end":52,"file":"ui_evidence/tags.rs","line":49,"path":"tags::unbounded","record":"item","revision":"29bfc353dc41262e2d77942a73cf6f51","start":38}
+{"column":1,"docs":[54,54],"end":68,"file":"ui_evidence/tags.rs","line":55,"path":"tags::NODE_TAG_TABLE","record":"item","revision":"4b0605391f93bf9099dc5c28f88fbd80","start":54}
+{"column":1,"docs":[70,73],"end":76,"file":"ui_evidence/tags.rs","line":74,"path":"tags::main","record":"item","revision":"eeb942cf4613d957fd2975158adc9735","start":70}
+{"clause":"ensures","item":"tags::row","names":["tags::Row::tag"],"record":"clause","revision":"1e0b81f1c73278aafa97c55357a8d50e"}

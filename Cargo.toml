@@ -102,6 +102,20 @@ version = "6.0.4"
 version = "1.0.107"
 features = ["span-locations"]
 
+# CommonMark event parser for documentation clauses. It is the parser rustdoc
+# itself runs, so the link destinations the gate attributes to a clause are
+# the keys rustdoc's JSON resolves. Alternatives: `comrak` builds a GFM tree
+# the gate does not need at several times the build cost; a line scanner
+# misreads code spans and reference definitions. Reversal: rustdoc JSON
+# reporting each link's source range would make the parse unnecessary.
+# features:
+# - none: events only; the HTML renderer and the CLI's option parser stay off
+# consumers:
+# - quenchant-gates
+[workspace.dependencies.pulldown-cmark]
+version = "0.13.4"
+default-features = false
+
 # Specification facade, imported by its library name, anodized.
 # consumers:
 # - quenchant
@@ -162,10 +176,11 @@ features = ["perf", "std"]
 version = "1.0.229"
 features = ["derive"]
 
-# JSON reader for Cargo and nextest machine output.
+# JSON reader for Cargo, nextest and rustdoc machine output, and writer of the
+# specification dependency records the policy library emits.
 # consumers:
+# - quenchant-dylints
 # - quenchant-gates
-# - quenchant-dylints (dev)
 [workspace.dependencies.serde_json]
 version = "1.0.151"
 

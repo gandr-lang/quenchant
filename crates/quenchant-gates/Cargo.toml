@@ -19,6 +19,7 @@ path = "tests/lib.rs"
 
 [dependencies]
 proc-macro2.workspace = true
+pulldown-cmark.workspace = true
 quenchant-anodized.workspace = true
 quenchant-shape.workspace = true
 regex.workspace = true

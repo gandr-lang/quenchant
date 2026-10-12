@@ -5,12 +5,16 @@
 //! paths are `gates::<file>::<test>`, and their code remains subject to the
 //! library's lint policy.
 
+extern crate alloc;
+
 #[cfg(test)]
 mod anodized;
 #[cfg(test)]
 mod catalog;
 #[cfg(test)]
 mod facade;
+#[cfg(test)]
+mod obligations;
 #[cfg(test)]
 mod repository;
 #[cfg(test)]

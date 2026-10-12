@@ -55,6 +55,9 @@ pub struct Member
     pub source_roots: Vec<PathBuf>,
     /// A member-local compiler pin requires its own listing invocation.
     pub pins_toolchain: PinsToolchain,
+    /// The integration test targets, sorted: a witness they own spells the
+    /// target name as its first segment.
+    pub integration_targets: Vec<String>,
 }
 
 /// Discovered workspace scope, including deterministic member order.
@@ -73,7 +76,8 @@ pub struct Workspace
 /// # Specification
 /// - requires: `manifest_path` names the workspace's root `Cargo.toml`.
 /// - ensures: returns every workspace member with its directory, sorted by
-///   name, each flagged with whether it pins its own toolchain.
+///   name, each flagged with whether it pins its own toolchain and listing its
+///   integration test targets.
 /// - provides: the package ownership map every finding is attributed through.
 /// - fails: [`GateError::Tool`] when `cargo metadata` fails or its output is
 ///   unreadable.
@@ -169,11 +173,32 @@ pub fn discover(manifest_path: &Path) -> Result<Workspace, GateError>
             .unwrap_or_default();
         source_roots.sort();
         source_roots.dedup();
+        let mut integration_targets: Vec<String> = package
+            .get("targets")
+            .and_then(serde_json::Value::as_array)
+            .map(|targets| {
+                targets
+                    .iter()
+                    .filter(|target| {
+                        target
+                            .get("kind")
+                            .and_then(serde_json::Value::as_array)
+                            .and_then(|kinds| kinds.first())
+                            .and_then(serde_json::Value::as_str)
+                            .is_some_and(|kind| is_integration(TargetKind::from(kind)).0)
+                    })
+                    .filter_map(|target| target.get("name").and_then(serde_json::Value::as_str))
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .unwrap_or_default();
+        integration_targets.sort();
         members.push(Member {
             name: name.to_owned(),
             directory,
             source_roots,
             pins_toolchain,
+            integration_targets,
         });
     }
     members.sort();
@@ -890,6 +915,7 @@ mod tests
             directory: root.clone(),
             source_roots: vec![root.clone(), root.join("nested"), root.join("absent")],
             pins_toolchain: PinsToolchain(false),
+            integration_targets: Vec::new(),
         };
         assert_eq!(member_sources(&member).unwrap(), expected);
         let missing = root.join("absent");

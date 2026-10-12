@@ -27,12 +27,12 @@ clippy_utils.workspace = true
 dylint_linting.workspace = true
 quenchant-anodized.workspace = true
 quenchant-shape.workspace = true
+serde_json.workspace = true
 
 # The fixture package owns foreign libraries acquired by the explicit UI build.
 # These dependencies belong to the test harness itself.
 [dev-dependencies]
 dylint_testing.workspace = true
-serde_json.workspace = true
 
 [lints]
 workspace = true

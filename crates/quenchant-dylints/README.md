@@ -249,6 +249,19 @@ Consumers may use module-scoped lint levels during a rollout. After the backlog 
 
 A foreign generic known not to own its arguments can be listed in `dylint.toml` under `[quenchant-dylints].non_owning_generics`. Each entry needs its canonical type path and a concrete justification. An unjustified entry is refused; unknown foreign generics remain conservatively owning. No allowlist entry supplies a missing semantic proof by itself.
 
+## Specification dependency records
+
+When the configuration names a directory, the plugin also writes what each executable specification depends on, for [`quenchant-gates obligations`](../quenchant-gates/README.md#re-verification-obligations):
+
+```toml
+[quenchant-dylints]
+evidence_directory = "/absolute/path/to/target/evidence"
+```
+
+Each compilation unit writes one JSON-lines file there: an `item` record for every function, method, constant, static, type, trait, variant and field (definition path, file, start line and column, extent from its first attribute or documentation line, documentation lines, and a fingerprint of its source text), and a `clause` record per specified item and clause key listing the items the clause names. Names are the definitions the compiler resolved inside the clause: paths, struct literals and patterns, method calls resolved to their implementation, field reads. Locals, the standard library and the instrumentation are not dependencies, and a callee's body is not followed. An integration test, benchmark or binary prefixes its own paths with `package/`, since its crate name need not be unique in a workspace. The passes are not registered without the setting, and they emit no diagnostics; a failed write is a compilation error. [`src/evidence.rs`](src/evidence.rs) records the decisions; the `ui_evidence` fixtures pin the record shape.
+
+The setting can also arrive through the `DYLINT_TOML` environment variable, which keeps a run that records evidence from sharing a configuration with one that does not.
+
 ## License
 
 `Apache-2.0 WITH LLVM-exception`: the [license](../../LICENSE.Apache-2.0.txt) and its [exception](../../LICENSE.LLVM-exception.txt).
