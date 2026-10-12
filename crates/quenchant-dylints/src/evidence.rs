@@ -51,8 +51,13 @@
 //! and a link to one would flag every specification that names it on any change
 //! inside. The file name derives from the unit's root file and kind, so
 //! recompiling a unit overwrites its own record and an unchanged unit keeps a
-//! record that still describes its sources. A failed write is a compilation
-//! error: an evidence run that lost a record must not pass.
+//! record that still describes its sources. That holds only if switching the
+//! records on or off relints the unit, so every unit lists `DYLINT_TOML`, set
+//! or unset, among its environment inputs ([`track_configuration`]): Dylint
+//! lists the variable only when it is set, and a unit linted without it would
+//! stay fresh for a later run that sets it, which would then write nothing for
+//! the unit. A failed write is a compilation error: an evidence run that lost a
+//! record must not pass.
 //!
 //! **Alternatives.** Diagnostics carrying the edges would need a parser of
 //! rendered compiler output; a whole-workspace rustc driver of its own would
@@ -103,6 +108,7 @@ use rustc_middle::ty;
 use rustc_middle::ty::Instance;
 use rustc_middle::ty::InstanceKind;
 use rustc_middle::ty::TyCtxt;
+use rustc_session::Session;
 use rustc_session::config::CrateType;
 use rustc_session::impl_lint_pass;
 use rustc_span::BytePos;
@@ -185,6 +191,9 @@ quenchant_shape::reason_enum! {
 
 /// The configuration key naming the record directory.
 const DIRECTORY_KEY: &str = "evidence_directory";
+
+/// The environment variable Dylint reads its configuration from first.
+const CONFIGURATION_VARIABLE: &str = "DYLINT_TOML";
 
 /// The authored clauses, by the start of their value's source range.
 #[derive(Clone, Default)]
@@ -749,6 +758,30 @@ pub fn evidence_directory() -> Maybe<PathBuf, evidence_setting::Unset>
         | Some(directory) => Maybe::Present(PathBuf::from(directory)),
         | None => Maybe::Absent(evidence_setting::Unset::NoDirectory),
     }
+}
+
+/// List the configuration variable among the unit's environment inputs, set or
+/// unset.
+///
+/// # Specification
+/// - ensures: the session's environment dependencies hold `DYLINT_TOML` with
+///   its current value, or with none when it is unset or not Unicode, so Cargo
+///   relints the unit when the variable appears, changes or goes.
+/// - panics: none.
+/// - executable: none — the dependency set reaches only the dep-info file rustc
+///   writes for Cargo.
+///
+/// # Adequacy
+/// - hypothesis: L2 — a unit linted without the variable lists it, unset, in
+///   the dep-info rustc writes.
+/// - witness: `tests::ui_tracking`
+pub fn track_configuration(sess: &Session)
+{
+    let value = std::env::var(CONFIGURATION_VARIABLE).ok();
+    sess.env_depinfo.lock().insert((
+        Symbol::intern(CONFIGURATION_VARIABLE),
+        value.as_deref().map(Symbol::intern),
+    ));
 }
 
 /// The definition a resolution names, as a dependency of a clause.

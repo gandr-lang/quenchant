@@ -310,9 +310,11 @@ impl_lint_pass!(WorkflowBoundaries => [
 /// # Specification
 /// - requires: the driver calls this once per compilation, before any pass
 ///   runs.
-/// - ensures: reads the workspace configuration, registers every lint this
-///   library declares, then registers its pre-expansion and late passes; the
-///   attribute collector and the specification pass share one record index.
+/// - ensures: reads the workspace configuration and lists `DYLINT_TOML`, set or
+///   unset, among the unit's environment inputs
+///   ([`evidence::track_configuration`]); registers every lint this library
+///   declares, then registers its pre-expansion and late passes; the attribute
+///   collector and the specification pass share one record index.
 /// - ensures: registers the evidence recorder and its late writer, sharing one
 ///   clause index, exactly when the configuration names an
 ///   `evidence_directory`.
@@ -326,6 +328,7 @@ impl_lint_pass!(WorkflowBoundaries => [
 /// - witness: `tests::ui`
 /// - witness: `tests::ui_spec_gates`
 /// - witness: `tests::ui_evidence`
+/// - witness: `tests::ui_tracking`
 #[expect(
     clippy::no_mangle_with_rust_abi,
     reason = "dylint's driver loads `register_lints` by exact symbol name and passes rustc-internal \
@@ -338,6 +341,7 @@ pub fn register_lints(
 )
 {
     dylint_linting::init_config(sess);
+    evidence::track_configuration(sess);
     let allow_list = non_owning_allow_list();
     let attributes = AttributeIndex::default();
     let collected = attributes.clone();
@@ -1125,6 +1129,36 @@ non_owning_generics = [
                 "the {fixture} fixture's record matches its pinned expectation"
             );
         }
+    }
+
+    /// A unit linted without `DYLINT_TOML` lists the variable, unset, among
+    /// its environment inputs, so a later run that sets it lints the unit
+    /// again. The test process inherits no Dylint configuration variable.
+    #[test]
+    fn ui_tracking()
+    {
+        let dep_info = std::env::current_exe()
+            .expect("the running test binary has a path on disk")
+            .parent()
+            .expect("the test binary lives in a directory")
+            .join("ui-tracking.d");
+        if dep_info.exists() {
+            std::fs::remove_file(&dep_info).expect("a stale dep-info file can be removed");
+        }
+        let mut flags = fixture_extern_flags();
+        flags.extend([
+            "-Dunknown-lints".to_owned(),
+            format!("--emit=dep-info={}", dep_info.display()),
+        ]);
+        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_tracking")
+            .rustc_flags(flags)
+            .run();
+        let written =
+            std::fs::read_to_string(&dep_info).expect("rustc wrote the requested dep-info");
+        assert!(
+            written.lines().any(|line| line == "# env-dep:DYLINT_TOML"),
+            "the dep-info lists the configuration variable as unset: {written}"
+        );
     }
 
     #[test]

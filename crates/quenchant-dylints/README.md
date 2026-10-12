@@ -260,7 +260,7 @@ evidence_directory = "/absolute/path/to/target/evidence"
 
 Each compilation unit writes one JSON-lines file there: an `item` record for every function, method, constant, static, type, trait, variant and field (definition path, file, start line and column, extent from its first attribute or documentation line, documentation lines, and a fingerprint of its source text), and a `clause` record per specified item and clause key listing the items the clause names. Names are the definitions the compiler resolved inside the clause: paths, struct literals and patterns, method calls resolved to their implementation, field reads. Locals, the standard library and the instrumentation are not dependencies, and a callee's body is not followed. An integration test, benchmark or binary prefixes its own paths with `package/`, since its crate name need not be unique in a workspace. The passes are not registered without the setting, and they emit no diagnostics; a failed write is a compilation error. [`src/evidence.rs`](src/evidence.rs) records the decisions; the `ui_evidence` fixtures pin the record shape.
 
-The setting can also arrive through the `DYLINT_TOML` environment variable, which keeps a run that records evidence from sharing a configuration with one that does not.
+The setting can also arrive through the `DYLINT_TOML` environment variable. Every unit lists that variable, set or unset, among its inputs, so Cargo lints a unit again when a run switches the records on or off; a unit left fresh would keep whatever record it had.
 
 ## License
 
