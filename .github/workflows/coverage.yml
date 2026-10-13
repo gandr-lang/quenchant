@@ -1,0 +1,118 @@
+# <critical>
+# MUST preserve anchor-first CI: maximal sharing, no copied orchestration.
+# New functionality MUST reuse template anchors or add anchors for likely reuse.
+# MUST parameterize differences; performance exceptions require measured evidence.
+# Share exceptional logic through actions; preserve parallelism, caches, and gates.
+# </critical>
+name: Coverage
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# Off the merge queue. The latest main commit wins; a cancelled run
+# blocks nothing the queue measures.
+concurrency:
+  group: coverage-main
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+  CARGO_UNSTABLE_CHECKSUM_FRESHNESS: "true"
+  CARGO_BUILD_FINGERPRINT: content
+  CARGO_NEXTEST_VERSION: "0.9.143"
+  MISE_CARGO_BINSTALL_QUICKINSTALL: "true"
+  MISE_CARGO_BINSTALL_NATIVE: "true"
+  # Must match ci.yml and the image. The image checks the list at build time.
+  MISE_DISABLE_TOOLS: "cargo:cargo-mutants,github:nektos/act,github:j178/prek,npm:@commitlint/cli"
+  # Empty until ci-image publishes the pin-file tag. The repository variable
+  # activates that tag without a workflow edit; act accepts the same variable.
+  QUENCHANT_CI_IMAGE: ${{ vars.QUENCHANT_CI_IMAGE }}
+
+jobs:
+  # Definitions only: aliases run in each consuming job's context.
+  template:
+    if: false
+    runs-on: &linux ubuntu-latest
+    permissions: &image-read-permissions
+      contents: read
+      packages: read
+    steps:
+      - &git-checkout
+        name: git checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - &resolve-image
+        id: resolve
+        name: resolve the image reference
+        run: echo "ref=${QUENCHANT_CI_IMAGE:+ghcr.io/gandr-lang/quenchant-ci:${QUENCHANT_CI_IMAGE}}" >> "$GITHUB_OUTPUT"
+      - &setup-rust
+        name: setup rust
+        uses: ./.github/actions/setup-rust # zizmor: ignore[self-repository]
+        with:
+          install-toolchain: &without-image ${{ needs.ci-image-ref.outputs.ref == '' }}
+          cache-save: false
+      - &install-tools
+        name: install job tools
+        if: *without-image
+        uses: taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf # v2.87.2
+        env:
+          CI_TOOLS_NEXTEST: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
+        with:
+          tool: ${{ env[env.CI_TOOLS] }}
+      - &install-policy-tools
+        name: install mise-managed policy tools
+        if: *without-image
+        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        with:
+          version: 2026.10.3
+          cache: true
+          cache_key: mise-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.toml', 'mise.lock', 'rust-toolchain.toml') }}
+          cache_save: false
+      - &measure-coverage
+        name: measure enforcing coverage
+        run: mise run check:coverage
+      - &upload-coverage
+        name: upload coverage
+        uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5.5.5
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: coverage.lcov
+          flags: enforcing
+          fail_ci_if_error: true
+          disable_search: true
+
+  # container cannot read env directly; needs carries the workflow switch.
+  ci-image-ref:
+    name: resolve the CI image reference
+    runs-on: *linux
+    permissions: *image-read-permissions
+    outputs:
+      ref: ${{ steps.resolve.outputs.ref }}
+    steps:
+      - *resolve-image
+
+  coverage:
+    name: measure and upload coverage
+    needs: ci-image-ref
+    if: ${{ !cancelled() && !failure() }}
+    runs-on: *linux
+    permissions: *image-read-permissions
+    container: ${{ needs.ci-image-ref.outputs.ref }} # zizmor: ignore[unpinned-images]
+    timeout-minutes: 45
+    env:
+      CI_TOOLS: CI_TOOLS_NEXTEST
+    steps:
+      - *git-checkout
+      - *setup-rust
+      - *install-tools
+      - *install-policy-tools
+      - *measure-coverage
+      - *upload-coverage
