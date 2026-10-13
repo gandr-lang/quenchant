@@ -85,3 +85,18 @@ run = [
   "cargo mutants --cap-lints=true --cargo-arg=--locked --test-tool nextest --output target/mutants",
   "test -s target/mutants/mutants.out/caught.txt",
 ]
+
+# The hosted enforcing lane: anodized_panic plus the facade feature, and the
+# plugin excluded because its UI tests link only from their package directory.
+# Instrumented objects stay in target/coverage.
+["check:coverage"]
+description = "Enforcing line coverage of the library workspace, as coverage.lcov"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+root="{{ config_root }}"
+export NEXTEST_PROFILE=ci
+RUSTFLAGS="--cfg anodized_panic" CARGO_TARGET_DIR="$root/target/coverage" \
+  cargo llvm-cov nextest --workspace --exclude quenchant-dylints --locked \
+  --features quenchant-anodized/anodized --lcov --output-path "$root/coverage.lcov"
+'''

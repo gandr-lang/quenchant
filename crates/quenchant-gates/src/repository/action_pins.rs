@@ -18,6 +18,7 @@ const ALLOWED: &[&str] = &[
     "actions/checkout",
     "actions/download-artifact",
     "actions/upload-artifact",
+    "codecov/codecov-action",
     "docker/build-push-action",
     "docker/login-action",
     "docker/setup-buildx-action",
