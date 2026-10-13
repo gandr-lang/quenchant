@@ -114,6 +114,18 @@ semantic_copy!(
     /// Source-target classification excludes package-level build-script roots.
     struct HoldsPackageSource(bool);
 );
+semantic_copy!(
+    /// Source coordinates count columns from one.
+    struct ColumnNumber(usize);
+);
+semantic_copy!(
+    /// Whether a range holds a position.
+    struct Contains(bool);
+);
+semantic_copy!(
+    /// Counts of tests, items or obligations a report states.
+    struct Count(usize);
+);
 
 semantic_borrowed_str!(
     /// One file's complete text supplied to Rust parsing.
@@ -166,4 +178,16 @@ semantic_borrowed_str!(
 semantic_borrowed_str!(
     /// Evidence text retained from an unsuccessful operation.
     struct ErrorMessage;
+);
+semantic_borrowed_str!(
+    /// Documentation text as written, such as a link destination.
+    struct DocText;
+);
+semantic_borrowed_str!(
+    /// The extension a directory scan selects files by.
+    struct FileExtension;
+);
+semantic_borrowed_str!(
+    /// A Git revision as the user names it: a commit, branch or expression.
+    struct GitRevision;
 );

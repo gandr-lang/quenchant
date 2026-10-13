@@ -731,6 +731,8 @@ struct Clause<'stream>
 {
     /// The clause's key.
     key: ClauseKey,
+    /// The key as written, which [`ClauseKey::Other`] does not retain.
+    name: Symbol,
     /// The value's top-level token trees, without the separating comma.
     value: Vec<&'stream TokenTree>,
 }
@@ -894,6 +896,55 @@ pub fn spec_arguments(attr: &Attribute) -> Vec<SpecArguments<'_>>
     applied
 }
 
+/// One clause of an authored `spec` attribute: its key and the source range of
+/// its value.
+#[derive(Clone, Copy, Debug)]
+pub struct ClauseSpan
+{
+    /// The key as written: `requires`, `ensures`, `captures`, …
+    pub key: Symbol,
+    /// From the value's first token to its last.
+    pub span: Span,
+}
+
+/// Read the clauses an authored attribute writes, with their source ranges.
+///
+/// # Specification
+/// - ensures: returns one entry per clause [`clauses`] reads from each argument
+///   list [`spec_arguments`] finds in `attr`, in source order, keyed by the key
+///   as written; a clause with no value tokens, a bare attribute and any other
+///   attribute contribute nothing.
+/// - provides: the regions inside which the evidence reader attributes a typed
+///   expression to its clause.
+/// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the evidence fixture states `requires` and `ensures`
+///   clauses directly and under `cfg_attr`; its recorded edges name each
+///   clause's items under that clause's key and no other.
+/// - witness: `tests::ui_evidence`
+#[spec(ensures: |output| output.iter().all(|clause| !clause.span.is_dummy()))]
+pub fn clause_spans(attr: &Attribute) -> Vec<ClauseSpan>
+{
+    let mut spans = Vec::new();
+    for arguments in spec_arguments(attr) {
+        let SpecArguments::Delimited(tokens) = arguments
+        else {
+            continue;
+        };
+        for clause in clauses(tokens) {
+            if clause.value.is_empty() {
+                continue;
+            }
+            spans.push(ClauseSpan {
+                key: clause.name,
+                span: trees_span(&clause.value),
+            });
+        }
+    }
+    spans
+}
+
 /// Split a `spec` argument list into its clauses.
 ///
 /// # Specification
@@ -933,9 +984,13 @@ fn clauses(arguments: &TokenStream) -> Vec<Clause<'_>>
         let rest = trees
             .get(position.saturating_add(1_usize) ..)
             .unwrap_or_default();
-        if at_boundary && let Maybe::Present(key) = clause_key(tree, rest) {
+        if at_boundary
+            && let Maybe::Present(key) = clause_key(tree, rest)
+            && let Maybe::Present(name) = ident_name(tree)
+        {
             clauses.push(Clause {
                 key,
+                name,
                 value: Vec::new(),
             });
             at_boundary = false;

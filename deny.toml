@@ -142,6 +142,9 @@ allow-build-scripts = [
   "paste@1.0.15",
   # Procedural macros require proc-macro2's compiler capability probe.
   "proc-macro2@1.0.107",
+  # The gate's documentation reader; the script generates the parser's own
+  # spec tests only under `gen-tests`, which stays off, and is empty otherwise.
+  "pulldown-cmark@0.13.4",
   # Procedural macros require quote's compiler capability probe.
   "quote@1.0.47",
   # Clippy requires rustc_apfloat's compiler compatibility probe.

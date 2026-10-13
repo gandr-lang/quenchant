@@ -30,6 +30,7 @@
 
 extern crate alloc;
 extern crate rustc_ast;
+extern crate rustc_data_structures;
 
 extern crate rustc_errors;
 extern crate rustc_hir;
@@ -43,6 +44,7 @@ mod arithmetic;
 mod callgraph;
 mod clause_cost;
 mod erased_error;
+mod evidence;
 mod executable;
 mod graph;
 mod judgement;
@@ -68,6 +70,7 @@ use clippy_utils::diagnostics::span_lint;
 use clippy_utils::diagnostics::span_lint_hir;
 use clippy_utils::diagnostics::span_lint_hir_and_then;
 use clippy_utils::trait_ref_of_method;
+use quenchant_shape::shape::Maybe;
 use rustc_hir::Body;
 use rustc_hir::CRATE_HIR_ID;
 use rustc_hir::FnDecl;
@@ -307,9 +310,14 @@ impl_lint_pass!(WorkflowBoundaries => [
 /// # Specification
 /// - requires: the driver calls this once per compilation, before any pass
 ///   runs.
-/// - ensures: reads the workspace configuration, registers every lint this
-///   library declares, then registers its pre-expansion and late passes; the
-///   attribute collector and the specification pass share one record index.
+/// - ensures: reads the workspace configuration and lists `DYLINT_TOML`, set or
+///   unset, among the unit's environment inputs
+///   ([`evidence::track_configuration`]); registers every lint this library
+///   declares, then registers its pre-expansion and late passes; the attribute
+///   collector and the specification pass share one record index.
+/// - ensures: registers the evidence recorder and its late writer, sharing one
+///   clause index, exactly when the configuration names an
+///   `evidence_directory`.
 /// - panics: none.
 /// - executable: none — registered compiler callbacks are opaque; their
 ///   execution is observed only when rustc runs the passes.
@@ -319,6 +327,8 @@ impl_lint_pass!(WorkflowBoundaries => [
 ///   registered policies through accepted and refused programs.
 /// - witness: `tests::ui`
 /// - witness: `tests::ui_spec_gates`
+/// - witness: `tests::ui_evidence`
+/// - witness: `tests::ui_tracking`
 #[expect(
     clippy::no_mangle_with_rust_abi,
     reason = "dylint's driver loads `register_lints` by exact symbol name and passes rustc-internal \
@@ -331,6 +341,7 @@ pub fn register_lints(
 )
 {
     dylint_linting::init_config(sess);
+    evidence::track_configuration(sess);
     let allow_list = non_owning_allow_list();
     let attributes = AttributeIndex::default();
     let collected = attributes.clone();
@@ -392,6 +403,25 @@ pub fn register_lints(
     lint_store.register_late_pass(Box::new(|_| {
         Box::new(raw_pointer::RawPointerThroughReference)
     }));
+    if let Maybe::Present(directory) = evidence::evidence_directory() {
+        let clause_index = evidence::ClauseIndex::default();
+        let attribute_index = evidence::AttributeIndex::default();
+        let recorded_clauses = clause_index.clone();
+        let recorded_attributes = attribute_index.clone();
+        lint_store.register_pre_expansion_pass(Box::new(move || {
+            Box::new(evidence::ClauseRecorder::new(
+                recorded_clauses.clone(),
+                recorded_attributes.clone(),
+            ))
+        }));
+        lint_store.register_late_pass(Box::new(move |_| {
+            Box::new(evidence::SpecificationEdges::new(
+                clause_index.clone(),
+                attribute_index.clone(),
+                directory.clone(),
+            ))
+        }));
+    }
 }
 
 /// Every member of a recovered call cycle receives this denial.
@@ -1051,6 +1081,84 @@ non_owning_generics = [
         dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_spec_cost")
             .rustc_flags(flags)
             .run();
+    }
+
+    /// The evidence records of each fixture equal their pinned expectation.
+    #[test]
+    fn ui_evidence()
+    {
+        let records = std::env::current_exe()
+            .expect("the running test binary has a path on disk")
+            .parent()
+            .and_then(std::path::Path::parent)
+            .and_then(std::path::Path::parent)
+            .expect("the test binary lives in a Cargo target directory")
+            .join("ui-evidence-records");
+        if records.exists() {
+            std::fs::remove_dir_all(&records).expect("a stale record directory can be removed");
+        }
+        let mut flags = fixture_extern_flags();
+        flags.push("-Dunknown-lints".to_owned());
+        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_evidence")
+            .rustc_flags(flags)
+            .dylint_toml(format!(
+                "[quenchant-dylints]\nevidence_directory = \"{}\"\n",
+                records.display()
+            ))
+            .run();
+        let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ui_evidence");
+        let written: Vec<std::path::PathBuf> = std::fs::read_dir(&records)
+            .expect("the evidence pass wrote its record directory")
+            .map(|entry| entry.expect("a record entry is readable").path())
+            .collect();
+        for fixture in ["edges", "tags"] {
+            let marker = format!("ui_evidence_{fixture}_rs.");
+            let matching: Vec<&std::path::PathBuf> = written
+                .iter()
+                .filter(|path| path.to_string_lossy().contains(&marker))
+                .collect();
+            let &[record] = matching.as_slice()
+            else {
+                panic!("one record names the {fixture} fixture: {written:?}");
+            };
+            let actual = std::fs::read_to_string(record).expect("the record is readable");
+            let expected = std::fs::read_to_string(fixtures.join(format!("{fixture}.jsonl")))
+                .expect("the pinned record is readable");
+            assert_eq!(
+                actual, expected,
+                "the {fixture} fixture's record matches its pinned expectation"
+            );
+        }
+    }
+
+    /// A unit linted without `DYLINT_TOML` lists the variable, unset, among
+    /// its environment inputs, so a later run that sets it lints the unit
+    /// again. The test process inherits no Dylint configuration variable.
+    #[test]
+    fn ui_tracking()
+    {
+        let dep_info = std::env::current_exe()
+            .expect("the running test binary has a path on disk")
+            .parent()
+            .expect("the test binary lives in a directory")
+            .join("ui-tracking.d");
+        if dep_info.exists() {
+            std::fs::remove_file(&dep_info).expect("a stale dep-info file can be removed");
+        }
+        let mut flags = fixture_extern_flags();
+        flags.extend([
+            "-Dunknown-lints".to_owned(),
+            format!("--emit=dep-info={}", dep_info.display()),
+        ]);
+        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_tracking")
+            .rustc_flags(flags)
+            .run();
+        let written =
+            std::fs::read_to_string(&dep_info).expect("rustc wrote the requested dep-info");
+        assert!(
+            written.lines().any(|line| line == "# env-dep:DYLINT_TOML"),
+            "the dep-info lists the configuration variable as unset: {written}"
+        );
     }
 
     #[test]

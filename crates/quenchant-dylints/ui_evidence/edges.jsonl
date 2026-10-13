@@ -1,0 +1,22 @@
+{"column":1,"docs":[11,11],"end":12,"file":"ui_evidence/edges.rs","line":12,"path":"edges::LIMIT","record":"item","revision":"2913df70ff4e6e996e3f37c7bc9d5cc3","start":11}
+{"column":1,"docs":[14,14],"end":15,"file":"ui_evidence/edges.rs","line":15,"path":"edges::MARGIN","record":"item","revision":"0363dc9179f26a463e701c87befb3637","start":14}
+{"column":1,"docs":[17,20],"end":26,"file":"ui_evidence/edges.rs","line":23,"path":"edges::within","record":"item","revision":"7f560494460b78cef08e3d64a304a99e","start":17}
+{"column":1,"docs":[28,32],"end":36,"file":"ui_evidence/edges.rs","line":33,"path":"edges::nonzero","record":"item","revision":"e09b4633df70787612d4dc2a2ce47a7f","start":28}
+{"column":1,"docs":[38,46],"end":51,"file":"ui_evidence/edges.rs","line":48,"path":"edges::read","record":"item","revision":"844db50930f43c251ff155929c7c92db","start":38}
+{"column":1,"docs":[54,54],"end":59,"file":"ui_evidence/edges.rs","line":55,"path":"edges::Reading","record":"item","revision":"2128182058d7a7574cfda59cfbab8e4b","start":53}
+{"column":5,"docs":[57,57],"end":58,"file":"ui_evidence/edges.rs","line":58,"path":"edges::Reading::value","record":"item","revision":"ebd472e03567791533259d2f377b5fc0","start":57}
+{"column":1,"docs":[62,62],"end":69,"file":"ui_evidence/edges.rs","line":63,"path":"edges::Class","record":"item","revision":"b9b5d8815057f9a17792fe345ebbd21b","start":61}
+{"column":5,"docs":[65,65],"end":66,"file":"ui_evidence/edges.rs","line":66,"path":"edges::Class::Low","record":"item","revision":"0fbb555932bc8052b878ab3f9bab0f32","start":65}
+{"column":5,"docs":[67,67],"end":68,"file":"ui_evidence/edges.rs","line":68,"path":"edges::Class::High","record":"item","revision":"975f54596878058a8906d7cc18bacd8f","start":67}
+{"column":10,"docs":null,"end":68,"file":"ui_evidence/edges.rs","line":68,"path":"edges::Class::High::0","record":"item","revision":"44d6101c6d7ed18561175eb19038b89f","start":68}
+{"column":1,"docs":[71,71],"end":79,"file":"ui_evidence/edges.rs","line":72,"path":"edges::Scaled","record":"item","revision":"2e63969f3420807acaa5e3f1f9b4ed1b","start":71}
+{"column":1,"docs":[110,118],"end":126,"file":"ui_evidence/edges.rs","line":123,"path":"edges::classify","record":"item","revision":"2a861448f8e8d7d50fe5788caa421d76","start":110}
+{"column":1,"docs":[128,135],"end":140,"file":"ui_evidence/edges.rs","line":137,"path":"edges::is_low","record":"item","revision":"c540a7291d440cbe385400c9e1b3952c","start":128}
+{"column":1,"docs":[142,145],"end":148,"file":"ui_evidence/edges.rs","line":146,"path":"edges::main","record":"item","revision":"eeb942cf4613d957fd2975158adc9735","start":142}
+{"column":5,"docs":[74,77],"end":78,"file":"ui_evidence/edges.rs","line":78,"path":"edges::Scaled::scaled","record":"item","revision":"63ea0fb57cdf22e4ff5bba82c3c571d3","start":74}
+{"column":5,"docs":[83,86],"end":90,"file":"ui_evidence/edges.rs","line":87,"path":"<edges::Reading as edges::Scaled>::scaled","record":"item","revision":"ae85efa125cf607a9b6057270f04a695","start":83}
+{"column":5,"docs":[95,98],"end":107,"file":"ui_evidence/edges.rs","line":99,"path":"edges::Reading::class","record":"item","revision":"63bf65fd639b343dcf0ea0e86a42f8f1","start":95}
+{"clause":"requires","item":"edges::read","names":["edges::LIMIT","edges::within"],"record":"clause","revision":"844db50930f43c251ff155929c7c92db"}
+{"clause":"requires","item":"edges::classify","names":["<edges::Reading as edges::Scaled>::scaled","edges::Reading::value"],"record":"clause","revision":"2a861448f8e8d7d50fe5788caa421d76"}
+{"clause":"ensures","item":"edges::classify","names":["edges::Class::High","edges::Class::Low"],"record":"clause","revision":"2a861448f8e8d7d50fe5788caa421d76"}
+{"clause":"ensures","item":"edges::is_low","names":["edges::Class::Low","edges::Reading::class"],"record":"clause","revision":"c540a7291d440cbe385400c9e1b3952c"}

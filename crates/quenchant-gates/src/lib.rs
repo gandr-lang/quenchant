@@ -12,12 +12,23 @@
 //! Nextest and native-harness inventory routes preserve the same package/target
 //! identity so similarly named tests cannot silently satisfy each other's
 //! obligations.
+//!
+//! Obligation reporting ([`obligations`]) joins three views no single tool
+//! has: the policy library's records of what each executable clause names,
+//! rustdoc's resolved intra-doc links, and a Git diff. Prose clauses are read
+//! with `pulldown-cmark`, the Markdown parser rustdoc runs, so a link's
+//! destination is the key rustdoc resolved it under; `comrak` builds a tree
+//! the gate does not need, and a line scanner misreads code spans and
+//! reference definitions. Rustdoc JSON reporting each link's source range
+//! would make the parse unnecessary.
 
 extern crate alloc;
 
 pub mod anodized;
 pub mod catalog;
+pub mod evidence;
 pub mod inventory;
+pub mod obligations;
 pub mod semantic;
 pub mod witnesses;
 

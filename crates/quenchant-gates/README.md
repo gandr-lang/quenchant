@@ -1,6 +1,6 @@
 # quenchant-gates
 
-Source-level, invocation-level, and repository verification outside compiler lints. The executable reports Anodized cfg state, resolves consumer adequacy witnesses, and refuses repository boundary, pin, action, and publication violations.
+Source-level, invocation-level, and repository verification outside compiler lints. The executable reports Anodized cfg state, resolves consumer adequacy witnesses, reports the re-verification a change owes, and refuses repository boundary, pin, action, and publication violations.
 
 ## Install
 
@@ -42,6 +42,25 @@ Runner selection belongs to the supplied consumer workspace. Rustup is required:
 Mise-managed scopes require a selected, installed nextest. A failed selection, malformed executable path, failed probe, or failed listing is an operational error; no global nextest is substituted. When mise itself is unavailable, the ordinary `cargo test --no-run` plus native test-binary listing route remains supported. A workspace containing only member-local compiler scopes has no shared listing to execute; each member is still inventoried, and a final inventory containing no tests is refused.
 
 A resolved name proves that the named test is available under the inventoried configuration. It does not prove that the test ran in another configuration, that its oracle is adequate, or that it establishes the item's complete specification. The authored hypothesis must name the inputs, observations, fault classes, and remaining scope.
+
+## Re-verification obligations
+
+When an item changes, the specifications that name it owe re-verification. `obligations` computes what a working tree owes against a base revision:
+
+```sh
+quenchant-gates obligations --manifest-path Cargo.toml --base "$(git merge-base origin/main HEAD)" \
+  --records target/evidence --rustdoc target/doc \
+  --previous previous.md --comment comment.md --selection selection.args
+```
+
+It reads two inputs the consumer builds first, both from the working tree:
+
+- the records [quenchant-dylints](../quenchant-dylints/README.md#specification-dependency-records) writes when its configuration names an `evidence_directory`: every item with its extent and revision, and the items each executable `#[spec]` clause names, resolved by the compiler;
+- rustdoc's JSON output, `RUSTDOCFLAGS="-Z unstable-options --output-format json" cargo doc --workspace --no-deps --document-private-items`, whose resolved intra-doc links supply the prose edges. A link counts when it sits in a `# Specification` bullet or an `# Errors`, `# Panics`, `# Safety` or `# Termination` section.
+
+An item changed when `git diff --relative --no-renames -U0 <base>` touches its extent; untracked files are not seen. A specification owes one obligation per clause that names a changed item, and its witnesses rerun when it is obligated or changed itself. Only named dependencies count, never the call graph, and obligations stop one hop from the changed items: a specification that re-verifies unchanged flags nothing that names it. A rename has no identity across it today: the item reads as new under its new path, and every specification naming it had to change to compile, so it reads as changed too.
+
+The console report lists changed items, obligations and witnesses. `--selection` receives `cargo nextest run` arguments, one per line, that run exactly the obligated witnesses; `--comment` receives a pull-request comment with a "still holds" and an "updated" box per prose obligation. Feeding the previous comment back through `--previous` carries a ticked box forward while the specification and the changed items keep the revisions it was ticked at. The module documentation in [`src/obligations.rs`](src/obligations.rs) and [`src/evidence.rs`](src/evidence.rs) records the decisions and their reversal conditions.
 
 ## Repository checks
 

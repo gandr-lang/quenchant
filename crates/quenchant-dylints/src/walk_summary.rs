@@ -107,10 +107,10 @@ const HEADING: &str = "# Clause cost";
 const BOUND: &str = "- bound:";
 
 /// The crates whose functions are classified by name rather than followed.
-const LIBRARY_CRATES: [&str; 3] = ["core", "alloc", "std"];
+pub const LIBRARY_CRATES: [&str; 3] = ["core", "alloc", "std"];
 
 /// The crate whose functions instrument specifications.
-const INSTRUMENTATION_CRATE: &str = "anodized";
+pub const INSTRUMENTATION_CRATE: &str = "anodized";
 
 /// The instrumentation entry point that runs the function's own body.
 const BODY_ENTRY: &str = "eval_once";
