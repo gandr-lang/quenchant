@@ -49,6 +49,7 @@ use crate::rustdoc::section_body;
 use crate::rustdoc::section_lines;
 use crate::semantic::AuthoredItem;
 use crate::semantic::ClauseBearing;
+use crate::semantic::DeclaredBeside;
 use crate::semantic::DiagnosticText;
 use crate::semantic::MarkerBesideClause;
 use crate::semantic::MarkerWrittenAsBullet;
@@ -452,19 +453,21 @@ fn carries_clauses(body: &[String]) -> ClauseBearing
 /// - requires: `def_id` identifies a crate-local item, and `declaration` is
 ///   that item's own signature span — its `fn` keyword through its return type,
 ///   carrying neither its attributes nor its body.
-/// - ensures: answers affirmatively exactly when the declaration span is one
-///   rustc does not treat as belonging to an external macro, and the item has a
-///   name span that is not in such a macro either and whose source text is the
-///   item's own identifier. Two spans are asked because a macro from another
-///   crate can manufacture either half alone. The declaration is the right span
-///   for the item: rustc counts every attribute macro as external and the whole
-///   item span carries the attribute, so an item under `#[spec]` would read as
-///   foreign there, while the signature such an attribute re-emits keeps the
-///   author's context and a signature the macro wrote itself does not. The name
-///   is asked separately because a macro can pass the author's own identifier
-///   through into a declaration of its own, which the name span cannot
-///   distinguish. A crate-local `macro_rules!` is not external, so its
-///   expansions stay under the rule and are reported at the macro's own text.
+/// - ensures: answers negatively when [`name_authored`] does; otherwise
+///   affirmatively when the declaration span is one rustc does not treat as
+///   belonging to an external macro, and, when it is such a span, exactly when
+///   no other crate-local function declares itself at the same name span with a
+///   signature outside an external macro. A foreign macro either re-emits the
+///   author's declaration, writing tokens of its own around the author's name —
+///   as `cxx` writes out the signature of a bridge function that returns a
+///   `Result` — or synthesizes a sibling beside the author's own declaration
+///   under the author's identifier; the sibling is told apart by that
+///   declaration, which still stands at the name with the signature the author
+///   wrote. The declaration span is asked rather than the whole item's: rustc
+///   counts every attribute macro as external and the whole item span carries
+///   the attribute, so an item under `#[spec]` would read as foreign there. A
+///   crate-local `macro_rules!` is not external, so its expansions stay under
+///   the rule and are reported at the macro's own text.
 /// - provides: the foreign-expansion exemption, the one exclusion the rule
 ///   derives rather than reads off an attribute.
 /// - panics: none.
@@ -474,27 +477,72 @@ fn carries_clauses(body: &[String]) -> ClauseBearing
 ///   expansion (reported), the test harness's generated entry point (exempt), a
 ///   real `#[spec]` expansion whose function is still reported at its name, the
 ///   sibling declaration a `#[spec]` trait definition synthesizes under the
-///   author's name span (exempt), and the method a foreign attribute macro
+///   author's name span (exempt), the method a foreign attribute macro
 ///   generates under the author's own identifier (exempt) beside the authored
-///   method of the same expansion and name (reported). `cargo-mutants` offers
-///   one mutant here, the `Default::default()` return, and it is unviable:
-///   [`AuthoredItem`] has no `Default`. The hand mutants on the declaration arm
-///   are its inverted test and its affirmative answer, and the generated
-///   sibling row kills both — inverting it also takes every authored item out
-///   of the rule and empties both matrices.
+///   method of the same expansion and name (reported), and a `cxx` bridge's
+///   plain function and its function returning a `Result`, each undocumented
+///   (both reported; the second was exempt while a foreign declaration span
+///   alone exempted, #27). `cargo-mutants` offers one mutant here, the
+///   `Default::default()` return, and it is unviable: [`AuthoredItem`] has no
+///   `Default`. The generated sibling row kills a sibling search that finds
+///   none, and the `cxx` row one that always finds one.
 /// - witness: `tests::ui`
 /// - witness: `tests::ui_specifications`
-#[spec(ensures: |output| output.0 == (!declaration.in_external_macro(cx.tcx.sess.source_map()) && name_authored(cx, def_id).0))]
+#[spec(ensures: |output| output.0 == (name_authored(cx, def_id).0
+    && (!declaration.in_external_macro(cx.tcx.sess.source_map()) || !declared_beside(cx, def_id).0)))]
 fn authored(
     cx: &LateContext<'_>,
     def_id: LocalDefId,
     declaration: Span,
 ) -> AuthoredItem
 {
-    if declaration.in_external_macro(cx.tcx.sess.source_map()) {
+    if !name_authored(cx, def_id).0 {
         return AuthoredItem(false);
     }
-    name_authored(cx, def_id)
+    AuthoredItem(
+        !declaration.in_external_macro(cx.tcx.sess.source_map()) || !declared_beside(cx, def_id).0,
+    )
+}
+
+/// Another function declares itself at this item's name with the signature
+/// the author wrote.
+///
+/// # Specification
+/// - requires: `def_id` identifies a crate-local item.
+/// - ensures: answers affirmatively exactly when the item has a name span and
+///   some other crate-local function, method or trait method has the same name
+///   span and a signature span rustc does not treat as belonging to an external
+///   macro.
+/// - provides: the sibling half of [`authored`].
+/// - panics: none.
+/// - executable: none — the answer is a search over the crate's definitions; a
+///   predicate restating it would be the search again.
+///
+/// # Termination
+/// The search visits each of the crate's finitely many definitions once.
+///
+/// # Adequacy
+/// - hypothesis: L3 — as [`authored`]'s generated sibling and `cxx` rows.
+/// - witness: `tests::ui_specifications`
+fn declared_beside(
+    cx: &LateContext<'_>,
+    def_id: LocalDefId,
+) -> DeclaredBeside
+{
+    let Some(name) = cx.tcx.def_ident_span(def_id)
+    else {
+        return DeclaredBeside(false);
+    };
+    let source_map = cx.tcx.sess.source_map();
+    DeclaredBeside(cx.tcx.hir_crate_items(()).definitions().any(|other| {
+        other != def_id
+            && cx
+                .tcx
+                .hir_node_by_def_id(other)
+                .fn_sig()
+                .is_some_and(|sig| !sig.span.in_external_macro(source_map))
+            && cx.tcx.def_ident_span(other) == Some(name)
+    }))
 }
 
 /// Name provenance alone separates the author's declaration from a sibling a

@@ -201,6 +201,11 @@ semantic_copy!(
     struct AuthoredItem(bool);
 );
 semantic_copy!(
+    /// Another function declares itself at the item's name span with the
+    /// signature its author wrote.
+    struct DeclaredBeside(bool);
+);
+semantic_copy!(
     /// A trivial marker conflicts with another clause in the same section.
     struct MarkerBesideClause(bool);
 );
