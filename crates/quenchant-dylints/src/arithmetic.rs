@@ -66,8 +66,14 @@ impl<'tcx> LateLintPass<'tcx> for PrimitiveArithmetic
         {
             return;
         }
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`ExprKind` is rustc's HIR expression kind, whose variants move with the \
+                      pinned nightly; only an operator, a method call or a function path is \
+                      arithmetic"
+        )]
         let refused = match expr.kind {
-            | ExprKind::Binary(op, left, right) => {
+            ExprKind::Binary(op, left, right) => {
                 matches!(
                     op.node,
                     BinOpKind::Add
@@ -80,7 +86,7 @@ impl<'tcx> LateLintPass<'tcx> for PrimitiveArithmetic
                 ) && cx.typeck_results().expr_ty(left).peel_refs().is_integral()
                     && cx.typeck_results().expr_ty(right).peel_refs().is_integral()
             },
-            | ExprKind::AssignOp(op, left, right) => {
+            ExprKind::AssignOp(op, left, right) => {
                 matches!(
                     BinOpKind::from(op.node),
                     BinOpKind::Add
@@ -93,12 +99,12 @@ impl<'tcx> LateLintPass<'tcx> for PrimitiveArithmetic
                 ) && cx.typeck_results().expr_ty(left).peel_refs().is_integral()
                     && cx.typeck_results().expr_ty(right).peel_refs().is_integral()
             },
-            | ExprKind::Unary(UnOp::Neg, operand) => cx
+            ExprKind::Unary(UnOp::Neg, operand) => cx
                 .typeck_results()
                 .expr_ty(operand)
                 .peel_refs()
                 .is_integral(),
-            | ExprKind::MethodCall(_, receiver, ..) => {
+            ExprKind::MethodCall(_, receiver, ..) => {
                 cx.typeck_results()
                     .expr_ty_adjusted(receiver)
                     .peel_refs()
@@ -118,12 +124,12 @@ impl<'tcx> LateLintPass<'tcx> for PrimitiveArithmetic
                                 )
                         })
             },
-            | ExprKind::Path(_) => {
+            ExprKind::Path(_) => {
                 matches!(*cx.typeck_results().expr_ty(expr).kind(), ty::FnDef(method, arguments)
                     if matches!(primitive_method(cx, method), ArithmeticIdentity::Primitive)
                         || matches!(primitive_operator(cx, method, arguments), ArithmeticIdentity::Primitive))
             },
-            | _ => false,
+            _ => false,
         };
         if refused && matches!(producer_boundary(cx, expr), ProducerBoundary::Outside) {
             clippy_utils::diagnostics::span_lint(

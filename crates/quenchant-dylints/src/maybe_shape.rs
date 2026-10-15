@@ -196,6 +196,11 @@ impl<'tcx> LateLintPass<'tcx> for MaybeShape
     (fields, Maybe::Absent(payload_reading::NotAParameter::FieldCount)) => fields.len() != 1,
     _ => false,
 })]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "`TyKind` is rustc's type kind, whose variants move with the pinned nightly; only a \
+              type parameter is a payload"
+)]
 fn parameter_payload(
     cx: &LateContext<'_>,
     variant: &Variant<'_>,
@@ -212,7 +217,7 @@ fn parameter_payload(
         .skip_norm_wip()
         .kind()
     {
-        | ty::Param(parameter) => Maybe::Present(parameter),
-        | _ => Maybe::Absent(payload_reading::NotAParameter::Concrete),
+        ty::Param(parameter) => Maybe::Present(parameter),
+        _ => Maybe::Absent(payload_reading::NotAParameter::Concrete),
     }
 }

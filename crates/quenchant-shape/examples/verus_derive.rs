@@ -77,15 +77,15 @@ impl core::fmt::Display for DerivationError
     ) -> core::fmt::Result
     {
         match *self {
-            | Self::Operational(ref report) => {
+            Self::Operational(ref report) => {
                 f.write_str("operation failed: ")?;
                 f.write_str(report)
             },
-            | Self::Rejected(ref report) => {
+            Self::Rejected(ref report) => {
                 f.write_str("unsupported source construct: ")?;
                 f.write_str(report)
             },
-            | Self::Syntax(ref error) => core::fmt::Display::fmt(error, f),
+            Self::Syntax(ref error) => core::fmt::Display::fmt(error, f),
         }
     }
 }
@@ -363,23 +363,28 @@ fn declarations(file: &syn::File) -> Result<TokenStream, DerivationError>
 {
     let mut emitted = TokenStream::new();
     for item in &file.items {
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`syn::Item` is non-exhaustive, so a wildcard arm is required; only an enum, \
+                      a struct or a `reason_enum!` invocation is relocated"
+        )]
         match *item {
-            | syn::Item::Enum(ref declaration) => {
+            syn::Item::Enum(ref declaration) => {
                 let mut declaration = declaration.clone();
                 declaration.attrs.retain(|attribute| is_doc(attribute).0);
                 emitted.extend(declaration.to_token_stream());
             },
-            | syn::Item::Struct(ref declaration) => {
+            syn::Item::Struct(ref declaration) => {
                 let mut declaration = declaration.clone();
                 declaration.attrs.retain(|attribute| is_doc(attribute).0);
                 emitted.extend(declaration.to_token_stream());
             },
-            | syn::Item::Macro(ref invocation)
+            syn::Item::Macro(ref invocation)
                 if invocation.mac.path.is_ident("reason_enum") && invocation.ident.is_none() =>
             {
                 emitted.extend(reason_site(&invocation.mac.tokens)?);
             },
-            | _ => {},
+            _ => {},
         }
     }
     Ok(emitted)
@@ -631,8 +636,13 @@ fn derive(
         unreached: Vec::new(),
     };
     for item in &file.items {
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`syn::Item` is non-exhaustive, so a wildcard arm is required; only a \
+                      function, an impl block or a macro names a population"
+        )]
         match *item {
-            | syn::Item::Fn(ref function) => collect(
+            syn::Item::Fn(ref function) => collect(
                 &mut derivation,
                 declarations,
                 None,
@@ -640,7 +650,7 @@ fn derive(
                 &function.sig,
                 &function.block,
             )?,
-            | syn::Item::Impl(ref block) => {
+            syn::Item::Impl(ref block) => {
                 let generics = &block.generics;
                 let self_ty = &block.self_ty;
                 let container = quote!(impl #generics #self_ty);
@@ -657,7 +667,7 @@ fn derive(
                     }
                 }
             },
-            | syn::Item::Macro(ref definition) => {
+            syn::Item::Macro(ref definition) => {
                 let Some(ref name) = definition.ident
                 else {
                     continue;
@@ -676,7 +686,7 @@ fn derive(
                     });
                 }
             },
-            | _ => {},
+            _ => {},
         }
     }
     Ok(derivation)
@@ -769,8 +779,8 @@ fn collect(
         #body
     };
     let relocated = match container {
-        | Some(header) => quote! { #header { #checked } },
-        | None => checked,
+        Some(header) => quote! { #header { #checked } },
+        None => checked,
     };
     let unit = quote! {
         use vstd::prelude::*;
@@ -832,11 +842,11 @@ fn predicate(
     let mut postcondition: Option<&syn::ExprClosure> = None;
     for entry in entries {
         match *entry {
-            | SpecEntry::Capture {
+            SpecEntry::Capture {
                 ref binder,
                 ref value,
             } => bindings.extend(quote! { let #binder = #value; }),
-            | SpecEntry::Ensures(ref closure) => {
+            SpecEntry::Ensures(ref closure) => {
                 if postcondition.is_some() {
                     return Err(DerivationError::Rejected(
                         "one postcondition per attribute is derived".to_owned(),
@@ -1017,10 +1027,10 @@ mod tests
     {
         let entry = syn::parse_str::<SpecEntry>("captures: original = count").unwrap();
         let relocated = match entry {
-            | SpecEntry::Capture { binder, value } => {
+            SpecEntry::Capture { binder, value } => {
                 format!("{}|{}", binder, value.to_token_stream())
             },
-            | SpecEntry::Ensures(closure) => format!("ensures|{}", closure.to_token_stream()),
+            SpecEntry::Ensures(closure) => format!("ensures|{}", closure.to_token_stream()),
         };
         assert_eq!(
             relocated, "original|count",
@@ -1034,8 +1044,8 @@ mod tests
     {
         let entry = syn::parse_str::<SpecEntry>("ensures: |output| output == original").unwrap();
         let relocated = match entry {
-            | SpecEntry::Capture { binder, .. } => format!("captures|{binder}"),
-            | SpecEntry::Ensures(closure) => {
+            SpecEntry::Capture { binder, .. } => format!("captures|{binder}"),
+            SpecEntry::Ensures(closure) => {
                 format!(
                     "ensures|{}|{}",
                     closure.inputs.to_token_stream(),
@@ -1054,8 +1064,8 @@ mod tests
     fn an_unknown_label_refuses_derivation()
     {
         let refusal = match syn::parse_str::<SpecEntry>("requires: count > 0") {
-            | Ok(_) => "the label was accepted".to_owned(),
-            | Err(error) => error.to_string(),
+            Ok(_) => "the label was accepted".to_owned(),
+            Err(error) => error.to_string(),
         };
         assert_eq!(
             refusal, "only `captures` and `ensures` entries are derived",

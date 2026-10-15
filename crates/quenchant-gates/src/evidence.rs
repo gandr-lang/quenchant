@@ -276,12 +276,12 @@ pub fn read_records(
             let record: serde_json::Value = serde_json::from_str(line)
                 .map_err(|error| GateError::parse(&path, ErrorMessage::from(&error.to_string())))?;
             match record.get("record").and_then(serde_json::Value::as_str) {
-                | Some("item") => {
+                Some("item") => {
                     let item = item_from_record(&record, root)
                         .map_err(|message| GateError::parse(&path, ErrorMessage::from(&message)))?;
                     graph.items.entry(item.path.clone()).or_insert(item);
                 },
-                | Some("clause") => {
+                Some("clause") => {
                     let (Some(specification), Some(clause), Some(names)) = (
                         record.get("item").and_then(serde_json::Value::as_str),
                         record.get("clause").and_then(serde_json::Value::as_str),
@@ -302,7 +302,7 @@ pub fn read_records(
                         });
                     }
                 },
-                | _ => {
+                _ => {
                     return Err(GateError::parse(
                         &path,
                         "a record is neither an `item` nor a `clause` record".into(),
@@ -355,11 +355,9 @@ fn item_from_record(
     if last < first {
         return Err("an item record ends before it starts".to_owned());
     }
-    let docs = match record.get("docs") {
-        | None | Some(&serde_json::Value::Null) => {
-            Maybe::Absent(documentation::Undocumented::NoDocumentation)
-        },
-        | Some(&serde_json::Value::Array(ref pair)) => {
+    let docs = match *record.get("docs").unwrap_or(&serde_json::Value::Null) {
+        serde_json::Value::Null => Maybe::Absent(documentation::Undocumented::NoDocumentation),
+        serde_json::Value::Array(ref pair) => {
             let lines: Vec<usize> = pair
                 .iter()
                 .filter_map(serde_json::Value::as_u64)
@@ -374,7 +372,12 @@ fn item_from_record(
                 last: LineNumber(docs_last),
             })
         },
-        | Some(_) => return Err("an item record's `docs` is a pair of lines or null".to_owned()),
+        serde_json::Value::Bool(_)
+        | serde_json::Value::Number(_)
+        | serde_json::Value::String(_)
+        | serde_json::Value::Object(_) => {
+            return Err("an item record's `docs` is a pair of lines or null".to_owned());
+        },
     };
     Ok(Item {
         path: text("path")?,
@@ -549,8 +552,8 @@ fn link_targets(
         && let Maybe::Present(found) = rustdoc_position(local, root)
     {
         return match graph.item_at(&found) {
-            | Maybe::Present(path) => BTreeSet::from([path]),
-            | Maybe::Absent(_) => BTreeSet::new(),
+            Maybe::Present(path) => BTreeSet::from([path]),
+            Maybe::Absent(_) => BTreeSet::new(),
         };
     }
     if let Some(segments) = tables
@@ -630,12 +633,12 @@ fn rustdoc_position(
         })
         .unwrap_or_default();
     match (file, begin.as_slice()) {
-        | (Some(file), &[line, column]) => Maybe::Present(Position {
+        (Some(file), &[line, column]) => Maybe::Present(Position {
             file: relative(SourceText::from(file), root),
             line: LineNumber(line),
             column: ColumnNumber(column),
         }),
-        | _ => Maybe::Absent(position::Unindexed::NoSpan),
+        _ => Maybe::Absent(position::Unindexed::NoSpan),
     }
 }
 
@@ -815,13 +818,18 @@ pub fn clause_links(lines: &[DocumentationLine]) -> Vec<ClauseLink>
         Maybe::Absent(reading::Outside::Outside);
     let mut key_pending = false;
     for (event, range) in events {
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`Event` is pulldown-cmark's event stream; only headings, lists, items, \
+                      text and links move the clause being read"
+        )]
         match event {
-            | Event::Start(Tag::Heading { .. }) => {
+            Event::Start(Tag::Heading { .. }) => {
                 heading = Maybe::Present((String::new(), range.start));
                 clause = Maybe::Absent(reading::Outside::Outside);
                 section = Section::Other;
             },
-            | Event::End(TagEnd::Heading(_)) => {
+            Event::End(TagEnd::Heading(_)) => {
                 let Maybe::Present((title, start)) =
                     core::mem::replace(&mut heading, Maybe::Absent(reading::Outside::Outside))
                 else {
@@ -829,31 +837,31 @@ pub fn clause_links(lines: &[DocumentationLine]) -> Vec<ClauseLink>
                 };
                 let title = title.trim();
                 section = match title {
-                    | "Specification" => Section::Specification,
-                    | "Errors" | "Panics" | "Safety" | "Termination" => {
+                    "Specification" => Section::Specification,
+                    "Errors" | "Panics" | "Safety" | "Termination" => {
                         clause = Maybe::Present((title.to_lowercase(), LineSpan {
                             first: line_of(start),
                             last: section_last(start),
                         }));
                         Section::Whole
                     },
-                    | _ => Section::Other,
+                    _ => Section::Other,
                 };
             },
-            | Event::Start(Tag::List(_)) => depth = depth.saturating_add(1_usize),
-            | Event::End(TagEnd::List(_)) => depth = depth.saturating_sub(1_usize),
-            | Event::Start(Tag::Item) if depth == 1_usize && section == Section::Specification => {
+            Event::Start(Tag::List(_)) => depth = depth.saturating_add(1_usize),
+            Event::End(TagEnd::List(_)) => depth = depth.saturating_sub(1_usize),
+            Event::Start(Tag::Item) if depth == 1_usize && section == Section::Specification => {
                 clause = Maybe::Present((String::new(), LineSpan {
                     first: line_of(range.start),
                     last: line_of(range.end.saturating_sub(1_usize)),
                 }));
                 key_pending = true;
             },
-            | Event::End(TagEnd::Item) if depth == 1_usize && section == Section::Specification => {
+            Event::End(TagEnd::Item) if depth == 1_usize && section == Section::Specification => {
                 clause = Maybe::Absent(reading::Outside::Outside);
                 key_pending = false;
             },
-            | Event::Text(ref fragment) | Event::Code(ref fragment) => {
+            Event::Text(ref fragment) | Event::Code(ref fragment) => {
                 if let Maybe::Present((ref mut title, _)) = heading {
                     title.push_str(fragment);
                 }
@@ -867,7 +875,7 @@ pub fn clause_links(lines: &[DocumentationLine]) -> Vec<ClauseLink>
                         .clone_into(key);
                 }
             },
-            | Event::Start(Tag::Link { ref dest_url, .. }) => {
+            Event::Start(Tag::Link { ref dest_url, .. }) => {
                 if let Maybe::Present((ref key, lines)) = clause
                     && !key.is_empty()
                 {
@@ -878,7 +886,7 @@ pub fn clause_links(lines: &[DocumentationLine]) -> Vec<ClauseLink>
                     });
                 }
             },
-            | _ => {},
+            _ => {},
         }
     }
     found

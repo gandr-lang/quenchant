@@ -485,12 +485,12 @@ fn listing_runner(scope: &Path) -> Result<ListingRunner, GateError>
         .env_remove("RUSTUP_TOOLCHAIN")
         .output();
     let selection = match selection {
-        | Ok(selection) => selection,
+        Ok(selection) => selection,
         #[expect(
             clippy::std_instead_of_core,
             reason = "core::io is unstable on the supported compiler; process spawn errors use std"
         )]
-        | Err(error) => {
+        Err(error) => {
             if error.kind() == std::io::ErrorKind::NotFound {
                 return Ok(ListingRunner::CargoTest { toolchain });
             }
@@ -585,10 +585,10 @@ fn active_toolchain(scope: &Path) -> Result<String, GateError>
 fn runner_command(runner: &ListingRunner) -> Command
 {
     match *runner {
-        | ListingRunner::Nextest { ref executable, .. } => {
+        ListingRunner::Nextest { ref executable, .. } => {
             context_command(runner, executable.as_os_str())
         },
-        | ListingRunner::CargoTest { .. } => context_command(runner, OsStr::new("cargo")),
+        ListingRunner::CargoTest { .. } => context_command(runner, OsStr::new("cargo")),
     }
 }
 
@@ -643,10 +643,10 @@ fn list_command(runner: &ListingRunner) -> Command
 {
     let mut command = runner_command(runner);
     match *runner {
-        | ListingRunner::Nextest { .. } => {
+        ListingRunner::Nextest { .. } => {
             command.args(["nextest", "list", "--message-format", "json"]);
         },
-        | ListingRunner::CargoTest { .. } => {
+        ListingRunner::CargoTest { .. } => {
             command.args(["test", "--no-run", "--message-format", "json"]);
         },
     }

@@ -360,8 +360,8 @@ impl<Value, Reason> Maybe<Value, Reason>
         Mapper: FnOnce(Value) -> Mapped,
     {
         match self {
-            | Self::Present(value) => Maybe::Present(mapper(value)),
-            | Self::Absent(reason) => Maybe::Absent(reason),
+            Self::Present(value) => Maybe::Present(mapper(value)),
+            Self::Absent(reason) => Maybe::Absent(reason),
         }
     }
 
@@ -397,8 +397,8 @@ impl<Value, Reason> Maybe<Value, Reason>
         Continuation: FnOnce(Value) -> Maybe<Mapped, Reason>,
     {
         match self {
-            | Self::Present(value) => continuation(value),
-            | Self::Absent(reason) => Maybe::Absent(reason),
+            Self::Present(value) => continuation(value),
+            Self::Absent(reason) => Maybe::Absent(reason),
         }
     }
 
@@ -421,8 +421,8 @@ impl<Value, Reason> Maybe<Value, Reason>
     pub const fn absent_reason(&self) -> Maybe<&Reason, absence_query::ValuePresent>
     {
         match *self {
-            | Self::Present(_) => Maybe::Absent(absence_query::ValuePresent::Present),
-            | Self::Absent(ref reason) => Maybe::Present(reason),
+            Self::Present(_) => Maybe::Absent(absence_query::ValuePresent::Present),
+            Self::Absent(ref reason) => Maybe::Present(reason),
         }
     }
 
@@ -465,8 +465,8 @@ impl<Value, Reason> Maybe<Value, Reason>
         Mapper: FnOnce(Reason) -> Failure,
     {
         match self {
-            | Self::Present(value) => Ok(value),
-            | Self::Absent(reason) => Err(mapper(reason)),
+            Self::Present(value) => Ok(value),
+            Self::Absent(reason) => Err(mapper(reason)),
         }
     }
 }

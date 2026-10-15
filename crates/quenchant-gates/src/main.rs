@@ -102,11 +102,11 @@ fn main() -> ExitCode
         return ExitCode::FAILURE;
     };
     let requirement = match arguments.next() {
-        | None => Requirement::Observe,
-        | Some(extra) if subcommand == "anodized" && extra == "--require-enforcing" => {
+        None => Requirement::Observe,
+        Some(extra) if subcommand == "anodized" && extra == "--require-enforcing" => {
             Requirement::Enforcing
         },
-        | Some(extra) => {
+        Some(extra) => {
             eprintln!("unexpected argument `{extra}`\n{USAGE}");
             return ExitCode::FAILURE;
         },
@@ -117,9 +117,9 @@ fn main() -> ExitCode
     }
     let manifest_path = PathBuf::from(manifest_path);
     match subcommand.as_str() {
-        | "anodized" => anodized_gate(&manifest_path, requirement),
-        | "witnesses" => run_witnesses(&manifest_path),
-        | _ => {
+        "anodized" => anodized_gate(&manifest_path, requirement),
+        "witnesses" => run_witnesses(&manifest_path),
+        _ => {
             eprintln!("unknown gate `{subcommand}`\n{USAGE}");
             ExitCode::FAILURE
         },
@@ -152,16 +152,16 @@ fn anodized_gate(
 ) -> ExitCode
 {
     let state = match invocation_state(manifest_path) {
-        | Ok(state) => state,
-        | Err(error) => {
+        Ok(state) => state,
+        Err(error) => {
             eprintln!("quenchant-gates: anodized state query could not run: {error}");
             return ExitCode::FAILURE;
         },
     };
     println!("quenchant-gates: anodized invocation state: {state}");
     match state.verdict(requirement) {
-        | Verdict::Pass => ExitCode::SUCCESS,
-        | Verdict::Fail => {
+        Verdict::Pass => ExitCode::SUCCESS,
+        Verdict::Fail => {
             eprintln!(
                 "quenchant-gates: anodized policy FAILED: discard and incompatible cfgs are forbidden; enforcing lanes require anodized_panic"
             );
@@ -198,8 +198,8 @@ fn anodized_gate(
 fn run_witnesses(manifest_path: &Path) -> ExitCode
 {
     let findings = match inventory_gate(manifest_path) {
-        | Ok(findings) => findings,
-        | Err(error) => {
+        Ok(findings) => findings,
+        Err(error) => {
             eprintln!("adequacy witness resolution (G0) could not run: {error}");
             return ExitCode::FAILURE;
         },
@@ -314,14 +314,14 @@ fn run_obligations(mut arguments: core::iter::Skip<std::env::Args>) -> ExitCode
         return ExitCode::FAILURE;
     };
     let previous = match options.get("--previous") {
-        | Some(path) => match std::fs::read_to_string(path) {
-            | Ok(text) => text,
-            | Err(error) => {
+        Some(path) => match std::fs::read_to_string(path) {
+            Ok(text) => text,
+            Err(error) => {
                 eprintln!("obligations could not read the previous comment {path}: {error}");
                 return ExitCode::FAILURE;
             },
         },
-        | None => String::new(),
+        None => String::new(),
     };
     let inputs = obligations::Inputs {
         manifest_path: Path::new(manifest_path),
@@ -331,8 +331,8 @@ fn run_obligations(mut arguments: core::iter::Skip<std::env::Args>) -> ExitCode
         previous: DocText::from(&previous),
     };
     let report = match obligations::run(&inputs) {
-        | Ok(report) => report,
-        | Err(error) => {
+        Ok(report) => report,
+        Err(error) => {
             eprintln!("obligations could not run: {error}");
             return ExitCode::FAILURE;
         },

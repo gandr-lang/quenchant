@@ -91,14 +91,19 @@ impl<'tcx> LateLintPass<'tcx> for OptionField
         item: &'tcx Item<'tcx>,
     )
     {
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`ItemKind` is rustc's HIR item kind, whose variants move with the pinned \
+                      nightly; only a struct or an enum declares fields"
+        )]
         let fields: Vec<&rustc_hir::FieldDef<'tcx>> = match item.kind {
-            | ItemKind::Struct(_, _, ref data) => data.fields().iter().collect(),
-            | ItemKind::Enum(_, _, ref definition) => definition
+            ItemKind::Struct(_, _, ref data) => data.fields().iter().collect(),
+            ItemKind::Enum(_, _, ref definition) => definition
                 .variants
                 .iter()
                 .flat_map(|variant| variant.data.fields())
                 .collect(),
-            | _ => return,
+            _ => return,
         };
         if fields.is_empty() {
             return;

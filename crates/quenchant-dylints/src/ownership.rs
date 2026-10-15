@@ -164,10 +164,10 @@ pub fn non_owning_allow_list() -> NonOwningAllowList
         let path = entry.get("path").and_then(|value| value.as_str());
         let justification = entry.get("justification").and_then(|value| value.as_str());
         match (path, justification) {
-            | (Some(path), Some(justification)) if !justification.trim().is_empty() => {
+            (Some(path), Some(justification)) if !justification.trim().is_empty() => {
                 list.paths.push(path.to_owned());
             },
-            | (path, _) => {
+            (path, _) => {
                 list.defects.push(format!(
                     "{UNJUSTIFIED_ENTRY} (entry: `{}`)",
                     path.unwrap_or("<no path>")
@@ -496,8 +496,14 @@ impl<'tcx> OwnershipWalk<'_, 'tcx>
             if !seen.insert(ty) {
                 continue;
             }
+            #[expect(
+                clippy::wildcard_enum_match_arm,
+                reason = "`TyKind` is rustc's type kind, whose variants move with the pinned \
+                          nightly; only an ADT, an array, a slice, a tuple or a parameter owns \
+                          what it holds"
+            )]
             match *ty.kind() {
-                | rustc_ty::Adt(adt, args) => {
+                rustc_ty::Adt(adt, args) => {
                     if self.is_non_owning(adt).0 {
                         continue;
                     }
@@ -513,16 +519,16 @@ impl<'tcx> OwnershipWalk<'_, 'tcx>
                         }
                     }
                 },
-                | rustc_ty::Array(inner, _) | rustc_ty::Slice(inner) | rustc_ty::Pat(inner, _) => {
+                rustc_ty::Array(inner, _) | rustc_ty::Slice(inner) | rustc_ty::Pat(inner, _) => {
                     pending.push(inner);
                 },
-                | rustc_ty::Tuple(types) => pending.extend(types.iter()),
-                | rustc_ty::Param(param) => {
+                rustc_ty::Tuple(types) => pending.extend(types.iter()),
+                rustc_ty::Param(param) => {
                     reached.parameters.push(ParameterIndex(
                         usize::try_from(param.index).unwrap_or(usize::MAX),
                     ));
                 },
-                | _ => {},
+                _ => {},
             }
         }
         reached

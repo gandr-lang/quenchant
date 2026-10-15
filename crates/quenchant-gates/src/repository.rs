@@ -154,15 +154,15 @@ where
 {
     let name = name.0;
     match result {
-        | Ok(Maybe::Present(Passed)) => {
+        Ok(Maybe::Present(Passed)) => {
             println!("{name} OK");
             ExitCode::SUCCESS
         },
-        | Ok(Maybe::Absent(reason)) => {
+        Ok(Maybe::Absent(reason)) => {
             eprintln!("{name} FAILED: {reason:?}");
             ExitCode::FAILURE
         },
-        | Err(error) => {
+        Err(error) => {
             eprintln!("{name} could not run: {error}");
             ExitCode::FAILURE
         },
@@ -218,22 +218,22 @@ pub fn dispatch(
         .remove("--root")
         .map_or_else(|| PathBuf::from("."), PathBuf::from);
     match name {
-        | "public-boundary" => report(SourceText(name), public_boundary::check(&root)),
-        | "conflict-markers" => report(SourceText(name), public_boundary::conflicts(&root)),
-        | "action-pins" => report(SourceText(name), action_pins::check(&root)),
-        | "publish-allowlist" => report(
+        "public-boundary" => report(SourceText(name), public_boundary::check(&root)),
+        "conflict-markers" => report(SourceText(name), public_boundary::conflicts(&root)),
+        "action-pins" => report(SourceText(name), action_pins::check(&root)),
+        "publish-allowlist" => report(
             SourceText(name),
             publish_allowlist::check(&root.join("Cargo.toml")),
         ),
-        | "pins" => report(SourceText(name), pins::check(&root, &options)),
-        | "toolchain-bump" => match options.remove("--version") {
-            | Some(version) => report(SourceText(name), pins::bump(&root, SourceText(&version))),
-            | None => {
+        "pins" => report(SourceText(name), pins::check(&root, &options)),
+        "toolchain-bump" => options.remove("--version").map_or_else(
+            || {
                 eprintln!("toolchain-bump: --version is required");
                 ExitCode::FAILURE
             },
-        },
-        | _ => {
+            |version| report(SourceText(name), pins::bump(&root, SourceText(&version))),
+        ),
+        _ => {
             eprintln!("unknown repository command {name}");
             ExitCode::FAILURE
         },

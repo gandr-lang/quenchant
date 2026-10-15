@@ -309,43 +309,43 @@ impl AdequacyDefect
     fn message(&self) -> DiagnosticText<'static>
     {
         DiagnosticText(match *self {
-            | Self::HypothesisMissing => {
+            Self::HypothesisMissing => {
                 "`# Adequacy` section must open with exactly one `- hypothesis:` bullet naming an \
                  adequacy ladder rung (`L0` types, `L1` evidence, `L2` agreement, `L3` pointwise)"
             },
-            | Self::HypothesisDuplicated => {
+            Self::HypothesisDuplicated => {
                 "`# Adequacy` section must state exactly one `- hypothesis:`; one item has one test \
                  plan"
             },
-            | Self::HypothesisNamesNoRung => {
+            Self::HypothesisNamesNoRung => {
                 "`- hypothesis:` must name at least one adequacy ladder rung — `L0` types, `L1` \
                  evidence, `L2` agreement, `L3` pointwise — because the rung is what states where \
                  the decision surface is carried"
             },
-            | Self::HypothesisNotFirst => {
+            Self::HypothesisNotFirst => {
                 "`- hypothesis:` must precede every `- witness:` and `- declaration-only:` bullet: \
                  the plan is stated before the evidence that discharges it"
             },
-            | Self::WitnessMissing => {
+            Self::WitnessMissing => {
                 "`# Adequacy` section must name at least one `- witness: `path`` bullet, or — on a \
                  required trait method only — carry `- declaration-only:` with a reason"
             },
-            | Self::WitnessMalformed => {
+            Self::WitnessMalformed => {
                 "`- witness:` must name exactly one test path in backticks, as `- witness: \
                  `module::tests::name``; the witness-resolution gate resolves the path verbatim"
             },
-            | Self::ExemptionNotDeclaration => {
+            Self::ExemptionNotDeclaration => {
                 "`- declaration-only:` is available only to a required trait method, which has no \
                  body to witness; every other item names the tests that kill its mutants"
             },
-            | Self::ExemptionUnreasoned => {
+            Self::ExemptionUnreasoned => {
                 "`- declaration-only:` must state why the declaration carries no witness of its own"
             },
-            | Self::ExemptionWithWitness => {
+            Self::ExemptionWithWitness => {
                 "`- declaration-only:` claims there is nothing to witness, so it cannot be combined \
                  with `- witness:` bullets"
             },
-            | Self::ExemptionDuplicated => "`- declaration-only:` may appear at most once",
+            Self::ExemptionDuplicated => "`- declaration-only:` may appear at most once",
         })
     }
 }
@@ -632,8 +632,8 @@ mod tests
     fn adequacy_section(lines: &[String]) -> Vec<String>
     {
         match section_lines(lines, SectionHeading::from(HEADING)) {
-            | Maybe::Present(lines) => lines,
-            | Maybe::Absent(reason) => panic!("expected a section: {reason:?}"),
+            Maybe::Present(lines) => lines,
+            Maybe::Absent(reason) => panic!("expected a section: {reason:?}"),
         }
     }
 

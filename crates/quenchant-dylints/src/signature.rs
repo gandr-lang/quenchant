@@ -153,23 +153,28 @@ pub fn check_fn_decl<'tcx>(
     let mut diagnostics = DiagnosticCount(0_usize);
     while let Some(item) = work.pop() {
         match item {
-            | PrimitiveWork::SemanticTy(ty, semantic_ty) => {
+            PrimitiveWork::SemanticTy(ty, semantic_ty) => {
                 let semantic_ty = normalize_middle_ty(cx, semantic_ty);
                 if !middle_ty_contains_primitive(cx, semantic_ty).0 {
                     work.push(PrimitiveWork::HirTy(ty));
                     continue;
                 }
+                #[expect(
+                    clippy::wildcard_enum_match_arm,
+                    reason = "`TyKind` is rustc's type kind, whose variants move with the pinned \
+                              nightly; only a matching slice, array or tuple descends"
+                )]
                 match ty.kind {
-                    | TyKind::Slice(inner) | TyKind::Array(inner, _) => match *semantic_ty.kind() {
-                        | rustc_ty::Slice(semantic_inner) | rustc_ty::Array(semantic_inner, _) => {
+                    TyKind::Slice(inner) | TyKind::Array(inner, _) => match *semantic_ty.kind() {
+                        rustc_ty::Slice(semantic_inner) | rustc_ty::Array(semantic_inner, _) => {
                             work.push(PrimitiveWork::SemanticTy(inner, semantic_inner));
                         },
-                        | _ => {
+                        _ => {
                             emit_primitive(cx, ty.span);
                             diagnostics.0 = diagnostics.0.saturating_add(1_usize);
                         },
                     },
-                    | TyKind::Ptr(mut_ty) => {
+                    TyKind::Ptr(mut_ty) => {
                         if let rustc_ty::RawPtr(semantic_inner, _) = *semantic_ty.kind() {
                             work.push(PrimitiveWork::SemanticTy(mut_ty.ty, semantic_inner));
                         }
@@ -178,7 +183,7 @@ pub fn check_fn_decl<'tcx>(
                             diagnostics.0 = diagnostics.0.saturating_add(1_usize);
                         }
                     },
-                    | TyKind::Ref(_, mut_ty) => {
+                    TyKind::Ref(_, mut_ty) => {
                         if let rustc_ty::Ref(_, semantic_inner, _) = *semantic_ty.kind() {
                             work.push(PrimitiveWork::SemanticTy(mut_ty.ty, semantic_inner));
                         }
@@ -187,7 +192,7 @@ pub fn check_fn_decl<'tcx>(
                             diagnostics.0 = diagnostics.0.saturating_add(1_usize);
                         }
                     },
-                    | TyKind::FnPtr(fn_ptr) => {
+                    TyKind::FnPtr(fn_ptr) => {
                         if let rustc_ty::FnPtr(sig_tys, header) = *semantic_ty.kind() {
                             work.push(PrimitiveWork::SemanticFnDecl(
                                 fn_ptr.decl,
@@ -199,20 +204,20 @@ pub fn check_fn_decl<'tcx>(
                             diagnostics.0 = diagnostics.0.saturating_add(1_usize);
                         }
                     },
-                    | TyKind::Tup(types) => match *semantic_ty.kind() {
-                        | rustc_ty::Tuple(semantic_types) if semantic_types.len() == types.len() => {
+                    TyKind::Tup(types) => match *semantic_ty.kind() {
+                        rustc_ty::Tuple(semantic_types) if semantic_types.len() == types.len() => {
                             for (inner, semantic_inner) in
                                 types.iter().zip(semantic_types.iter()).rev()
                             {
                                 work.push(PrimitiveWork::SemanticTy(inner, semantic_inner));
                             }
                         },
-                        | _ => {
+                        _ => {
                             emit_primitive(cx, ty.span);
                             diagnostics.0 = diagnostics.0.saturating_add(1_usize);
                         },
                     },
-                    | TyKind::Path(ref qpath) => {
+                    TyKind::Path(ref qpath) => {
                         work.push(PrimitiveWork::PathFallback(ty, diagnostics));
                         // economy: positional pairing can misidentify a descendant span when
                         // aliases reorder or discard arguments, as `type Flip<A, B> = Result<B, A>`
@@ -225,10 +230,12 @@ pub fn check_fn_decl<'tcx>(
                                 .args
                                 .iter()
                                 .filter_map(|arg| match arg {
-                                    | &GenericArg::Type(generic_ty) => {
+                                    &GenericArg::Type(generic_ty) => {
                                         Some(generic_ty.as_unambig_ty())
                                     },
-                                    | _ => None,
+                                    &GenericArg::Lifetime(_)
+                                    | &GenericArg::Const(_)
+                                    | &GenericArg::Infer(_) => None,
                                 })
                                 .zip(semantic_args)
                                 .collect();
@@ -237,13 +244,13 @@ pub fn check_fn_decl<'tcx>(
                             }
                         }
                     },
-                    | TyKind::Pat(inner, _) | TyKind::FieldOf(inner, _) => {
+                    TyKind::Pat(inner, _) | TyKind::FieldOf(inner, _) => {
                         work.push(PrimitiveWork::SemanticTy(inner, semantic_ty));
                     },
-                    | TyKind::OpaqueDef(opaque) => {
+                    TyKind::OpaqueDef(opaque) => {
                         work.push(PrimitiveWork::Opaque(opaque));
                     },
-                    | TyKind::InferDelegation(_)
+                    TyKind::InferDelegation(_)
                     | TyKind::UnsafeBinder(_)
                     | TyKind::Never
                     | TyKind::TraitAscription(_)
@@ -252,7 +259,7 @@ pub fn check_fn_decl<'tcx>(
                     | TyKind::Infer(()) => {},
                 }
             },
-            | PrimitiveWork::SemanticFnDecl(decl, sig) => {
+            PrimitiveWork::SemanticFnDecl(decl, sig) => {
                 if let FnRetTy::Return(output) = decl.output {
                     work.push(PrimitiveWork::SemanticTy(output, sig.output()));
                 }
@@ -260,25 +267,25 @@ pub fn check_fn_decl<'tcx>(
                     work.push(PrimitiveWork::SemanticTy(input, *semantic_input));
                 }
             },
-            | PrimitiveWork::HirTy(ty) => match ty.kind {
-                | TyKind::Slice(inner)
+            PrimitiveWork::HirTy(ty) => match ty.kind {
+                TyKind::Slice(inner)
                 | TyKind::Array(inner, _)
                 | TyKind::Pat(inner, _)
                 | TyKind::FieldOf(inner, _) => {
                     work.push(PrimitiveWork::HirTy(inner));
                 },
-                | TyKind::Ptr(mut_ty) | TyKind::Ref(_, mut_ty) => {
+                TyKind::Ptr(mut_ty) | TyKind::Ref(_, mut_ty) => {
                     work.push(PrimitiveWork::HirTy(mut_ty.ty));
                 },
-                | TyKind::FnPtr(fn_ptr) => {
+                TyKind::FnPtr(fn_ptr) => {
                     work.push(PrimitiveWork::HirFnDecl(fn_ptr.decl));
                 },
-                | TyKind::Tup(types) => {
+                TyKind::Tup(types) => {
                     for inner in types.iter().rev() {
                         work.push(PrimitiveWork::HirTy(inner));
                     }
                 },
-                | TyKind::Path(ref qpath) => {
+                TyKind::Path(ref qpath) => {
                     if let Res::PrimTy(primitive) = cx.qpath_res(qpath, ty.hir_id)
                         && is_disallowed_primitive(primitive).0
                     {
@@ -286,10 +293,10 @@ pub fn check_fn_decl<'tcx>(
                         diagnostics.0 = diagnostics.0.saturating_add(1_usize);
                     }
                 },
-                | TyKind::OpaqueDef(opaque) => {
+                TyKind::OpaqueDef(opaque) => {
                     work.push(PrimitiveWork::Opaque(opaque));
                 },
-                | TyKind::InferDelegation(_)
+                TyKind::InferDelegation(_)
                 | TyKind::UnsafeBinder(_)
                 | TyKind::Never
                 | TyKind::TraitAscription(_)
@@ -297,7 +304,7 @@ pub fn check_fn_decl<'tcx>(
                 | TyKind::Err(_)
                 | TyKind::Infer(()) => {},
             },
-            | PrimitiveWork::HirFnDecl(decl) => {
+            PrimitiveWork::HirFnDecl(decl) => {
                 if let FnRetTy::Return(output) = decl.output {
                     work.push(PrimitiveWork::HirTy(output));
                 }
@@ -305,32 +312,32 @@ pub fn check_fn_decl<'tcx>(
                     work.push(PrimitiveWork::HirTy(input));
                 }
             },
-            | PrimitiveWork::Opaque(opaque) => {
+            PrimitiveWork::Opaque(opaque) => {
                 if let Maybe::Present(trait_ref) = future_trait_ref(cx, opaque)
                     && let Maybe::Present(output) = future_output_ty(trait_ref)
                 {
                     work.push(PrimitiveWork::OpaqueOutputTy(output));
                 }
             },
-            | PrimitiveWork::OpaqueOutputTy(ty) => match ty.kind {
-                | TyKind::Slice(inner)
+            PrimitiveWork::OpaqueOutputTy(ty) => match ty.kind {
+                TyKind::Slice(inner)
                 | TyKind::Array(inner, _)
                 | TyKind::Pat(inner, _)
                 | TyKind::FieldOf(inner, _) => {
                     work.push(PrimitiveWork::OpaqueOutputTy(inner));
                 },
-                | TyKind::Ptr(mut_ty) | TyKind::Ref(_, mut_ty) => {
+                TyKind::Ptr(mut_ty) | TyKind::Ref(_, mut_ty) => {
                     work.push(PrimitiveWork::OpaqueOutputTy(mut_ty.ty));
                 },
-                | TyKind::FnPtr(fn_ptr) => {
+                TyKind::FnPtr(fn_ptr) => {
                     work.push(PrimitiveWork::HirFnDecl(fn_ptr.decl));
                 },
-                | TyKind::Tup(types) => {
+                TyKind::Tup(types) => {
                     for inner in types.iter().rev() {
                         work.push(PrimitiveWork::OpaqueOutputTy(inner));
                     }
                 },
-                | TyKind::Path(ref qpath) => {
+                TyKind::Path(ref qpath) => {
                     let resolution = cx.qpath_res(qpath, ty.hir_id);
                     if let Res::PrimTy(primitive) = resolution {
                         if is_disallowed_primitive(primitive).0 {
@@ -350,10 +357,10 @@ pub fn check_fn_decl<'tcx>(
                         }
                     }
                 },
-                | TyKind::OpaqueDef(opaque) => {
+                TyKind::OpaqueDef(opaque) => {
                     work.push(PrimitiveWork::Opaque(opaque));
                 },
-                | TyKind::InferDelegation(_)
+                TyKind::InferDelegation(_)
                 | TyKind::UnsafeBinder(_)
                 | TyKind::Never
                 | TyKind::TraitAscription(_)
@@ -361,7 +368,7 @@ pub fn check_fn_decl<'tcx>(
                 | TyKind::Err(_)
                 | TyKind::Infer(()) => {},
             },
-            | PrimitiveWork::PathFallback(ty, snapshot) => {
+            PrimitiveWork::PathFallback(ty, snapshot) => {
                 if diagnostics == snapshot {
                     emit_primitive(cx, ty.span);
                     diagnostics.0 = diagnostics.0.saturating_add(1_usize);
@@ -398,8 +405,8 @@ fn future_trait_ref<'tcx>(
 ) -> Maybe<&'tcx TraitRef<'tcx>, future_bound::Missing>
 {
     let Some(trait_ref) = opaque.bounds.iter().find_map(|bound| match *bound {
-        | GenericBound::Trait(ref poly) => Some(&poly.trait_ref),
-        | _ => None,
+        GenericBound::Trait(ref poly) => Some(&poly.trait_ref),
+        GenericBound::Outlives(_) | GenericBound::Use(..) => None,
     })
     else {
         return Maybe::Absent(future_bound::Missing::NoTraitBound);
@@ -450,10 +457,10 @@ fn future_output_ty<'tcx>(
     if constraint.ident.name != sym::Output {
         return Maybe::Absent(future_output::Missing::NotOutput);
     }
-    match constraint.ty() {
-        | Some(output) => Maybe::Present(output),
-        | None => Maybe::Absent(future_output::Missing::NotType),
-    }
+    constraint.ty().map_or(
+        Maybe::Absent(future_output::Missing::NotType),
+        Maybe::Present,
+    )
 }
 
 /// Normalized ADT arguments and tuple components expose substituted child
@@ -471,6 +478,11 @@ fn future_output_ty<'tcx>(
 /// - witness: `tests::ui`
 #[spec(ensures: |output| output.is_empty()
     || matches!(*normalize_middle_ty(cx, semantic_ty).kind(), rustc_ty::Adt(..) | rustc_ty::Tuple(_)))]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "`TyKind` is rustc's type kind, whose variants move with the pinned nightly; only an \
+              ADT or a tuple has type arguments"
+)]
 fn semantic_type_args<'tcx>(
     cx: &LateContext<'tcx>,
     semantic_ty: rustc_ty::Ty<'tcx>,
@@ -478,12 +490,12 @@ fn semantic_type_args<'tcx>(
 {
     let semantic_ty = normalize_middle_ty(cx, semantic_ty);
     match *semantic_ty.kind() {
-        | rustc_ty::Adt(_, args) => args
+        rustc_ty::Adt(_, args) => args
             .iter()
             .filter_map(rustc_ty::GenericArg::as_type)
             .collect(),
-        | rustc_ty::Tuple(types) => types.iter().collect(),
-        | _ => Vec::new(),
+        rustc_ty::Tuple(types) => types.iter().collect(),
+        _ => Vec::new(),
     }
 }
 
@@ -514,19 +526,19 @@ fn last_segment_args<'hir>(
 ) -> Maybe<&'hir GenericArgs<'hir>, path_arguments::Missing>
 {
     let segment = match *qpath {
-        | QPath::Resolved(_, path) => {
+        QPath::Resolved(_, path) => {
             let Some(segment) = path.segments.last()
             else {
                 return Maybe::Absent(path_arguments::Missing::NoSegment);
             };
             segment
         },
-        | QPath::TypeRelative(_, segment) => segment,
+        QPath::TypeRelative(_, segment) => segment,
     };
-    match segment.args {
-        | Some(arguments) => Maybe::Present(arguments),
-        | None => Maybe::Absent(path_arguments::Missing::NoArguments),
-    }
+    segment.args.map_or(
+        Maybe::Absent(path_arguments::Missing::NoArguments),
+        Maybe::Present,
+    )
 }
 
 /// The primitive policy fixes the scalar and string types that require a
@@ -645,29 +657,34 @@ fn middle_ty_contains_primitive<'tcx>(
     let mut pending = vec![ty];
     while let Some(ty) = pending.pop() {
         let ty = normalize_middle_ty(cx, ty);
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`TyKind` is rustc's type kind, whose variants move with the pinned nightly; \
+                      only the named kinds can hold a primitive"
+        )]
         match *ty.kind() {
-            | rustc_ty::Bool
+            rustc_ty::Bool
             | rustc_ty::Char
             | rustc_ty::Int(_)
             | rustc_ty::Uint(_)
             | rustc_ty::Float(_)
             | rustc_ty::Str => return ContainsPrimitive(true),
-            | rustc_ty::Array(inner, _)
+            rustc_ty::Array(inner, _)
             | rustc_ty::Pat(inner, _)
             | rustc_ty::Slice(inner)
             | rustc_ty::RawPtr(inner, _)
             | rustc_ty::Ref(_, inner, _) => pending.push(inner),
-            | rustc_ty::Tuple(types) => pending.extend(types.iter()),
-            | rustc_ty::FnPtr(sig_tys, header) => {
+            rustc_ty::Tuple(types) => pending.extend(types.iter()),
+            rustc_ty::FnPtr(sig_tys, header) => {
                 let sig = sig_tys.with(header).skip_binder();
                 pending.push(sig.output());
                 pending.extend(sig.inputs().iter().rev());
             },
-            | rustc_ty::Adt(adt, _) if is_semantic_boundary_adt(adt).0 => {},
-            | rustc_ty::Adt(_, args) => {
+            rustc_ty::Adt(adt, _) if is_semantic_boundary_adt(adt).0 => {},
+            rustc_ty::Adt(_, args) => {
                 pending.extend(args.iter().filter_map(rustc_ty::GenericArg::as_type));
             },
-            | _ => {},
+            _ => {},
         }
     }
     ContainsPrimitive(false)

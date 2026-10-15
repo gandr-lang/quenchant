@@ -105,15 +105,15 @@ impl TerminationDefect
     pub fn message(&self) -> DiagnosticText<'static>
     {
         DiagnosticText(match *self {
-            | Self::SectionMissing => {
+            Self::SectionMissing => {
                 "recursion exception is missing its `# Termination` rustdoc section"
             },
-            | Self::GrammarViolated => {
+            Self::GrammarViolated => {
                 "`# Termination` section must contain exactly the bullets `- reason:`, \
                  `- measure:`, `- boundedness:`, `- input recursion:`, in that order, each with a \
                  value"
             },
-            | Self::InputRecursionRefuted => {
+            Self::InputRecursionRefuted => {
                 "`- input recursion: none.` is refuted: a call inside this recursive cycle passes \
                  data derived from the function's own parameters"
             },
@@ -438,8 +438,8 @@ mod tests
             .into(),
         );
         let bullets = match section_bullets(&doc) {
-            | Maybe::Present(lines) => lines,
-            | Maybe::Absent(reason) => panic!("expected a section: {reason:?}"),
+            Maybe::Present(lines) => lines,
+            Maybe::Absent(reason) => panic!("expected a section: {reason:?}"),
         };
         assert_eq!(bullets.len(), 2_usize, "the injected block is not absorbed");
         assert!(
@@ -466,8 +466,8 @@ mod tests
             .into(),
         );
         let bullets = match section_bullets(&doc) {
-            | Maybe::Present(lines) => lines,
-            | Maybe::Absent(reason) => panic!("expected a section: {reason:?}"),
+            Maybe::Present(lines) => lines,
+            Maybe::Absent(reason) => panic!("expected a section: {reason:?}"),
         };
         assert_eq!(bullets.len(), 4_usize, "continuation lines fold upward");
         assert_eq!(
@@ -491,8 +491,8 @@ mod tests
             .into(),
         );
         let bullets = match section_bullets(&doc) {
-            | Maybe::Present(lines) => lines,
-            | Maybe::Absent(reason) => panic!("expected a section: {reason:?}"),
+            Maybe::Present(lines) => lines,
+            Maybe::Absent(reason) => panic!("expected a section: {reason:?}"),
         };
         assert!(
             matches!(
@@ -517,8 +517,8 @@ mod tests
             .into(),
         );
         let bullets = match section_bullets(&doc) {
-            | Maybe::Present(lines) => lines,
-            | Maybe::Absent(reason) => panic!("expected a section: {reason:?}"),
+            Maybe::Present(lines) => lines,
+            Maybe::Absent(reason) => panic!("expected a section: {reason:?}"),
         };
         assert!(
             matches!(
@@ -574,8 +574,8 @@ mod tests
             .into(),
         );
         let bullets = match section_bullets(&doc) {
-            | Maybe::Present(lines) => lines,
-            | Maybe::Absent(reason) => panic!("expected a section: {reason:?}"),
+            Maybe::Present(lines) => lines,
+            Maybe::Absent(reason) => panic!("expected a section: {reason:?}"),
         };
         assert_eq!(
             bullets.len(),

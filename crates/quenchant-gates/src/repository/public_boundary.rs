@@ -216,9 +216,9 @@ pub fn check(root: &Path) -> Result<Maybe<Passed, refusal::Refused>, GateError>
         }
         let absolute = root.join(&path);
         let bytes = match std::fs::read(&absolute) {
-            | Ok(bytes) => bytes,
-            | Err(error) if error.kind() == ErrorKind::NotFound => continue,
-            | Err(error) => return Err(GateError::io(&path, ErrorMessage(&error.to_string()))),
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == ErrorKind::NotFound => continue,
+            Err(error) => return Err(GateError::io(&path, ErrorMessage(&error.to_string()))),
         };
         if bytes.contains(&0) {
             continue;
@@ -308,9 +308,9 @@ pub fn conflicts(root: &Path) -> Result<Maybe<Passed, conflict::Refused>, GateEr
 {
     for path in super::tracked_paths(root)? {
         let bytes = match std::fs::read(root.join(&path)) {
-            | Ok(bytes) => bytes,
-            | Err(error) if error.kind() == ErrorKind::NotFound => continue,
-            | Err(error) => return Err(GateError::io(&path, ErrorMessage(&error.to_string()))),
+            Ok(bytes) => bytes,
+            Err(error) if error.kind() == ErrorKind::NotFound => continue,
+            Err(error) => return Err(GateError::io(&path, ErrorMessage(&error.to_string()))),
         };
         if bytes.contains(&0) {
             continue;

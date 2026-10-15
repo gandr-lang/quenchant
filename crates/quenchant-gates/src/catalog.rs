@@ -199,10 +199,10 @@ impl TestCatalog
         else {
             return Maybe::Absent(target_lookup::Missing::PackageUnlisted);
         };
-        match aliases.get(witness.0) {
-            | Some(targets) => Maybe::Present(targets),
-            | None => Maybe::Absent(target_lookup::Missing::AliasUnlisted),
-        }
+        aliases.get(witness.0).map_or(
+            Maybe::Absent(target_lookup::Missing::AliasUnlisted),
+            Maybe::Present,
+        )
     }
 
     /// Sibling ownership can explain a miss without satisfying the local

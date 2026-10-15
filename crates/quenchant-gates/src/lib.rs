@@ -240,15 +240,15 @@ impl fmt::Display for GateError
     ) -> fmt::Result
     {
         match *self {
-            | Self::Io {
+            Self::Io {
                 ref path,
                 ref message,
             } => write!(f, "cannot read {}: {message}", path.display()),
-            | Self::Parse {
+            Self::Parse {
                 ref path,
                 ref message,
             } => write!(f, "cannot parse {}: {message}", path.display()),
-            | Self::Tool {
+            Self::Tool {
                 ref command,
                 ref message,
             } => write!(f, "`{command}` failed: {message}"),

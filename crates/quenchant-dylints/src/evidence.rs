@@ -249,8 +249,8 @@ impl ClauseIndex
     {
         let regions = self.0.lock().unwrap_or_else(PoisonError::into_inner);
         match regions.range(..= span.lo()).next_back() {
-            | Some((_, &(end, key))) if span.hi() <= end => Maybe::Present(key),
-            | _ => Maybe::Absent(clause_lookup::Outside::NoClause),
+            Some((_, &(end, key))) if span.hi() <= end => Maybe::Present(key),
+            _ => Maybe::Absent(clause_lookup::Outside::NoClause),
         }
     }
 }
@@ -424,16 +424,21 @@ impl EarlyLintPass for ClauseRecorder
     )
     {
         self.attributes.record(item.span, &item.attrs);
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`ItemKind` is rustc's AST item kind, whose variants move with the pinned \
+                      nightly; only a struct, a union or a foreign block holds attributed members"
+        )]
         match item.kind {
-            | ItemKind::Struct(_, _, ref data) | ItemKind::Union(_, _, ref data) => {
+            ItemKind::Struct(_, _, ref data) | ItemKind::Union(_, _, ref data) => {
                 self.attributes.record_fields(data.fields());
             },
-            | ItemKind::ForeignMod(ref block) => {
+            ItemKind::ForeignMod(ref block) => {
                 for foreign in &block.items {
                     self.attributes.record(foreign.span, &foreign.attrs);
                 }
             },
-            | _ => {},
+            _ => {},
         }
     }
 
@@ -600,19 +605,25 @@ impl<'tcx> LateLintPass<'tcx> for SpecificationEdges
         else {
             return;
         };
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`ExprKind` is rustc's HIR expression kind, whose variants move with the \
+                      pinned nightly; only a path, a struct literal, a method call or a field \
+                      names an item"
+        )]
         let named = match expr.kind {
-            | ExprKind::Path(ref qpath) | ExprKind::Struct(&ref qpath, ..) => {
+            ExprKind::Path(ref qpath) | ExprKind::Struct(&ref qpath, ..) => {
                 named_item(cx, cx.qpath_res(qpath, expr.hir_id), expr.hir_id)
             },
-            | ExprKind::MethodCall(..) => {
+            ExprKind::MethodCall(..) => {
                 let Some(method) = cx.typeck_results().type_dependent_def_id(expr.hir_id)
                 else {
                     return;
                 };
                 named_item(cx, Res::Def(DefKind::AssocFn, method), expr.hir_id)
             },
-            | ExprKind::Field(base, _) => field_item(cx, base, expr.hir_id),
-            | _ => return,
+            ExprKind::Field(base, _) => field_item(cx, base, expr.hir_id),
+            _ => return,
         };
         if let Maybe::Present(target) = named {
             self.note(expr.hir_id.owner.def_id, clause, target);
@@ -644,18 +655,23 @@ impl<'tcx> LateLintPass<'tcx> for SpecificationEdges
         else {
             return;
         };
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`PatKind` is rustc's HIR pattern kind, whose variants move with the pinned \
+                      nightly; only a struct, tuple-struct or path pattern names an item"
+        )]
         let named = match pat.kind {
-            | PatKind::TupleStruct(ref qpath, ..) | PatKind::Struct(ref qpath, ..) => {
+            PatKind::TupleStruct(ref qpath, ..) | PatKind::Struct(ref qpath, ..) => {
                 named_item(cx, cx.qpath_res(qpath, pat.hir_id), pat.hir_id)
             },
-            | PatKind::Expr(path) => {
+            PatKind::Expr(path) => {
                 let PatExprKind::Path(ref qpath) = path.kind
                 else {
                     return;
                 };
                 named_item(cx, cx.qpath_res(qpath, path.hir_id), path.hir_id)
             },
-            | _ => return,
+            _ => return,
         };
         if let Maybe::Present(target) = named {
             self.note(pat.hir_id.owner.def_id, clause, target);
@@ -754,10 +770,13 @@ pub fn evidence_directory() -> Maybe<PathBuf, evidence_setting::Unset>
     else {
         return Maybe::Absent(evidence_setting::Unset::NoDirectory);
     };
-    match config.get(DIRECTORY_KEY).and_then(|value| value.as_str()) {
-        | Some(directory) => Maybe::Present(PathBuf::from(directory)),
-        | None => Maybe::Absent(evidence_setting::Unset::NoDirectory),
-    }
+    config
+        .get(DIRECTORY_KEY)
+        .and_then(|value| value.as_str())
+        .map_or(
+            Maybe::Absent(evidence_setting::Unset::NoDirectory),
+            |directory| Maybe::Present(PathBuf::from(directory)),
+        )
 }
 
 /// List the configuration variable among the unit's environment inputs, set or
@@ -815,10 +834,15 @@ fn named_item(
     else {
         return Maybe::Absent(naming::NotAnItem::Local);
     };
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "`DefKind` is rustc's definition kind, whose variants move with the pinned \
+                  nightly; only the named kinds are items a clause can mention"
+    )]
     let target = match kind {
-        | DefKind::Ctor(..) => cx.tcx.parent(def_id),
-        | DefKind::AssocFn => resolved_method(cx, def_id, hir_id),
-        | DefKind::Fn
+        DefKind::Ctor(..) => cx.tcx.parent(def_id),
+        DefKind::AssocFn => resolved_method(cx, def_id, hir_id),
+        DefKind::Fn
         | DefKind::Const { .. }
         | DefKind::AssocConst { .. }
         | DefKind::Static { .. }
@@ -832,7 +856,7 @@ fn named_item(
         | DefKind::ForeignTy
         | DefKind::AssocTy
         | DefKind::Field => def_id,
-        | _ => return Maybe::Absent(naming::NotAnItem::OtherDefinition),
+        _ => return Maybe::Absent(naming::NotAnItem::OtherDefinition),
     };
     let krate = cx.tcx.crate_name(target.krate);
     if LIBRARY_CRATES.contains(&krate.as_str()) || krate.as_str() == INSTRUMENTATION_CRATE {
@@ -874,11 +898,16 @@ fn resolved_method(
     }
     let args = cx.tcx.erase_and_anonymize_regions(args);
     match Instance::try_resolve(cx.tcx, cx.typing_env(), method, args) {
-        | Ok(Some(instance)) => match instance.def {
-            | InstanceKind::Item(target) if !cx.tcx.is_closure_like(target) => target,
-            | _ => method,
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`InstanceKind` is rustc's instance kind, whose variants move with the \
+                      pinned nightly; only a resolved non-closure item replaces the method"
+        )]
+        Ok(Some(instance)) => match instance.def {
+            InstanceKind::Item(target) if !cx.tcx.is_closure_like(target) => target,
+            _ => method,
         },
-        | _ => method,
+        _ => method,
     }
 }
 
@@ -1096,8 +1125,8 @@ fn canonical_path(
         )
     );
     match *qualifier {
-        | Maybe::Present(ref package) if def_id.is_local() => format!("{package}/{path}"),
-        | _ => path,
+        Maybe::Present(ref package) if def_id.is_local() => format!("{package}/{path}"),
+        Maybe::Present(_) | Maybe::Absent(_) => path,
     }
 }
 
@@ -1122,8 +1151,8 @@ fn unit_qualifier() -> Maybe<String, unit_paths::Unqualified>
     let library = std::env::var_os("CARGO_TARGET_TMPDIR").is_none()
         && std::env::var_os("CARGO_BIN_NAME").is_none();
     match std::env::var("CARGO_PKG_NAME") {
-        | Ok(package) if !library => Maybe::Present(package),
-        | _ => Maybe::Absent(unit_paths::Unqualified::Library),
+        Ok(package) if !library => Maybe::Present(package),
+        _ => Maybe::Absent(unit_paths::Unqualified::Library),
     }
 }
 
@@ -1170,13 +1199,13 @@ fn record_name(tcx: TyCtxt<'_>) -> String
             tcx.crate_types()
                 .first()
                 .map_or("crate", |crate_type| match *crate_type {
-                    | CrateType::Executable => "bin",
-                    | CrateType::Dylib => "dylib",
-                    | CrateType::Rlib => "lib",
-                    | CrateType::StaticLib => "staticlib",
-                    | CrateType::Cdylib => "cdylib",
-                    | CrateType::ProcMacro => "proc-macro",
-                    | CrateType::Sdylib => "sdylib",
+                    CrateType::Executable => "bin",
+                    CrateType::Dylib => "dylib",
+                    CrateType::Rlib => "lib",
+                    CrateType::StaticLib => "staticlib",
+                    CrateType::Cdylib => "cdylib",
+                    CrateType::ProcMacro => "proc-macro",
+                    CrateType::Sdylib => "sdylib",
                 }),
         );
     }

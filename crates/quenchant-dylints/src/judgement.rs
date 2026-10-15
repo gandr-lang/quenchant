@@ -454,12 +454,12 @@ impl ScrutineeRole
     fn message(&self) -> DiagnosticText<'static>
     {
         DiagnosticText(match *self {
-            | Self::Direction => {
+            Self::Direction => {
                 "fallback arm in a match on the checking judgement's direction: a directed rule \
                  names the direction it applies to, so a mode reached through a fallback is a rule \
                  nobody wrote"
             },
-            | Self::ExpectedType => {
+            Self::ExpectedType => {
                 "fallback arm in a match on the expected type: no arm of the judgement chooses its \
                  mode by inspecting the type a term is checked against"
             },
@@ -473,8 +473,8 @@ impl ScrutineeRole
     fn note(&self) -> DiagnosticText<'static>
     {
         DiagnosticText(match *self {
-            | Self::Direction => "this scrutinee's type declares itself the judgement's direction",
-            | Self::ExpectedType => {
+            Self::Direction => "this scrutinee's type declares itself the judgement's direction",
+            Self::ExpectedType => {
                 "this scrutinee mentions the parameter declared to carry the expected type"
             },
         })
@@ -534,37 +534,37 @@ impl JudgementDefect
     fn message(&self) -> String
     {
         match *self {
-            | Self::DeclaresNothing => {
+            Self::DeclaresNothing => {
                 "`# Judgement` section declares nothing: state `- direction:` on the type whose \
                  values are the judgement's modes, or `- expected: `name`` on the parameter \
                  carrying the type a term is checked against"
                     .to_owned()
             },
-            | Self::DirectionUnexplained => {
+            Self::DirectionUnexplained => {
                 "`- direction:` states no value: say what the direction is, so the declaration \
                  reads as a claim rather than as a marker"
                     .to_owned()
             },
-            | Self::ExpectedMalformed => {
+            Self::ExpectedMalformed => {
                 "`- expected:` names exactly one parameter in backticks, as `- expected: \
                  `expected``"
                     .to_owned()
             },
-            | Self::ExpectedUnbound(ref name) => format!(
+            Self::ExpectedUnbound(ref name) => format!(
                 "`- expected:` names `{name}`, which no parameter of this function binds; a \
                  declaration that names nothing gates nothing"
             ),
-            | Self::DirectionOffType => {
+            Self::DirectionOffType => {
                 "`- direction:` declares the type whose values are the judgement's modes, so it \
                  belongs on that type's definition"
                     .to_owned()
             },
-            | Self::ExpectedOffFunction => {
+            Self::ExpectedOffFunction => {
                 "`- expected:` names a parameter carrying the expected type, so it belongs on the \
                  function that takes it"
                     .to_owned()
             },
-            | Self::SectionMisplaced => {
+            Self::SectionMisplaced => {
                 "`# Judgement` section is read on a type definition and on a function with a body; \
                  on any other item it declares nothing"
                     .to_owned()
@@ -640,7 +640,7 @@ fn site_defect(
         return Maybe::Present(defect);
     }
     match site {
-        | DeclarationSite::TypeDefinition => {
+        DeclarationSite::TypeDefinition => {
             if declaration.expected.is_empty() {
                 Maybe::Absent(declaration_site::Accepted::MatchesDeclarationSite)
             }
@@ -648,7 +648,7 @@ fn site_defect(
                 Maybe::Present(JudgementDefect::ExpectedOffFunction)
             }
         },
-        | DeclarationSite::Function(body) => {
+        DeclarationSite::Function(body) => {
             if declaration.direction.0 {
                 return Maybe::Present(JudgementDefect::DirectionOffType);
             }
@@ -658,12 +658,12 @@ fn site_defect(
                     Maybe::Absent(_)
                 )
             });
-            match unbound {
-                | Some(name) => Maybe::Present(JudgementDefect::ExpectedUnbound(name)),
-                | None => Maybe::Absent(declaration_site::Accepted::MatchesDeclarationSite),
-            }
+            unbound.map_or(
+                Maybe::Absent(declaration_site::Accepted::MatchesDeclarationSite),
+                |name| Maybe::Present(JudgementDefect::ExpectedUnbound(name)),
+            )
         },
-        | DeclarationSite::Elsewhere => Maybe::Present(JudgementDefect::SectionMisplaced),
+        DeclarationSite::Elsewhere => Maybe::Present(JudgementDefect::SectionMisplaced),
     }
 }
 
@@ -720,8 +720,8 @@ fn declaration_of(
 fn declaration(lines: &[String]) -> Maybe<Declaration, crate::rustdoc::section_lookup::Missing>
 {
     let bullets = match section_lines(lines, SectionHeading::from(HEADING)) {
-        | Maybe::Present(bullets) => bullets,
-        | Maybe::Absent(reason) => return Maybe::Absent(reason),
+        Maybe::Present(bullets) => bullets,
+        Maybe::Absent(reason) => return Maybe::Absent(reason),
     };
     let mut direction = DirectionDeclared(false);
     let mut expected: Vec<String> = Vec::new();
@@ -1026,10 +1026,15 @@ fn fallback_spans(pattern: &Pat<'_>) -> Vec<Span>
     pending.push_back(pattern);
     let mut spans: Vec<Span> = Vec::new();
     while let Some(pattern) = pending.pop_front() {
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`PatKind` is rustc's HIR pattern kind, whose variants move with the pinned \
+                      nightly; only a wildcard, a bare binding or an alternation can fall back"
+        )]
         match pattern.kind {
-            | PatKind::Wild | PatKind::Binding(_, _, _, None) => spans.push(pattern.span),
-            | PatKind::Or(alternatives) => pending.extend(alternatives.iter()),
-            | _ => {},
+            PatKind::Wild | PatKind::Binding(_, _, _, None) => spans.push(pattern.span),
+            PatKind::Or(alternatives) => pending.extend(alternatives.iter()),
+            _ => {},
         }
     }
     spans
@@ -1148,8 +1153,8 @@ mod tests
             RustdocLine("- mode: whichever the term asks for."),
         ]);
         let declared = match declaration(&doc) {
-            | Maybe::Present(value) => value,
-            | Maybe::Absent(reason) => panic!("{}: {reason:?}", "the section is present"),
+            Maybe::Present(value) => value,
+            Maybe::Absent(reason) => panic!("{}: {reason:?}", "the section is present"),
         };
         assert!(
             matches!(declared.defect, Maybe::Present(_)),
@@ -1173,8 +1178,8 @@ mod tests
     {
         let stated = block(&[heading(), RustdocLine("- direction: the two modes.")]);
         let declared = match declaration(&stated) {
-            | Maybe::Present(value) => value,
-            | Maybe::Absent(reason) => panic!("{}: {reason:?}", "the section is present"),
+            Maybe::Present(value) => value,
+            Maybe::Absent(reason) => panic!("{}: {reason:?}", "the section is present"),
         };
         assert!(
             declared.direction.0 && matches!(declared.defect, Maybe::Absent(_)),
@@ -1183,8 +1188,8 @@ mod tests
 
         let bare = block(&[heading(), RustdocLine("- direction:")]);
         let declared = match declaration(&bare) {
-            | Maybe::Present(value) => value,
-            | Maybe::Absent(reason) => panic!("{}: {reason:?}", "the section is present"),
+            Maybe::Present(value) => value,
+            Maybe::Absent(reason) => panic!("{}: {reason:?}", "the section is present"),
         };
         assert!(
             matches!(declared.defect, Maybe::Present(_)),
@@ -1197,8 +1202,8 @@ mod tests
     {
         let named = block(&[heading(), RustdocLine("- expected: `expected`")]);
         let declared = match declaration(&named) {
-            | Maybe::Present(value) => value,
-            | Maybe::Absent(reason) => panic!("{}: {reason:?}", "the section is present"),
+            Maybe::Present(value) => value,
+            Maybe::Absent(reason) => panic!("{}: {reason:?}", "the section is present"),
         };
         assert_eq!(
             declared.expected.first().map(String::as_str),
@@ -1218,8 +1223,8 @@ mod tests
         ] {
             let doc = block(&[heading(), RustdocLine(value)]);
             let declared = match declaration(&doc) {
-                | Maybe::Present(value) => value,
-                | Maybe::Absent(reason) => panic!("{}: {reason:?}", "the section is present"),
+                Maybe::Present(value) => value,
+                Maybe::Absent(reason) => panic!("{}: {reason:?}", "the section is present"),
             };
             assert!(
                 matches!(declared.defect, Maybe::Present(_)),
@@ -1246,8 +1251,8 @@ mod tests
             RustdocLine("- expected: `expected`"),
         ]);
         let declared = match declaration(&doc) {
-            | Maybe::Present(value) => value,
-            | Maybe::Absent(reason) => panic!("{}: {reason:?}", "the section is present"),
+            Maybe::Present(value) => value,
+            Maybe::Absent(reason) => panic!("{}: {reason:?}", "the section is present"),
         };
         assert!(
             declared.direction.0 && matches!(declared.defect, Maybe::Absent(_)),

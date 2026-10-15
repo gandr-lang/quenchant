@@ -343,15 +343,20 @@ pub fn classify<'tcx>(
         return Callee::Opaque;
     }
     let args = tcx.erase_and_anonymize_regions(args);
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "`InstanceKind` is rustc's instance kind, whose variants move with the pinned \
+                  nightly; only an item or a virtual call names a callee"
+    )]
     let (target, resolved) = match Instance::try_resolve(tcx, typing_env, def_id, args) {
-        | Ok(Some(instance)) => match instance.def {
-            | InstanceKind::Item(target) if tcx.is_closure_like(target) => return Callee::Opaque,
-            | InstanceKind::Item(target) => (target, true),
-            | InstanceKind::Virtual(target, _) => (target, false),
-            | _ => return Callee::Opaque,
+        Ok(Some(instance)) => match instance.def {
+            InstanceKind::Item(target) if tcx.is_closure_like(target) => return Callee::Opaque,
+            InstanceKind::Item(target) => (target, true),
+            InstanceKind::Virtual(target, _) => (target, false),
+            _ => return Callee::Opaque,
         },
-        | Ok(None) => (def_id, false),
-        | Err(_) => return Callee::Opaque,
+        Ok(None) => (def_id, false),
+        Err(_) => return Callee::Opaque,
     };
     let krate = tcx.crate_name(target.krate);
     if LIBRARY_CRATES.contains(&krate.as_str()) {
@@ -417,11 +422,11 @@ pub fn container<'tcx>(
     };
     let name = tcx.get_diagnostic_name(definition.did());
     match name.as_ref().map(Symbol::as_str) {
-        | Some("Vec" | "VecDeque" | "String") => Maybe::Present(Container::Sequence),
-        | Some("BTreeMap" | "BTreeSet" | "HashMap" | "HashSet" | "BinaryHeap" | "LinkedList") => {
+        Some("Vec" | "VecDeque" | "String") => Maybe::Present(Container::Sequence),
+        Some("BTreeMap" | "BTreeSet" | "HashMap" | "HashSet" | "BinaryHeap" | "LinkedList") => {
             Maybe::Present(Container::Collection)
         },
-        | _ => Maybe::Absent(container_reading::Bounded::NotAContainer),
+        _ => Maybe::Absent(container_reading::Bounded::NotAContainer),
     }
 }
 
@@ -497,12 +502,12 @@ pub fn library_walk<'tcx>(
         return Maybe::Present(Walk::Iterates);
     }
     match (kind, name.as_str()) {
-        | (Container::Sequence, "contains" | "is_sorted" | "is_sorted_by" | "is_sorted_by_key") => {
+        (Container::Sequence, "contains" | "is_sorted" | "is_sorted_by" | "is_sorted_by_key") => {
             Maybe::Present(Walk::Searches)
         },
-        | (_, "clone" | "to_owned" | "to_vec") => Maybe::Present(Walk::Copies),
-        | (_, "eq" | "ne") => Maybe::Present(Walk::Compares),
-        | _ => Maybe::Absent(library_reading::NotAWalk::BoundedMethod),
+        (_, "clone" | "to_owned" | "to_vec") => Maybe::Present(Walk::Copies),
+        (_, "eq" | "ne") => Maybe::Present(Walk::Compares),
+        _ => Maybe::Absent(library_reading::NotAWalk::BoundedMethod),
     }
 }
 
@@ -551,12 +556,12 @@ impl Summaries
                 continue;
             }
             match read_body(tcx, &self.0, &reading, current) {
-                | Reading::Ready(summary) => {
+                Reading::Ready(summary) => {
                     self.0.insert(current, summary);
                     pending.pop();
                     reading.remove(&current);
                 },
-                | Reading::Needs(callees) => {
+                Reading::Needs(callees) => {
                     reading.insert(current);
                     pending.extend(callees);
                 },
@@ -596,14 +601,12 @@ impl Reach
         if closure == ClosureBody::Closure && local == Local::from_u32(1) {
             let mut projection = projection.iter();
             let field = match projection.next() {
-                | Some(ProjectionElem::Deref) => projection.next(),
-                | other => other,
+                Some(ProjectionElem::Deref) => projection.next(),
+                other => other,
             };
             return match field {
-                | Some(ProjectionElem::Field(index, _)) => {
-                    BTreeSet::from([Position(index.as_u32())])
-                },
-                | _ => BTreeSet::new(),
+                Some(ProjectionElem::Field(index, _)) => BTreeSet::from([Position(index.as_u32())]),
+                _ => BTreeSet::new(),
             };
         }
         self.0.get(&local).cloned().unwrap_or_default()
@@ -628,8 +631,8 @@ impl Reach
     ) -> BTreeSet<Position>
     {
         match *operand {
-            | Operand::Copy(place) | Operand::Move(place) => self.of_place(place, closure),
-            | _ => BTreeSet::new(),
+            Operand::Copy(place) | Operand::Move(place) => self.of_place(place, closure),
+            Operand::Constant(_) | Operand::RuntimeChecks(_) => BTreeSet::new(),
         }
     }
 
@@ -773,7 +776,7 @@ fn read_body(
         };
         let at = |argument: &Spanned<Operand<'_>>| reach.of_operand(&argument.node, closure);
         match classify(tcx, typing_env, callee, callee_args) {
-            | Callee::Library(target) => {
+            Callee::Library(target) => {
                 let Some(receiver) = args.first()
                 else {
                     continue;
@@ -801,7 +804,7 @@ fn read_body(
                     });
                 }
             },
-            | Callee::Body(target) => {
+            Callee::Body(target) => {
                 if let Some(found) = lookup(target, &mut needs) {
                     for (position, witness) in found.walks() {
                         if let Maybe::Present(argument) = position.select(args) {
@@ -810,7 +813,7 @@ fn read_body(
                     }
                 }
             },
-            | Callee::Unresolved(_) => {
+            Callee::Unresolved(_) => {
                 for argument in &**args {
                     charge(at(argument), Witness {
                         walk: Walk::Unresolved,
@@ -818,7 +821,7 @@ fn read_body(
                     });
                 }
             },
-            | Callee::Unreadable(_) => {
+            Callee::Unreadable(_) => {
                 for argument in &**args {
                     charge(at(argument), Witness {
                         walk: Walk::Unreadable,
@@ -826,7 +829,7 @@ fn read_body(
                     });
                 }
             },
-            | Callee::Instrumentation | Callee::Bounded | Callee::Opaque => {},
+            Callee::Instrumentation | Callee::Bounded | Callee::Opaque => {},
         }
     }
     for closure_built in built
@@ -893,13 +896,13 @@ fn settle<'tcx>(
                     ref rvalue,
                 ) = **assignment;
                 let positions = match *rvalue {
-                    | Rvalue::Use(ref operand, _)
+                    Rvalue::Use(ref operand, _)
                     | Rvalue::Cast(_, ref operand, _)
                     | Rvalue::Repeat(ref operand, _) => reach.of_operand(operand, closure),
-                    | Rvalue::Ref(_, _, borrowed)
+                    Rvalue::Ref(_, _, borrowed)
                     | Rvalue::RawPtr(_, borrowed)
                     | Rvalue::CopyForDeref(borrowed) => reach.of_place(borrowed, closure),
-                    | Rvalue::Aggregate(ref kind, ref operands)
+                    Rvalue::Aggregate(ref kind, ref operands)
                         if !matches!(**kind, AggregateKind::Closure(..)) =>
                     {
                         operands
@@ -907,7 +910,13 @@ fn settle<'tcx>(
                             .flat_map(|operand| reach.of_operand(operand, closure))
                             .collect()
                     },
-                    | _ => BTreeSet::new(),
+                    Rvalue::ThreadLocalRef(_)
+                    | Rvalue::BinaryOp(..)
+                    | Rvalue::UnaryOp(..)
+                    | Rvalue::Discriminant(_)
+                    | Rvalue::Aggregate(..)
+                    | Rvalue::WrapUnsafeBinder(..)
+                    | Rvalue::Reborrow(..) => BTreeSet::new(),
                 };
                 if reach.extend(assigned, positions) == Grew::Grew {
                     grew = Grew::Grew;
@@ -1002,6 +1011,11 @@ fn built_closures<'tcx>(body: &Body<'tcx>) -> Vec<Built<'tcx>>
 /// - hypothesis: L3 — the UI fixture's helpers carry clauses that walk their
 ///   own state, which their callers' clauses are not charged for.
 /// - witness: `tests::ui_spec_cost`
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "`TerminatorKind` is rustc's MIR terminator kind, whose variants move with the \
+              pinned nightly; only a call builds a closure"
+)]
 fn clause_closures(
     tcx: TyCtxt<'_>,
     body: &Body<'_>,
@@ -1013,10 +1027,10 @@ fn clause_closures(
         .iter()
         .filter_map(|block| block.terminator.as_ref())
         .filter_map(|terminator| match terminator.kind {
-            | TerminatorKind::Call {
+            TerminatorKind::Call {
                 ref func, ref args, ..
             } => Some((func, args)),
-            | _ => None,
+            _ => None,
         })
         .filter(|&(func, _)| {
             func.const_fn_def().is_some_and(|(callee, _)| {
@@ -1026,10 +1040,8 @@ fn clause_closures(
         })
         .flat_map(|(_, args)| args.iter())
         .filter_map(|argument| match argument.node {
-            | Operand::Copy(Place { local, .. }) | Operand::Move(Place { local, .. }) => {
-                Some(local)
-            },
-            | _ => None,
+            Operand::Copy(Place { local, .. }) | Operand::Move(Place { local, .. }) => Some(local),
+            Operand::Constant(_) | Operand::RuntimeChecks(_) => None,
         })
         .filter(|local| built.contains(local))
         .collect()

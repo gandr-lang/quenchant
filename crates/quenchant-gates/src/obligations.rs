@@ -304,13 +304,15 @@ pub fn parse_diff(diff: SourceText<'_>) -> ChangedLines
         else {
             continue;
         };
-        let change = match count.checked_sub(1_usize) {
-            | Some(extra) => Change::Lines(LineSpan {
-                first: LineNumber(start),
-                last: LineNumber(start.saturating_add(extra)),
-            }),
-            | None => Change::Removal(LineNumber(start)),
-        };
+        let change =
+            count
+                .checked_sub(1_usize)
+                .map_or(Change::Removal(LineNumber(start)), |extra| {
+                    Change::Lines(LineSpan {
+                        first: LineNumber(start),
+                        last: LineNumber(start.saturating_add(extra)),
+                    })
+                });
         files.entry(file.clone()).or_default().push(change);
     }
     ChangedLines(files)
@@ -338,8 +340,8 @@ fn touches(
 ) -> Contains
 {
     Contains(match change {
-        | Change::Lines(lines) => lines.first <= extent.last && extent.first <= lines.last,
-        | Change::Removal(after) => extent.first <= after && after < extent.last,
+        Change::Lines(lines) => lines.first <= extent.last && extent.first <= lines.last,
+        Change::Removal(after) => extent.first <= after && after < extent.last,
     })
 }
 
@@ -430,8 +432,8 @@ pub fn obligations(
                 key.push_str(&revision(dependency));
             }
             let discharge = match naming {
-                | Naming::Executable => Discharge::Witnesses,
-                | Naming::Prose => {
+                Naming::Executable => Discharge::Witnesses,
+                Naming::Prose => {
                     let edited = graph
                         .prose_clauses
                         .get(&(specification.clone(), clause.clone()))
@@ -499,9 +501,9 @@ pub fn acknowledgements(previous: DocText<'_>) -> BTreeMap<String, Discharge>
             continue;
         };
         let discharge = match kind {
-            | "still-holds" => Discharge::StillHolds,
-            | "updated" => Discharge::Updated,
-            | _ => continue,
+            "still-holds" => Discharge::StillHolds,
+            "updated" => Discharge::Updated,
+            _ => continue,
         };
         found.insert(key.trim().to_owned(), discharge);
     }
@@ -620,11 +622,11 @@ pub fn selection(report: &Report) -> Vec<String>
         .reruns
         .iter()
         .map(|rerun| match rerun.witness.split_once("::") {
-            | Some((target, rest)) if rerun.integration.0 => format!(
+            Some((target, rest)) if rerun.integration.0 => format!(
                 "(package(={}) & binary(={target}) & test(={rest}))",
                 rerun.package
             ),
-            | _ => format!("(package(={}) & test(={}))", rerun.package, rerun.witness),
+            _ => format!("(package(={}) & test(={}))", rerun.package, rerun.witness),
         })
         .collect();
     arguments.push("-E".to_owned());
@@ -659,14 +661,14 @@ pub fn render_text(report: &Report) -> String
     lines.extend(report.changed.iter().map(|item| format!("changed: {item}")));
     lines.extend(report.obligations.iter().map(|obligation| {
         let naming = match obligation.naming {
-            | Naming::Executable => "executable",
-            | Naming::Prose => "prose",
+            Naming::Executable => "executable",
+            Naming::Prose => "prose",
         };
         let discharge = match obligation.discharge {
-            | Discharge::Witnesses => "witnesses rerun",
-            | Discharge::Open => "open",
-            | Discharge::StillHolds => "still holds",
-            | Discharge::Updated => "updated",
+            Discharge::Witnesses => "witnesses rerun",
+            Discharge::Open => "open",
+            Discharge::StillHolds => "still holds",
+            Discharge::Updated => "updated",
         };
         format!(
             "{naming}: {} `{}` names {} [{discharge}]",

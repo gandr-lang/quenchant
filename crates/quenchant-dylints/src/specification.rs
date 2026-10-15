@@ -296,16 +296,16 @@ impl SpecificationDefect
     fn message(&self) -> DiagnosticText<'static>
     {
         DiagnosticText(match *self {
-            | Self::BlockAbsent => {
+            Self::BlockAbsent => {
                 "this function carries no `# Specification` rustdoc block; the specification is \
                  authored before the body it governs, so an absent block records that nothing was \
                  decided about what the body owes"
             },
-            | Self::MarkerNotAlone => {
+            Self::MarkerNotAlone => {
                 "`# Specification` writes `trivial` beside another line; the marker claims there \
                  is nothing to specify, so a clause written next to it contradicts the claim"
             },
-            | Self::MarkerAsBullet => {
+            Self::MarkerAsBullet => {
                 "`# Specification` writes `trivial` as a bullet; the marker is a claim about the \
                  whole block rather than one clause of it, so the body carries the word alone"
             },
@@ -385,8 +385,8 @@ fn check_presence(
     let lines = indented_rustdoc_lines(cx, def_id);
     let heading = SectionHeading::from(HEADING);
     let defect = match section_body(&lines, heading) {
-        | Maybe::Absent(_) => SpecificationDefect::BlockAbsent,
-        | Maybe::Present(body) => {
+        Maybe::Absent(_) => SpecificationDefect::BlockAbsent,
+        Maybe::Present(body) => {
             if marker_beside_clause(&body).0 {
                 SpecificationDefect::MarkerNotAlone
             }
@@ -395,8 +395,8 @@ fn check_presence(
             }
             else if carries_clauses(&body).0 {
                 let bullets = match section_lines(&lines, heading) {
-                    | Maybe::Present(bullets) => bullets,
-                    | Maybe::Absent(_) => Vec::new(),
+                    Maybe::Present(bullets) => bullets,
+                    Maybe::Absent(_) => Vec::new(),
                 };
                 crate::executable::check(cx, span, &bullets, attributes);
                 crate::adequacy::require_section(cx, span, &lines);
@@ -633,10 +633,9 @@ enum MarkerSpelling
 fn marker_spelling(line: RustdocLine<'_>) -> MarkerSpelling
 {
     let text = line.0.trim();
-    let (bulleted, word) = match text.strip_prefix('-') {
-        | Some(rest) => (true, rest.trim()),
-        | None => (false, text),
-    };
+    let (bulleted, word) = text
+        .strip_prefix('-')
+        .map_or((false, text), |rest| (true, rest.trim()));
     if word.strip_suffix('.').unwrap_or(word) != TRIVIAL_MARKER {
         return MarkerSpelling::NotTheMarker;
     }
@@ -682,8 +681,8 @@ fn marker_beside_clause(body: &[String]) -> MarkerBesideClause
             continue;
         }
         match marker_spelling(RustdocLine::from(trimmed)) {
-            | MarkerSpelling::Canonical | MarkerSpelling::Bulleted => marker = true,
-            | MarkerSpelling::NotTheMarker => clause = true,
+            MarkerSpelling::Canonical | MarkerSpelling::Bulleted => marker = true,
+            MarkerSpelling::NotTheMarker => clause = true,
         }
     }
     MarkerBesideClause(marker && clause)
@@ -740,8 +739,8 @@ mod tests
     {
         let block: Vec<String> = lines.iter().map(|line| format!(" {}", line.0)).collect();
         match section_body(&block, SectionHeading::from(HEADING)) {
-            | Maybe::Present(lines) => lines,
-            | Maybe::Absent(reason) => panic!("expected a section: {reason:?}"),
+            Maybe::Present(lines) => lines,
+            Maybe::Absent(reason) => panic!("expected a section: {reason:?}"),
         }
     }
 
