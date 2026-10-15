@@ -349,12 +349,16 @@ fn verdict(
 ///   unsupported attributes, and emitted unrelated items fail compilation.
 ///   Documentation preservation remains an authored source-review obligation.
 /// - witness: `tests::relocated_nominals_preserve_type_and_seal_boundaries`
-#[spec(ensures: |ref output| output.is_ok() == file.items.iter().all(|item| match *item {
-    syn::Item::Macro(ref invocation)
-        if invocation.mac.path.is_ident("reason_enum") && invocation.ident.is_none() =>
-        reason_site(&invocation.mac.tokens).is_ok(),
-    _ => true,
-}))]
+#[spec(ensures: |ref output| {
+    #[expect(clippy::wildcard_enum_match_arm, reason = "`syn::Item` is non-exhaustive, so a wildcard arm is required; only a `reason_enum!` invocation is a reason site")]
+    let sites = file.items.iter().all(|item| match *item {
+        syn::Item::Macro(ref invocation)
+            if invocation.mac.path.is_ident("reason_enum") && invocation.ident.is_none() =>
+            reason_site(&invocation.mac.tokens).is_ok(),
+        _ => true,
+    });
+    output.is_ok() == sites
+})]
 fn declarations(file: &syn::File) -> Result<TokenStream, DerivationError>
 {
     let mut emitted = TokenStream::new();
@@ -515,6 +519,7 @@ fn is_specification(attribute: &syn::Attribute) -> Answer
 ///   body, and a summary with no block, each asserted as the exact answer.
 /// - witness: `tests::a_clause_counts_under_its_heading`
 #[spec(ensures: |output| {
+    #[expect(clippy::wildcard_enum_match_arm, reason = "`syn::Expr` and `syn::Lit` are non-exhaustive, so a wildcard arm is required; only a string literal is a documentation line")]
     let (_, stated) = attrs.iter().filter_map(|attribute| {
         if !is_doc(attribute).0 { return None; }
         match attribute.meta {
@@ -525,7 +530,7 @@ fn is_specification(attribute: &syn::Attribute) -> Answer
                 },
                 _ => None,
             },
-            _ => None,
+            syn::Meta::Path(_) | syn::Meta::List(_) => None,
         }
     }).fold((false, false), |(inside, stated), line| {
         let line = line.trim();
@@ -601,17 +606,21 @@ fn declares_clause(attrs: &[syn::Attribute]) -> Answer
 ///   `macro_rules!` definition, so a skipped population or a swapped reason
 ///   diverges.
 /// - witness: `tests::derivation_names_every_population`
-#[spec(ensures: |ref output| output.as_ref().map_or(true, |derivation| {
-    derivation.targets.iter().map(|target| &target.name)
-        .chain(derivation.unreached.iter().map(|record| &record.name))
-        .all(|name| file.items.iter().any(|item| match *item {
-            syn::Item::Fn(ref function) => function.sig.ident == *name,
-            syn::Item::Impl(ref block) => block.items.iter().any(|member| matches!(*member,
-                syn::ImplItem::Fn(ref method) if method.sig.ident == *name)),
-            syn::Item::Macro(ref definition) => definition.ident.as_ref() == Some(name),
-            _ => false,
-        }))
-}))]
+#[spec(ensures: |ref output| {
+    #[expect(clippy::wildcard_enum_match_arm, reason = "`syn::Item` is non-exhaustive, so a wildcard arm is required; only a function, an impl block or a macro names a population")]
+    let named = output.as_ref().map_or(true, |derivation| {
+        derivation.targets.iter().map(|target| &target.name)
+            .chain(derivation.unreached.iter().map(|record| &record.name))
+            .all(|name| file.items.iter().any(|item| match *item {
+                syn::Item::Fn(ref function) => function.sig.ident == *name,
+                syn::Item::Impl(ref block) => block.items.iter().any(|member| matches!(*member,
+                    syn::ImplItem::Fn(ref method) if method.sig.ident == *name)),
+                syn::Item::Macro(ref definition) => definition.ident.as_ref() == Some(name),
+                _ => false,
+            }))
+    });
+    named
+})]
 fn derive(
     file: &syn::File,
     declarations: &TokenStream,
