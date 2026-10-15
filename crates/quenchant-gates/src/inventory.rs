@@ -797,36 +797,38 @@ fn merge_cargo_test_listing(
 ///
 /// # Specification
 /// - requires: `id` is a package identifier as `cargo` spells it in machine
-///   output, in either the modern `<source>#<name>@<version>` form or the
-///   legacy `<name> <version> (<source>)` one.
-/// - ensures: returns the bare package name for both forms; the modern form is
-///   read first, and its result is refused when the fragment still carries a
-///   path separator, which is how a `<source>#<version>` identifier — one that
-///   omits the name because it repeats the source's last segment — falls
-///   through to the legacy reader instead of yielding a directory.
+///   output: the legacy `<name> <version> (<source>)`, or the modern
+///   `<source>#<name>@<version>`, or the modern `<source>#<version>` that omits
+///   the name because it is the source's last path segment.
+/// - ensures: returns the bare package name for every form: the first word of a
+///   legacy identifier, whose source may itself carry a `#` revision; the name
+///   before `@` in a modern fragment; and for a fragment that is a version
+///   alone, the last segment of the source's path, its query dropped.
 /// - provides: the package a fallback-listed test binary is attributed to.
 /// - panics: none.
 ///
 /// # Adequacy
-/// - hypothesis: L3 — modern named identifiers and legacy identifiers retain
-///   their package names.
+/// - hypothesis: L3 — modern named identifiers, omitted-name path and git
+///   identifiers and legacy identifiers, a git revision among them, retain
+///   their package names; reading an omitted-name fragment as the name yields
+///   the version (#20).
 /// - witness: `inventory::tests::package_identifier_forms_retain_ownership`
-#[spec(ensures: |ref output| id.0.rsplit_once('#').is_some_and(|(_, rest)| rest.split('@').next() == Some(output.as_str()) && !output.contains('/')) || id.0.split_whitespace().next().unwrap_or(id.0).rsplit('/').next() == Some(output.as_str()))]
+#[spec(ensures: |ref output| !output.contains(['/', '#', '@', ' ', '?']))]
 fn package_name_of(id: PackageId<'_>) -> String
 {
     let id = id.0;
-    if let Some((_, rest)) = id.rsplit_once('#') {
-        let name = rest.split_once('@').map_or(rest, |(name, _)| name);
-        if !name.contains('/') {
-            return name.to_owned();
-        }
+    if let Some((name, _)) = id.split_once(' ') {
+        return name.to_owned();
     }
-    id.split_whitespace()
-        .next()
-        .unwrap_or(id)
+    let (source, fragment) = id.rsplit_once('#').unwrap_or((id, ""));
+    if let Some((name, _)) = fragment.split_once('@') {
+        return name.to_owned();
+    }
+    let path = source.split_once('?').map_or(source, |(path, _)| path);
+    path.trim_end_matches('/')
         .rsplit('/')
         .next()
-        .unwrap_or(id)
+        .unwrap_or(path)
         .to_owned()
 }
 
@@ -930,9 +932,13 @@ mod tests
     {
         for id in [
             "registry+https://example.com/index#sample@1.2.3",
+            "path+file:///work/directory#sample@0.1.0",
+            "path+file:///work/sample#0.0.0",
+            "git+https://example.com/org/sample?branch=main#0.1.0",
             "sample 1.2.3 (registry+https://example.com/index)",
+            "sample 0.1.0 (git+https://example.com/org/other#0123abc)",
         ] {
-            assert_eq!(package_name_of(PackageId(id)), "sample");
+            assert_eq!(package_name_of(PackageId(id)), "sample", "{id}");
         }
     }
 
