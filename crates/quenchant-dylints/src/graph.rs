@@ -124,7 +124,7 @@ pub fn tarjan_components(adjacency: &[Vec<Vertex>]) -> Vec<Vec<Vertex>>
                 frame.next_edge = edge_index.saturating_add(1_usize);
             }
             match order.get(next).copied().flatten() {
-                | None => {
+                None => {
                     if let Some(slot) = order.get_mut(next) {
                         *slot = Some(next_order);
                     }
@@ -141,7 +141,7 @@ pub fn tarjan_components(adjacency: &[Vec<Vertex>]) -> Vec<Vec<Vertex>>
                         next_edge: 0_usize,
                     });
                 },
-                | Some(next_position) => {
+                Some(next_position) => {
                     if on_stack.get(next).copied().unwrap_or(false) {
                         let updated = low
                             .get(current)

@@ -404,38 +404,44 @@ fn doc_blocks(file: &syn::File) -> Vec<DocBlock>
     let mut pending: Vec<&syn::Item> = file.items.iter().collect();
     while let Some(item) = pending.pop() {
         push_block(&mut blocks, item_attrs(item));
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`syn::Item` is non-exhaustive, so a wildcard arm is required; only a module, \
+                      an impl, a trait, a foreign block, a struct or an enum nests documented \
+                      members"
+        )]
         match *item {
-            | syn::Item::Mod(ref module) => {
+            syn::Item::Mod(ref module) => {
                 if let Some((_, ref items)) = module.content {
                     pending.extend(items.iter());
                 }
             },
-            | syn::Item::Impl(ref block) => {
+            syn::Item::Impl(ref block) => {
                 for impl_item in &block.items {
                     push_block(&mut blocks, impl_item_attrs(impl_item));
                 }
             },
-            | syn::Item::Trait(ref declaration) => {
+            syn::Item::Trait(ref declaration) => {
                 for trait_item in &declaration.items {
                     push_block(&mut blocks, trait_item_attrs(trait_item));
                 }
             },
-            | syn::Item::ForeignMod(ref block) => {
+            syn::Item::ForeignMod(ref block) => {
                 for foreign_item in &block.items {
                     push_block(&mut blocks, foreign_item_attrs(foreign_item));
                 }
             },
-            | syn::Item::Struct(ref declaration) => {
+            syn::Item::Struct(ref declaration) => {
                 for field in &declaration.fields {
                     push_block(&mut blocks, &field.attrs);
                 }
             },
-            | syn::Item::Enum(ref declaration) => {
+            syn::Item::Enum(ref declaration) => {
                 for variant in &declaration.variants {
                     push_block(&mut blocks, &variant.attrs);
                 }
             },
-            | _ => {},
+            _ => {},
         }
     }
     blocks
@@ -514,22 +520,22 @@ fn attr_start_line(attr: &syn::Attribute) -> LineNumber
 fn item_attrs(item: &syn::Item) -> &[syn::Attribute]
 {
     match *item {
-        | syn::Item::Const(ref inner) => &inner.attrs,
-        | syn::Item::Enum(ref inner) => &inner.attrs,
-        | syn::Item::ExternCrate(ref inner) => &inner.attrs,
-        | syn::Item::Fn(ref inner) => &inner.attrs,
-        | syn::Item::ForeignMod(ref inner) => &inner.attrs,
-        | syn::Item::Impl(ref inner) => &inner.attrs,
-        | syn::Item::Macro(ref inner) => &inner.attrs,
-        | syn::Item::Mod(ref inner) => &inner.attrs,
-        | syn::Item::Static(ref inner) => &inner.attrs,
-        | syn::Item::Struct(ref inner) => &inner.attrs,
-        | syn::Item::Trait(ref inner) => &inner.attrs,
-        | syn::Item::TraitAlias(ref inner) => &inner.attrs,
-        | syn::Item::Type(ref inner) => &inner.attrs,
-        | syn::Item::Union(ref inner) => &inner.attrs,
-        | syn::Item::Use(ref inner) => &inner.attrs,
-        | _ => &[],
+        syn::Item::Const(ref inner) => &inner.attrs,
+        syn::Item::Enum(ref inner) => &inner.attrs,
+        syn::Item::ExternCrate(ref inner) => &inner.attrs,
+        syn::Item::Fn(ref inner) => &inner.attrs,
+        syn::Item::ForeignMod(ref inner) => &inner.attrs,
+        syn::Item::Impl(ref inner) => &inner.attrs,
+        syn::Item::Macro(ref inner) => &inner.attrs,
+        syn::Item::Mod(ref inner) => &inner.attrs,
+        syn::Item::Static(ref inner) => &inner.attrs,
+        syn::Item::Struct(ref inner) => &inner.attrs,
+        syn::Item::Trait(ref inner) => &inner.attrs,
+        syn::Item::TraitAlias(ref inner) => &inner.attrs,
+        syn::Item::Type(ref inner) => &inner.attrs,
+        syn::Item::Union(ref inner) => &inner.attrs,
+        syn::Item::Use(ref inner) => &inner.attrs,
+        syn::Item::Verbatim(_) | _ => &[],
     }
 }
 
@@ -540,11 +546,11 @@ fn item_attrs(item: &syn::Item) -> &[syn::Attribute]
 fn impl_item_attrs(item: &syn::ImplItem) -> &[syn::Attribute]
 {
     match *item {
-        | syn::ImplItem::Const(ref inner) => &inner.attrs,
-        | syn::ImplItem::Fn(ref inner) => &inner.attrs,
-        | syn::ImplItem::Macro(ref inner) => &inner.attrs,
-        | syn::ImplItem::Type(ref inner) => &inner.attrs,
-        | _ => &[],
+        syn::ImplItem::Const(ref inner) => &inner.attrs,
+        syn::ImplItem::Fn(ref inner) => &inner.attrs,
+        syn::ImplItem::Macro(ref inner) => &inner.attrs,
+        syn::ImplItem::Type(ref inner) => &inner.attrs,
+        syn::ImplItem::Verbatim(_) | _ => &[],
     }
 }
 
@@ -555,11 +561,11 @@ fn impl_item_attrs(item: &syn::ImplItem) -> &[syn::Attribute]
 fn trait_item_attrs(item: &syn::TraitItem) -> &[syn::Attribute]
 {
     match *item {
-        | syn::TraitItem::Const(ref inner) => &inner.attrs,
-        | syn::TraitItem::Fn(ref inner) => &inner.attrs,
-        | syn::TraitItem::Macro(ref inner) => &inner.attrs,
-        | syn::TraitItem::Type(ref inner) => &inner.attrs,
-        | _ => &[],
+        syn::TraitItem::Const(ref inner) => &inner.attrs,
+        syn::TraitItem::Fn(ref inner) => &inner.attrs,
+        syn::TraitItem::Macro(ref inner) => &inner.attrs,
+        syn::TraitItem::Type(ref inner) => &inner.attrs,
+        syn::TraitItem::Verbatim(_) | _ => &[],
     }
 }
 
@@ -570,11 +576,11 @@ fn trait_item_attrs(item: &syn::TraitItem) -> &[syn::Attribute]
 fn foreign_item_attrs(item: &syn::ForeignItem) -> &[syn::Attribute]
 {
     match *item {
-        | syn::ForeignItem::Fn(ref inner) => &inner.attrs,
-        | syn::ForeignItem::Macro(ref inner) => &inner.attrs,
-        | syn::ForeignItem::Static(ref inner) => &inner.attrs,
-        | syn::ForeignItem::Type(ref inner) => &inner.attrs,
-        | _ => &[],
+        syn::ForeignItem::Fn(ref inner) => &inner.attrs,
+        syn::ForeignItem::Macro(ref inner) => &inner.attrs,
+        syn::ForeignItem::Static(ref inner) => &inner.attrs,
+        syn::ForeignItem::Type(ref inner) => &inner.attrs,
+        syn::ForeignItem::Verbatim(_) | _ => &[],
     }
 }
 

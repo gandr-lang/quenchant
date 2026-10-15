@@ -230,8 +230,8 @@ pub fn exposure<'tcx>(
     while let Some((actual, required)) = pending.pop() {
         let actual = normalize_middle_ty(cx, actual);
         let required_ty = match required {
-            | Required::Foreign(required) => Some(required),
-            | Required::Authored => None,
+            Required::Foreign(required) => Some(required),
+            Required::Authored => None,
         };
         let key = (
             cx.tcx.erase_and_anonymize_regions(actual),
@@ -240,14 +240,20 @@ pub fn exposure<'tcx>(
         if !visited.insert(key) {
             continue;
         }
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`TyKind` is rustc's type kind, whose variants move with the pinned nightly; \
+                      the walk descends only through ADTs, pointers, arrays, tuples, function \
+                      pointers and trait objects, and reads the required type in the same shape"
+        )]
         match *actual.kind() {
-            | ty::Adt(adt, arguments) => {
+            ty::Adt(adt, arguments) => {
                 let is_option = cx.tcx.is_diagnostic_item(sym::Option, adt.did());
                 let required_arguments = required_ty.and_then(|required| match *required.kind() {
-                    | ty::Adt(required_adt, arguments) if required_adt.did() == adt.did() => {
+                    ty::Adt(required_adt, arguments) if required_adt.did() == adt.did() => {
                         Some(arguments)
                     },
-                    | _ => None,
+                    _ => None,
                 });
                 if is_option && required_arguments.is_none() {
                     return Exposure::Option;
@@ -263,27 +269,27 @@ pub fn exposure<'tcx>(
                     }),
                 );
             },
-            | ty::Ref(_, inner, _)
+            ty::Ref(_, inner, _)
             | ty::RawPtr(inner, _)
             | ty::Array(inner, _)
             | ty::Slice(inner)
             | ty::Pat(inner, _) => {
                 let required = required_ty
                     .and_then(|required| match *required.kind() {
-                        | ty::Ref(_, inner, _)
+                        ty::Ref(_, inner, _)
                         | ty::RawPtr(inner, _)
                         | ty::Array(inner, _)
                         | ty::Slice(inner)
                         | ty::Pat(inner, _) => Some(inner),
-                        | _ => None,
+                        _ => None,
                     })
                     .map_or(Required::Authored, Required::Foreign);
                 pending.push((inner, required));
             },
-            | ty::Tuple(types) => {
+            ty::Tuple(types) => {
                 let required = required_ty.and_then(|required| match *required.kind() {
-                    | ty::Tuple(types) => Some(types),
-                    | _ => None,
+                    ty::Tuple(types) => Some(types),
+                    _ => None,
                 });
                 for (index, actual) in types.iter().enumerate() {
                     let required = required
@@ -292,11 +298,11 @@ pub fn exposure<'tcx>(
                     pending.push((actual, required));
                 }
             },
-            | ty::FnPtr(signature, header) => {
+            ty::FnPtr(signature, header) => {
                 let signature = signature.with(header).skip_binder();
                 let required = required_ty.and_then(|required| match *required.kind() {
-                    | ty::FnPtr(signature, header) => Some(signature.with(header).skip_binder()),
-                    | _ => None,
+                    ty::FnPtr(signature, header) => Some(signature.with(header).skip_binder()),
+                    _ => None,
                 });
                 for (index, actual) in signature.inputs_and_output.iter().enumerate() {
                     let required = required
@@ -305,7 +311,7 @@ pub fn exposure<'tcx>(
                     pending.push((actual, required));
                 }
             },
-            | ty::Alias(ty::AliasTy {
+            ty::Alias(ty::AliasTy {
                 kind: ty::Opaque { def_id },
                 args,
                 ..
@@ -332,7 +338,7 @@ pub fn exposure<'tcx>(
                     }
                 }
             },
-            | ty::Dynamic(predicates, _) => {
+            ty::Dynamic(predicates, _) => {
                 for predicate in predicates {
                     if let ty::ExistentialPredicate::Projection(projection) =
                         predicate.skip_binder()
@@ -348,7 +354,7 @@ pub fn exposure<'tcx>(
                     }
                 }
             },
-            | _ => {},
+            _ => {},
         }
     }
     Exposure::NotFound
@@ -368,6 +374,11 @@ pub fn exposure<'tcx>(
 ///   Option layers from layers introduced by a generic argument.
 /// - witness: `tests::ui_options`
 #[spec(ensures: |output| !matches!(required, Required::Authored) || matches!(output, Required::Authored))]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "`TyKind` is rustc's type kind, whose variants move with the pinned nightly; only a \
+              trait object or an opaque type states a projection"
+)]
 fn required_projection<'tcx>(
     cx: &LateContext<'tcx>,
     required: Required<'tcx>,
@@ -379,7 +390,7 @@ fn required_projection<'tcx>(
         return Required::Authored;
     };
     match *required.kind() {
-        | ty::Dynamic(predicates, _) => {
+        ty::Dynamic(predicates, _) => {
             for predicate in predicates {
                 if let ty::ExistentialPredicate::Projection(projection) = predicate.skip_binder()
                     && projection.def_id == associated
@@ -389,7 +400,7 @@ fn required_projection<'tcx>(
                 }
             }
         },
-        | ty::Alias(ty::AliasTy {
+        ty::Alias(ty::AliasTy {
             kind: ty::Opaque { def_id } | ty::Projection { def_id },
             args,
             ..
@@ -408,7 +419,7 @@ fn required_projection<'tcx>(
                 }
             }
         },
-        | _ => {},
+        _ => {},
     }
     Required::Authored
 }
@@ -459,11 +470,11 @@ fn push_arguments<'tcx>(
     for (index, argument) in actual.iter().enumerate() {
         if let Some(actual) = argument.as_type() {
             let required = match required {
-                | RequiredArguments::Foreign(arguments) => arguments
+                RequiredArguments::Foreign(arguments) => arguments
                     .get(index)
                     .and_then(|argument| argument.as_type())
                     .map_or(Required::Authored, Required::Foreign),
-                | RequiredArguments::Authored => Required::Authored,
+                RequiredArguments::Authored => Required::Authored,
             };
             pending.push((actual, required));
         }
@@ -482,6 +493,11 @@ fn push_arguments<'tcx>(
 ///   foreign-required absence from absence introduced by substitution.
 /// - witness: `tests::ui_options`
 #[spec(ensures: |output| !matches!(required, Required::Authored) || matches!(output, RequiredArguments::Authored))]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "`TyKind` is rustc's type kind, whose variants move with the pinned nightly; only a \
+              trait object or an opaque type states a trait bound"
+)]
 fn required_trait<'tcx>(
     cx: &LateContext<'tcx>,
     required: Required<'tcx>,
@@ -493,7 +509,7 @@ fn required_trait<'tcx>(
         return RequiredArguments::Authored;
     };
     match *required.kind() {
-        | ty::Dynamic(predicates, _) => {
+        ty::Dynamic(predicates, _) => {
             for predicate in predicates {
                 if let ty::ExistentialPredicate::Trait(bound) = predicate.skip_binder()
                     && bound.def_id == trait_id
@@ -502,7 +518,7 @@ fn required_trait<'tcx>(
                 }
             }
         },
-        | ty::Alias(ty::AliasTy {
+        ty::Alias(ty::AliasTy {
             kind: ty::Opaque { def_id } | ty::Projection { def_id },
             args,
             ..
@@ -520,7 +536,7 @@ fn required_trait<'tcx>(
                 }
             }
         },
-        | _ => {},
+        _ => {},
     }
     RequiredArguments::Authored
 }

@@ -203,8 +203,13 @@ impl<'tcx> Visitor<'tcx> for LocalCallCollector<'_, 'tcx>
         expr: &'tcx Expr<'_>,
     )
     {
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`ExprKind` is rustc's HIR expression kind, whose variants move with the \
+                      pinned nightly; only a call or a method call records an edge"
+        )]
         match expr.kind {
-            | ExprKind::Call(callee, args) => {
+            ExprKind::Call(callee, args) => {
                 if let Maybe::Present(local_def_id) = call_target(self.cx, callee) {
                     self.calls.push(CallEdge {
                         callee: local_def_id,
@@ -212,7 +217,7 @@ impl<'tcx> Visitor<'tcx> for LocalCallCollector<'_, 'tcx>
                     });
                 }
             },
-            | ExprKind::MethodCall(_, receiver, args, _) => {
+            ExprKind::MethodCall(_, receiver, args, _) => {
                 if let Some(def_id) = self.cx.typeck_results().type_dependent_def_id(expr.hir_id)
                     && let Some(local_def_id) = def_id.as_local()
                 {
@@ -225,7 +230,7 @@ impl<'tcx> Visitor<'tcx> for LocalCallCollector<'_, 'tcx>
                     });
                 }
             },
-            | _ => {},
+            _ => {},
         }
         walk_expr(self, expr);
     }
@@ -259,10 +264,10 @@ fn call_target(
     if let ExprKind::Path(ref qpath) = callee.kind
         && let Res::Def(DefKind::Fn | DefKind::AssocFn, def_id) = cx.qpath_res(qpath, callee.hir_id)
     {
-        return match def_id.as_local() {
-            | Some(local) => Maybe::Present(local),
-            | None => Maybe::Absent(call_resolution::Missing::NonLocal),
-        };
+        return def_id.as_local().map_or(
+            Maybe::Absent(call_resolution::Missing::NonLocal),
+            Maybe::Present,
+        );
     }
     let Some(callee_ty) = cx.typeck_results().node_type_opt(callee.hir_id)
     else {
@@ -275,10 +280,10 @@ fn call_target(
     if !matches!(cx.tcx.def_kind(def_id), DefKind::Fn | DefKind::AssocFn) {
         return Maybe::Absent(call_resolution::Missing::NotFunctionOrMethod);
     }
-    match def_id.as_local() {
-        | Some(local) => Maybe::Present(local),
-        | None => Maybe::Absent(call_resolution::Missing::NonLocal),
-    }
+    def_id.as_local().map_or(
+        Maybe::Absent(call_resolution::Missing::NonLocal),
+        Maybe::Present,
+    )
 }
 
 /// Recursive components and their members have stable definition-path ordering.
@@ -590,31 +595,36 @@ impl<'tcx> Visitor<'tcx> for ProvenancePropagation<'_, '_, 'tcx>
         expr: &'tcx Expr<'_>,
     )
     {
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`ExprKind` is rustc's HIR expression kind, whose variants move with the \
+                      pinned nightly; only a `let`, a `match` or an assignment derives a binding"
+        )]
         match expr.kind {
-            | ExprKind::Let(let_expr) => {
+            ExprKind::Let(let_expr) => {
                 if expr_contains_derived_binding(self.cx, self.derived, let_expr.init).0 {
                     self.changed |= mark_pattern_bindings(let_expr.pat, self.derived).0;
                 }
             },
-            | ExprKind::Match(scrutinee, arms, _) => {
+            ExprKind::Match(scrutinee, arms, _) => {
                 if expr_contains_derived_binding(self.cx, self.derived, scrutinee).0 {
                     for arm in arms {
                         self.changed |= mark_pattern_bindings(arm.pat, self.derived).0;
                     }
                 }
             },
-            | ExprKind::Assign(target, value, _) => {
+            ExprKind::Assign(target, value, _) => {
                 if expr_contains_derived_binding(self.cx, self.derived, value).0 {
                     self.changed |= mark_local_references(target, self.cx, self.derived).0;
                 }
             },
-            | ExprKind::AssignOp(_, target, value)
+            ExprKind::AssignOp(_, target, value)
                 if expr_contains_derived_binding(self.cx, self.derived, target).0
                     || expr_contains_derived_binding(self.cx, self.derived, value).0 =>
             {
                 self.changed |= mark_local_references(target, self.cx, self.derived).0;
             },
-            | _ => {},
+            _ => {},
         }
         walk_expr(self, expr);
     }
@@ -972,13 +982,18 @@ impl<'tcx> Visitor<'tcx> for LocalReferenceCollector<'_, 'tcx>
     };
     found
 })]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "`Node` is rustc's HIR node kind, whose variants move with the pinned nightly; only \
+              an expression node is looked up"
+)]
 fn expr_for_hir_id<'tcx>(
     cx: &LateContext<'tcx>,
     hir_id: HirId,
 ) -> Maybe<&'tcx Expr<'tcx>, expression_lookup::Missing>
 {
     match cx.tcx.hir_node(hir_id) {
-        | Node::Expr(expr) => Maybe::Present(expr),
-        | _ => Maybe::Absent(expression_lookup::Missing::NotExpression),
+        Node::Expr(expr) => Maybe::Present(expr),
+        _ => Maybe::Absent(expression_lookup::Missing::NotExpression),
     }
 }

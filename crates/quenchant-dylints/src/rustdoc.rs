@@ -107,8 +107,8 @@ pub fn section_lines(
 ) -> Maybe<Vec<String>, section_lookup::Missing>
 {
     let body = match section_body(lines, heading) {
-        | Maybe::Present(body) => body,
-        | Maybe::Absent(reason) => return Maybe::Absent(reason),
+        Maybe::Present(body) => body,
+        Maybe::Absent(reason) => return Maybe::Absent(reason),
     };
     let mut bullets: Vec<String> = Vec::new();
     for line in &body {

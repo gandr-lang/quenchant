@@ -83,7 +83,7 @@ fn inspect(
     let mut pending: Vec<_> = documents.iter().collect();
     while let Some(node) = pending.pop() {
         match *node {
-            | yaml_rust2::Yaml::Hash(ref mapping) => {
+            yaml_rust2::Yaml::Hash(ref mapping) => {
                 for (key, value) in mapping {
                     if key.as_str() == Some("uses") {
                         let Some(reference) = value.as_str()
@@ -119,8 +119,14 @@ fn inspect(
                     }
                 }
             },
-            | yaml_rust2::Yaml::Array(ref sequence) => pending.extend(sequence),
-            | _ => {},
+            yaml_rust2::Yaml::Array(ref sequence) => pending.extend(sequence),
+            yaml_rust2::Yaml::Real(_)
+            | yaml_rust2::Yaml::Integer(_)
+            | yaml_rust2::Yaml::String(_)
+            | yaml_rust2::Yaml::Boolean(_)
+            | yaml_rust2::Yaml::Alias(_)
+            | yaml_rust2::Yaml::Null
+            | yaml_rust2::Yaml::BadValue => {},
         }
     }
     Ok(Maybe::Present(Passed))

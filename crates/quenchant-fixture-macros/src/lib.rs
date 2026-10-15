@@ -90,15 +90,18 @@ fn client_expansion(item: TokenStream) -> TokenStream
     let mut after_impl = false;
     for tree in item.clone() {
         match tree {
-            | TokenTree::Ident(ident) if ident == "impl" => after_impl = true,
-            | TokenTree::Ident(ident) if after_impl => {
+            TokenTree::Ident(ident) if ident == "impl" => after_impl = true,
+            TokenTree::Ident(ident) if after_impl => {
                 subject = Some(ident);
                 after_impl = false;
             },
-            | TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => {
+            TokenTree::Group(group) if group.delimiter() == Delimiter::Brace => {
                 body = Some(group);
             },
-            | _ => {},
+            TokenTree::Group(_)
+            | TokenTree::Ident(_)
+            | TokenTree::Punct(_)
+            | TokenTree::Literal(_) => {},
         }
     }
     let (Some(subject), Some(body)) = (subject, body)
@@ -109,14 +112,17 @@ fn client_expansion(item: TokenStream) -> TokenStream
     let mut after_fn = false;
     for tree in body.stream() {
         match tree {
-            | TokenTree::Ident(ident) if ident == "fn" => after_fn = true,
-            | TokenTree::Ident(ident) if after_fn => {
+            TokenTree::Ident(ident) if ident == "fn" => after_fn = true,
+            TokenTree::Ident(ident) if after_fn => {
                 after_fn = false;
                 methods.extend(parsed(MacroSource("pub fn")));
                 methods.extend(TokenStream::from(TokenTree::Ident(ident)));
                 methods.extend(parsed(MacroSource("(&self) {}")));
             },
-            | _ => {},
+            TokenTree::Group(_)
+            | TokenTree::Ident(_)
+            | TokenTree::Punct(_)
+            | TokenTree::Literal(_) => {},
         }
     }
     let mut expansion = item;

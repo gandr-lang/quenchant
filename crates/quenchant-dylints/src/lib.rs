@@ -752,13 +752,13 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
             );
 
             let message = match exception_state(cx, hir_id) {
-                | ExceptionState::Absent => continue,
-                | ExceptionState::Inherited => DiagnosticText::from(INHERITED_EXPECT_MESSAGE),
-                | ExceptionState::Unreasoned => DiagnosticText::from(MISSING_REASON_MESSAGE),
-                | ExceptionState::Approved => {
+                ExceptionState::Absent => continue,
+                ExceptionState::Inherited => DiagnosticText::from(INHERITED_EXPECT_MESSAGE),
+                ExceptionState::Unreasoned => DiagnosticText::from(MISSING_REASON_MESSAGE),
+                ExceptionState::Approved => {
                     match termination_defect(cx, def_id, component, &self.functions, &self.edges) {
-                        | quenchant_shape::shape::Maybe::Present(defect) => defect.message(),
-                        | quenchant_shape::shape::Maybe::Absent(_) => continue,
+                        quenchant_shape::shape::Maybe::Present(defect) => defect.message(),
+                        quenchant_shape::shape::Maybe::Absent(_) => continue,
                     }
                 },
             };
@@ -1349,35 +1349,35 @@ non_owning_generics = [
                     directories.insert(parent.to_path_buf());
                 }
                 match (target, extension) {
-                    | (Some("anodized_macros"), Some(extension))
+                    (Some("anodized_macros"), Some(extension))
                         if extension == std::env::consts::DLL_EXTENSION =>
                     {
                         upstream_anodized = Some(path.to_path_buf());
                     },
-                    | (Some("cxx"), Some("rlib")) => {
+                    (Some("cxx"), Some("rlib")) => {
                         cxx = Some(path.to_path_buf());
                     },
-                    | (Some("serde"), Some("rlib")) => {
+                    (Some("serde"), Some("rlib")) => {
                         serde = Some(path.to_path_buf());
                     },
-                    | (Some("clap"), Some("rlib")) => {
+                    (Some("clap"), Some("rlib")) => {
                         clap = Some(path.to_path_buf());
                     },
-                    | (Some("anodized"), Some("rlib")) if instrumented => {
+                    (Some("anodized"), Some("rlib")) if instrumented => {
                         anodized = Some(path.to_path_buf());
                     },
-                    | (Some("quenchant_arith"), Some("rlib")) => {
+                    (Some("quenchant_arith"), Some("rlib")) => {
                         arithmetic = Some(path.to_path_buf());
                     },
-                    | (Some("quenchant_shape"), Some("rlib")) => {
+                    (Some("quenchant_shape"), Some("rlib")) => {
                         shape = Some(path.to_path_buf());
                     },
-                    | (Some("quenchant_fixture_macros"), Some(extension))
+                    (Some("quenchant_fixture_macros"), Some(extension))
                         if extension == std::env::consts::DLL_EXTENSION =>
                     {
                         fixture_macros = Some(path.to_path_buf());
                     },
-                    | _ => {},
+                    _ => {},
                 }
             }
         }

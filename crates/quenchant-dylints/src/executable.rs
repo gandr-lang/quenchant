@@ -306,7 +306,7 @@ impl SpecificationSpelling
             let trees: Vec<&TokenTree> = arguments.iter().collect();
             for attribute in split_commas(&trees).into_iter().skip(1_usize) {
                 let path = match *attribute.as_slice() {
-                    | [
+                    [
                         ref path @ ..,
                         &TokenTree::Delimited(_, _, Delimiter::Parenthesis, ref tokens),
                     ] => {
@@ -316,7 +316,7 @@ impl SpecificationSpelling
                         }
                         path
                     },
-                    | ref path => path,
+                    ref path => path,
                 };
                 if path.iter().any(|tree| {
                     matches!(
@@ -376,15 +376,15 @@ impl SpecificationSpelling
             };
             let (message, help) = match (cx.tcx.crate_name(macro_id.krate).as_str(), name.as_str())
             {
-                | ("anodized_macros" | "quenchant_spec_macros", "spec") => (
+                ("anodized_macros" | "quenchant_spec_macros", "spec") => (
                     "write #[spec(...)] with use anodized::spec; instead of a path-qualified specification attribute",
                     "import the specification macro in this scope, then use #[spec(...)]",
                 ),
-                | ("quenchant_spec_macros", "spec_helper" | "__retain_helper") => (
+                ("quenchant_spec_macros", "spec_helper" | "__retain_helper") => (
                     "write #[spec_helper] with use anodized::spec_helper; instead of a path-qualified specification attribute",
                     "import the specification helper macro in this scope, then use #[spec_helper]",
                 ),
-                | _ => continue,
+                _ => continue,
             };
             let path = self
                 .0
@@ -654,16 +654,21 @@ impl EarlyLintPass for AttributeCollector
         item: &Item,
     )
     {
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`ItemKind` is rustc's AST item kind, whose variants move with the pinned \
+                      nightly; only a function or a foreign block declares functions"
+        )]
         match item.kind {
-            | ItemKind::Fn(ref function) => self.collect(function.ident.span, &item.attrs),
-            | ItemKind::ForeignMod(ref foreign) => {
+            ItemKind::Fn(ref function) => self.collect(function.ident.span, &item.attrs),
+            ItemKind::ForeignMod(ref foreign) => {
                 for foreign_item in &foreign.items {
                     if let ForeignItemKind::Fn(ref function) = foreign_item.kind {
                         self.collect(function.ident.span, &foreign_item.attrs);
                     }
                 }
             },
-            | _ => {},
+            _ => {},
         }
     }
 
@@ -861,10 +866,10 @@ pub fn spec_arguments(attr: &Attribute) -> Vec<SpecArguments<'_>>
     };
     if segment.ident.name.as_str() == "spec" {
         return match *args {
-            | AttrArgs::Delimited(ref delimited) => {
+            AttrArgs::Delimited(ref delimited) => {
                 vec![SpecArguments::Delimited(&delimited.tokens)]
             },
-            | AttrArgs::Empty | AttrArgs::Eq { .. } => vec![SpecArguments::Bare],
+            AttrArgs::Empty | AttrArgs::Eq { .. } => vec![SpecArguments::Bare],
         };
     }
     let AttrArgs::Delimited(ref delimited) = *args
@@ -879,11 +884,11 @@ pub fn spec_arguments(attr: &Attribute) -> Vec<SpecArguments<'_>>
     let mut applied = Vec::new();
     for attribute in split_commas(&trees).into_iter().skip(1_usize) {
         let (arguments, path) = match *attribute.as_slice() {
-            | [
+            [
                 ref path @ ..,
                 &TokenTree::Delimited(_, _, Delimiter::Parenthesis, ref tokens),
             ] => (SpecArguments::Delimited(tokens), path),
-            | ref path => (SpecArguments::Bare, path),
+            ref path => (SpecArguments::Bare, path),
         };
         let Some(&last) = path.last()
         else {
@@ -999,8 +1004,8 @@ fn clauses(arguments: &TokenStream) -> Vec<Clause<'_>>
         }
         if token_is!(tree, TokenKind::Comma) {
             let opens_clause = match rest.split_first() {
-                | None => true,
-                | Some((&next, after)) => matches!(clause_key(next, after), Maybe::Present(_)),
+                None => true,
+                Some((&next, after)) => matches!(clause_key(next, after), Maybe::Present(_)),
             };
             if opens_clause {
                 at_boundary = true;
@@ -1045,10 +1050,10 @@ fn clause_key(
         return Maybe::Absent(clause_reading::NotAKey::NotKeyShaped);
     }
     Maybe::Present(match name.as_str() {
-        | "requires" => ClauseKey::Requires,
-        | "maintains" => ClauseKey::Maintains,
-        | "ensures" => ClauseKey::Ensures,
-        | _ => ClauseKey::Other,
+        "requires" => ClauseKey::Requires,
+        "maintains" => ClauseKey::Maintains,
+        "ensures" => ClauseKey::Ensures,
+        _ => ClauseKey::Other,
     })
 }
 
@@ -1135,8 +1140,8 @@ fn closure_body<'value, 'stream>(
 ) -> &'value [&'stream TokenTree]
 {
     let value = match value.split_first() {
-        | Some((&first, rest)) if ident_name(first) == Maybe::Present(kw::Move) => rest,
-        | _ => value,
+        Some((&first, rest)) if ident_name(first) == Maybe::Present(kw::Move) => rest,
+        _ => value,
     };
     let Some((&first, rest)) = value.split_first()
     else {
@@ -1203,16 +1208,16 @@ fn peeled<'stream>(predicate: &[&'stream TokenTree]) -> Vec<&'stream TokenTree>
 fn vacuity(trees: &[&TokenTree]) -> Maybe<Vacuity, predicate_reading::Substantive>
 {
     match *trees {
-        | [literal] if ident_name(literal) == Maybe::Present(kw::True) => {
+        [literal] if ident_name(literal) == Maybe::Present(kw::True) => {
             return Maybe::Present(Vacuity::LiteralTrue);
         },
-        | [bang, literal]
+        [bang, literal]
             if token_is!(bang, TokenKind::Bang)
                 && ident_name(literal) == Maybe::Present(kw::False) =>
         {
             return Maybe::Present(Vacuity::LiteralTrue);
         },
-        | _ => {},
+        _ => {},
     }
     if let Maybe::Present(kind) = reflexive(trees) {
         return Maybe::Present(kind);
@@ -1373,24 +1378,24 @@ fn wildcard_variant(arm: &[&TokenTree]) -> Maybe<Symbol, pattern_reading::NotWil
 {
     let refutable = Maybe::Absent(pattern_reading::NotWildcard::Refutable);
     let path = match *arm {
-        | [
+        [
             ref path @ ..,
             &TokenTree::Delimited(_, _, Delimiter::Parenthesis, ref payload),
         ] => {
             let payload: Vec<&TokenTree> = payload.iter().collect();
             let admits_all = match *payload.as_slice() {
-                | [only] => {
+                [only] => {
                     ident_name(only) == Maybe::Present(kw::Underscore)
                         || token_is!(only, TokenKind::DotDot)
                 },
-                | _ => false,
+                _ => false,
             };
             if !admits_all {
                 return refutable;
             }
             path
         },
-        | ref path => path,
+        ref path => path,
     };
     let Some((&last, segments)) = path.split_last()
     else {
@@ -1403,8 +1408,8 @@ fn wildcard_variant(arm: &[&TokenTree]) -> Maybe<Symbol, pattern_reading::NotWil
         return refutable;
     }
     match ident_name(last) {
-        | Maybe::Present(name) => Maybe::Present(name),
-        | Maybe::Absent(_) => refutable,
+        Maybe::Present(name) => Maybe::Present(name),
+        Maybe::Absent(_) => refutable,
     }
 }
 
@@ -1487,8 +1492,8 @@ fn discriminant_query<'operand, 'stream>(
         return not_a_query;
     }
     match ident_name(name) {
-        | Maybe::Present(query) => Maybe::Present(DiscriminantQuery { receiver, query }),
-        | Maybe::Absent(_) => not_a_query,
+        Maybe::Present(query) => Maybe::Present(DiscriminantQuery { receiver, query }),
+        Maybe::Absent(_) => not_a_query,
     }
 }
 
@@ -1585,8 +1590,8 @@ fn same_tokens(
 fn trees_span(trees: &[&TokenTree]) -> Span
 {
     match (trees.first(), trees.last()) {
-        | (Some(first), Some(last)) => first.span().to(last.span()),
-        | _ => rustc_span::DUMMY_SP,
+        (Some(first), Some(last)) => first.span().to(last.span()),
+        _ => rustc_span::DUMMY_SP,
     }
 }
 
@@ -1606,14 +1611,16 @@ fn trees_span(trees: &[&TokenTree]) -> Span
 fn ident_name(tree: &TokenTree) -> Maybe<Symbol, token_reading::NotIdent>
 {
     match *tree {
-        | TokenTree::Token(
+        TokenTree::Token(
             Token {
                 kind: TokenKind::Ident(name, _),
                 ..
             },
             _,
         ) => Maybe::Present(name),
-        | _ => Maybe::Absent(token_reading::NotIdent::OtherTree),
+        TokenTree::Token(..) | TokenTree::Delimited(..) => {
+            Maybe::Absent(token_reading::NotIdent::OtherTree)
+        },
     }
 }
 
@@ -1679,10 +1686,10 @@ fn read_exemption(bullets: &[String]) -> Exemption
         }
     }
     match seen {
-        | 0_usize => Exemption::Absent,
-        | 1_usize if followed => Exemption::NotLast,
-        | 1_usize => stated,
-        | _ => Exemption::Duplicated,
+        0_usize => Exemption::Absent,
+        1_usize if followed => Exemption::NotLast,
+        1_usize => stated,
+        _ => Exemption::Duplicated,
     }
 }
 
@@ -1745,40 +1752,40 @@ impl ExecutableDefect
     fn message(self) -> DiagnosticText<'static>
     {
         DiagnosticText(match self {
-            | Self::AttributeAbsent => {
+            Self::AttributeAbsent => {
                 "this function's `# Specification` states clauses but it carries no `#[spec(...)]` \
                  attribute; an executable predicate checks a clause on every enforcing call, and an \
                  obligation no runtime predicate can express is exempted in the block"
             },
-            | Self::ClauseAbsent => {
+            Self::ClauseAbsent => {
                 "this function's `#[spec]` states no `requires:`, `maintains:` or `ensures:` \
                  predicate, so it checks nothing on any call"
             },
-            | Self::Vacuous(Vacuity::LiteralTrue, _) => {
+            Self::Vacuous(Vacuity::LiteralTrue, _) => {
                 "this predicate is a literal truth: it holds on every call, so it checks nothing \
                  the signature does not"
             },
-            | Self::Vacuous(Vacuity::Reflexive, _) => {
+            Self::Vacuous(Vacuity::Reflexive, _) => {
                 "this predicate compares an expression with itself: it holds on every call, so it \
                  checks nothing the signature does not"
             },
-            | Self::Vacuous(Vacuity::TypeCheck, _) => {
+            Self::Vacuous(Vacuity::TypeCheck, _) => {
                 "this predicate holds for every value of its subject's type: it restates the \
                  signature rather than checking a clause"
             },
-            | Self::Vacuous(Vacuity::Repeated, _) => {
+            Self::Vacuous(Vacuity::Repeated, _) => {
                 "this predicate repeats an earlier one under the same clause, so it checks nothing \
                  more"
             },
-            | Self::ExemptionUnreasoned => {
+            Self::ExemptionUnreasoned => {
                 "`- executable:` must read `none — <reason>`: the exemption claims that no runtime \
                  predicate expresses the obligation, and the reason is what review weighs"
             },
-            | Self::ExemptionNotLast => {
+            Self::ExemptionNotLast => {
                 "`- executable:` must be the block's last clause before `- intension:`"
             },
-            | Self::ExemptionDuplicated => "`- executable:` may appear at most once",
-            | Self::ExemptionBesideClause => {
+            Self::ExemptionDuplicated => "`- executable:` may appear at most once",
+            Self::ExemptionBesideClause => {
                 "`- executable: none` claims no runtime predicate expresses this function's \
                  obligation, but its `#[spec]` states one; keep the predicate and drop the \
                  exemption, or the reverse"
@@ -1825,25 +1832,25 @@ fn executable_defect(
 ) -> Maybe<ExecutableDefect, executable_check::Satisfied>
 {
     match (exemption, attribute) {
-        | (Exemption::Duplicated, _) => Maybe::Present(ExecutableDefect::ExemptionDuplicated),
-        | (Exemption::NotLast, _) => Maybe::Present(ExecutableDefect::ExemptionNotLast),
-        | (Exemption::Unreasoned, _) => Maybe::Present(ExecutableDefect::ExemptionUnreasoned),
-        | (_, ExecutableAttribute::Vacuous(kind, span)) => {
+        (Exemption::Duplicated, _) => Maybe::Present(ExecutableDefect::ExemptionDuplicated),
+        (Exemption::NotLast, _) => Maybe::Present(ExecutableDefect::ExemptionNotLast),
+        (Exemption::Unreasoned, _) => Maybe::Present(ExecutableDefect::ExemptionUnreasoned),
+        (_, ExecutableAttribute::Vacuous(kind, span)) => {
             Maybe::Present(ExecutableDefect::Vacuous(kind, span))
         },
-        | (Exemption::Stated, ExecutableAttribute::Stated) => {
+        (Exemption::Stated, ExecutableAttribute::Stated) => {
             Maybe::Present(ExecutableDefect::ExemptionBesideClause)
         },
-        | (Exemption::Stated, ExecutableAttribute::Absent | ExecutableAttribute::ClauseAbsent) => {
+        (Exemption::Stated, ExecutableAttribute::Absent | ExecutableAttribute::ClauseAbsent) => {
             Maybe::Absent(executable_check::Satisfied::Exempt)
         },
-        | (Exemption::Absent, ExecutableAttribute::Stated) => {
+        (Exemption::Absent, ExecutableAttribute::Stated) => {
             Maybe::Absent(executable_check::Satisfied::PredicateStated)
         },
-        | (Exemption::Absent, ExecutableAttribute::Absent) => {
+        (Exemption::Absent, ExecutableAttribute::Absent) => {
             Maybe::Present(ExecutableDefect::AttributeAbsent)
         },
-        | (Exemption::Absent, ExecutableAttribute::ClauseAbsent) => {
+        (Exemption::Absent, ExecutableAttribute::ClauseAbsent) => {
             Maybe::Present(ExecutableDefect::ClauseAbsent)
         },
     }
@@ -1880,8 +1887,13 @@ pub fn check(
         return;
     };
     let span = match defect {
-        | ExecutableDefect::Vacuous(_, predicate) => predicate,
-        | _ => name,
+        ExecutableDefect::Vacuous(_, predicate) => predicate,
+        ExecutableDefect::AttributeAbsent
+        | ExecutableDefect::ClauseAbsent
+        | ExecutableDefect::ExemptionUnreasoned
+        | ExecutableDefect::ExemptionNotLast
+        | ExecutableDefect::ExemptionDuplicated
+        | ExecutableDefect::ExemptionBesideClause => name,
     };
     span_lint_and_help(
         cx,

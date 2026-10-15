@@ -189,8 +189,8 @@ impl core::fmt::Display for LookupFailure
     ) -> core::fmt::Result
     {
         f.write_str(match *self {
-            | Self::MissingKey => "required key is missing",
-            | Self::SearchRequired => "search is required",
+            Self::MissingKey => "required key is missing",
+            Self::SearchRequired => "search is required",
         })
     }
 }
@@ -232,8 +232,8 @@ fn failure_promotion_is_explicit_and_reason_sensitive()
         let result = absent.into_result(|reason| {
             visits.set(Visit::Visited);
             match reason {
-                | lookup::Unavailable::Missing => LookupFailure::MissingKey,
-                | lookup::Unavailable::Unsearched => LookupFailure::SearchRequired,
+                lookup::Unavailable::Missing => LookupFailure::MissingKey,
+                lookup::Unavailable::Unsearched => LookupFailure::SearchRequired,
             }
         });
         assert_eq!(result, Err(failure));

@@ -75,11 +75,11 @@ impl core::fmt::Display for Operation
     ) -> core::fmt::Result
     {
         f.write_str(match *self {
-            | Self::Add => "addition",
-            | Self::Sub => "subtraction",
-            | Self::Mul => "multiplication",
-            | Self::Div => "division",
-            | Self::Rem => "remainder",
+            Self::Add => "addition",
+            Self::Sub => "subtraction",
+            Self::Mul => "multiplication",
+            Self::Div => "division",
+            Self::Rem => "remainder",
         })
     }
 }
@@ -112,8 +112,8 @@ impl core::fmt::Display for ArithmeticError
     ) -> core::fmt::Result
     {
         match *self {
-            | Self::Overflow(operation) => write!(f, "{operation}: result is out of range"),
-            | Self::ZeroDivisor(operation) => write!(f, "{operation}: right operand is zero"),
+            Self::Overflow(operation) => write!(f, "{operation}: result is out of range"),
+            Self::ZeroDivisor(operation) => write!(f, "{operation}: right operand is zero"),
         }
     }
 }

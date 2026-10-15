@@ -408,25 +408,25 @@ impl<'tcx> LateLintPass<'tcx> for SpecClauseTraversal
             )
         };
         match classify(cx.tcx, cx.typing_env(), call.def_id, call.args) {
-            | Callee::Library(_) => report_direct(cx, expr, site),
-            | Callee::Body(target) => {
+            Callee::Library(_) => report_direct(cx, expr, site),
+            Callee::Body(target) => {
                 let summary = self.summaries.of(cx.tcx, target);
                 let Some((_, witness)) = summary.walks().find(|&(position, _)| rooted(position))
                 else {
                     return;
                 };
                 let tail = match witness.walk {
-                    | Walk::Iterates => ITERATES_TAIL,
-                    | Walk::Searches => SEARCHES_TAIL,
-                    | Walk::Copies => COPIES_TAIL,
-                    | Walk::Compares => COMPARES_TAIL,
-                    | Walk::Unresolved => UNRESOLVED_TAIL,
-                    | Walk::Unreadable => UNREADABLE_TAIL,
+                    Walk::Iterates => ITERATES_TAIL,
+                    Walk::Searches => SEARCHES_TAIL,
+                    Walk::Copies => COPIES_TAIL,
+                    Walk::Compares => COMPARES_TAIL,
+                    Walk::Unresolved => UNRESOLVED_TAIL,
+                    Walk::Unreadable => UNREADABLE_TAIL,
                 };
                 let help = match witness.walk {
-                    | Walk::Unresolved => UNRESOLVED_HELP,
-                    | Walk::Unreadable => UNREADABLE_HELP,
-                    | Walk::Iterates | Walk::Searches | Walk::Copies | Walk::Compares => {
+                    Walk::Unresolved => UNRESOLVED_HELP,
+                    Walk::Unreadable => UNREADABLE_HELP,
+                    Walk::Iterates | Walk::Searches | Walk::Copies | Walk::Compares => {
                         TRAVERSAL_HELP
                     },
                 };
@@ -442,7 +442,7 @@ impl<'tcx> LateLintPass<'tcx> for SpecClauseTraversal
                     },
                 );
             },
-            | Callee::Unresolved(target) => {
+            Callee::Unresolved(target) => {
                 if call
                     .arguments
                     .iter()
@@ -461,7 +461,7 @@ impl<'tcx> LateLintPass<'tcx> for SpecClauseTraversal
                     );
                 }
             },
-            | Callee::Unreadable(target) => {
+            Callee::Unreadable(target) => {
                 if call
                     .arguments
                     .iter()
@@ -480,7 +480,7 @@ impl<'tcx> LateLintPass<'tcx> for SpecClauseTraversal
                     );
                 }
             },
-            | Callee::Instrumentation | Callee::Bounded | Callee::Opaque => {},
+            Callee::Instrumentation | Callee::Bounded | Callee::Opaque => {},
         }
     }
 
@@ -593,10 +593,10 @@ fn report_direct<'tcx>(
         return;
     };
     let tail = match found {
-        | Walk::Iterates => ITERATES_TAIL,
-        | Walk::Searches => SEARCHES_TAIL,
-        | Walk::Copies => COPIES_TAIL,
-        | Walk::Compares | Walk::Unresolved | Walk::Unreadable => COMPARES_TAIL,
+        Walk::Iterates => ITERATES_TAIL,
+        Walk::Searches => SEARCHES_TAIL,
+        Walk::Copies => COPIES_TAIL,
+        Walk::Compares | Walk::Unresolved | Walk::Unreadable => COMPARES_TAIL,
     };
     span_lint_and_help(
         cx,
@@ -640,8 +640,13 @@ fn call_site<'tcx>(
 ) -> Maybe<CallSite<'tcx>, call_reading::NotACall>
 {
     let typeck = cx.typeck_results();
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "`ExprKind` is rustc's HIR expression kind, whose variants move with the pinned \
+                  nightly; only a method call or an equality comparison is a call"
+    )]
     let (def_id, args, arguments) = match expr.kind {
-        | ExprKind::MethodCall(_, receiver, arguments, _) => {
+        ExprKind::MethodCall(_, receiver, arguments, _) => {
             let Some(def_id) = typeck.type_dependent_def_id(expr.hir_id)
             else {
                 return Maybe::Absent(call_reading::NotACall::NotAFunction);
@@ -650,7 +655,7 @@ fn call_site<'tcx>(
             all.extend(arguments.iter());
             (def_id, typeck.node_args(expr.hir_id), all)
         },
-        | ExprKind::Call(callee, arguments) => {
+        ExprKind::Call(callee, arguments) => {
             let ExprKind::Path(ref path) = callee.kind
             else {
                 return Maybe::Absent(call_reading::NotACall::NotAFunction);
@@ -666,7 +671,7 @@ fn call_site<'tcx>(
                 arguments.iter().collect(),
             )
         },
-        | ExprKind::Binary(op, left, right) if matches!(op.node, BinOpKind::Eq | BinOpKind::Ne) => {
+        ExprKind::Binary(op, left, right) if matches!(op.node, BinOpKind::Eq | BinOpKind::Ne) => {
             let Some(eq) = cx.tcx.lang_items().eq_trait().and_then(|trait_id| {
                 cx.tcx
                     .associated_items(trait_id)
@@ -682,7 +687,7 @@ fn call_site<'tcx>(
                 .mk_args(&[typeck.expr_ty(left).into(), typeck.expr_ty(right).into()]);
             (eq, args, vec![left, right])
         },
-        | _ => return Maybe::Absent(call_reading::NotACall::OtherExpression),
+        _ => return Maybe::Absent(call_reading::NotACall::OtherExpression),
     };
     // A desugared call through a lang-item path records no arguments; the
     // standard-library table reads it instead.
@@ -718,6 +723,11 @@ fn call_site<'tcx>(
     Maybe::Present(_) => matches!(expr.kind, ExprKind::MethodCall(..) | ExprKind::Binary(..) | ExprKind::Call(..)),
     Maybe::Absent(_) => true,
 })]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "`ExprKind` is rustc's HIR expression kind, whose variants move with the pinned \
+              nightly; only a method call or an `into_iter` call walks"
+)]
 fn walk<'tcx>(
     cx: &LateContext<'tcx>,
     expr: &'tcx Expr<'tcx>,
@@ -725,7 +735,7 @@ fn walk<'tcx>(
 {
     let typeck = cx.typeck_results();
     match expr.kind {
-        | ExprKind::MethodCall(segment, receiver, ..) => {
+        ExprKind::MethodCall(segment, receiver, ..) => {
             if !matches!(state_root(cx, receiver), Maybe::Present(())) {
                 return Maybe::Absent(walk_reading::NotAWalk::Unrooted);
             }
@@ -741,11 +751,11 @@ fn walk<'tcx>(
                 typeck.expr_ty_adjusted(receiver),
                 typeck.expr_ty(expr),
             ) {
-                | Maybe::Present(found) => Maybe::Present(found),
-                | Maybe::Absent(_) => Maybe::Absent(walk_reading::NotAWalk::Bounded),
+                Maybe::Present(found) => Maybe::Present(found),
+                Maybe::Absent(_) => Maybe::Absent(walk_reading::NotAWalk::Bounded),
             }
         },
-        | ExprKind::Binary(op, left, right) => {
+        ExprKind::Binary(op, left, right) => {
             let comparison = matches!(
                 op.node,
                 BinOpKind::Eq
@@ -769,7 +779,11 @@ fn walk<'tcx>(
                 Maybe::Absent(walk_reading::NotAWalk::Bounded)
             }
         },
-        | ExprKind::Call(callee, &[ref argument]) => {
+        ExprKind::Call(callee, arguments) => {
+            let [ref argument] = *arguments
+            else {
+                return Maybe::Absent(walk_reading::NotAWalk::Unrooted);
+            };
             let into_iter = matches!(callee.kind, ExprKind::Path(ref path)
                 if matches!(typeck.qpath_res(path, callee.hir_id), Res::Def(_, id) if cx.tcx.is_lang_item(id, LangItem::IntoIterIntoIter)));
             if !into_iter || !matches!(state_root(cx, argument), Maybe::Present(())) {
@@ -785,7 +799,7 @@ fn walk<'tcx>(
                 Maybe::Present(Walk::Iterates)
             }
         },
-        | _ => Maybe::Absent(walk_reading::NotAWalk::Unrooted),
+        _ => Maybe::Absent(walk_reading::NotAWalk::Unrooted),
     }
 }
 
@@ -806,6 +820,11 @@ fn walk<'tcx>(
 ///   results and borrows of the receiver and of a mutable parameter, beside the
 ///   same chains on a shared parameter and on the clause's output.
 /// - witness: `tests::ui_spec_cost`
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "`ExprKind` is rustc's HIR expression kind, whose variants move with the pinned \
+              nightly; only a projection, a borrow or a local path leads to the root"
+)]
 fn state_root(
     cx: &LateContext<'_>,
     expr: &Expr<'_>,
@@ -814,12 +833,12 @@ fn state_root(
     let mut current = expr;
     loop {
         current = match current.kind {
-            | ExprKind::Field(base, _)
+            ExprKind::Field(base, _)
             | ExprKind::Unary(UnOp::Deref, base)
             | ExprKind::AddrOf(_, _, base)
             | ExprKind::Index(base, ..)
             | ExprKind::MethodCall(_, base, ..) => base,
-            | ExprKind::Path(QPath::Resolved(None, path)) => {
+            ExprKind::Path(QPath::Resolved(None, path)) => {
                 let Res::Local(_) = path.res
                 else {
                     return Maybe::Absent(root_reading::Unrooted::OtherBase);
@@ -839,7 +858,7 @@ fn state_root(
                     Maybe::Absent(root_reading::Unrooted::OtherBase)
                 };
             },
-            | _ => return Maybe::Absent(root_reading::Unrooted::OtherBase),
+            _ => return Maybe::Absent(root_reading::Unrooted::OtherBase),
         };
     }
 }

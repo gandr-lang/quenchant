@@ -268,8 +268,13 @@ fn returns_erased_error<'tcx>(
             else {
                 continue;
             };
+            #[expect(
+                clippy::wildcard_enum_match_arm,
+                reason = "`TyKind` is rustc's type kind, whose variants move with the pinned \
+                          nightly; only a `Result` or an opaque type carries an error type"
+            )]
             match *inner.kind() {
-                | ty::Adt(adt, arguments) if cx.tcx.is_diagnostic_item(sym::Result, adt.did()) => {
+                ty::Adt(adt, arguments) if cx.tcx.is_diagnostic_item(sym::Result, adt.did()) => {
                     if arguments
                         .types()
                         .nth(1)
@@ -278,7 +283,7 @@ fn returns_erased_error<'tcx>(
                         return ErasedError(true);
                     }
                 },
-                | ty::Alias(ty::AliasTy {
+                ty::Alias(ty::AliasTy {
                     kind: ty::Opaque { def_id },
                     args,
                     ..
@@ -297,7 +302,7 @@ fn returns_erased_error<'tcx>(
                         }
                     }
                 },
-                | _ => {},
+                _ => {},
             }
         }
     }
@@ -332,9 +337,15 @@ fn erases<'tcx>(
 {
     let mut current = error;
     loop {
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`TyKind` is rustc's type kind, whose variants move with the pinned nightly; \
+                      only a reference, an owning pointer, an ADT or a trait object reaches an \
+                      error type"
+        )]
         match *current.kind() {
-            | ty::Ref(_, inner, _) => current = inner,
-            | ty::Adt(adt, arguments)
+            ty::Ref(_, inner, _) => current = inner,
+            ty::Adt(adt, arguments)
                 if adt.is_box()
                     || cx.tcx.is_diagnostic_item(sym::Arc, adt.did())
                     || cx.tcx.is_diagnostic_item(sym::Rc, adt.did()) =>
@@ -345,14 +356,14 @@ fn erases<'tcx>(
                 };
                 current = inner;
             },
-            | ty::Adt(adt, _) => return ErasedError(erased.contains(&adt.did())),
-            | ty::Dynamic(predicates, ..) => {
+            ty::Adt(adt, _) => return ErasedError(erased.contains(&adt.did())),
+            ty::Dynamic(predicates, ..) => {
                 return ErasedError(predicates.principal_def_id().is_some_and(|principal| {
                     cx.tcx
                         .is_diagnostic_item(Symbol::intern("Error"), principal)
                 }));
             },
-            | _ => return ErasedError(false),
+            _ => return ErasedError(false),
         }
     }
 }

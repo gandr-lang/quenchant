@@ -111,16 +111,21 @@ impl<'tcx> LateLintPass<'tcx> for RawPointerThroughReference
             return;
         }
         check_coercion(cx, expr);
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`ExprKind` is rustc's HIR expression kind, whose variants move with the \
+                      pinned nightly; only a method call or a call produces a raw pointer"
+        )]
         match expr.kind {
-            | ExprKind::MethodCall(_, receiver, &[], _) => check_pointer_method(cx, expr, receiver),
-            | ExprKind::Call(callee, arguments) => {
+            ExprKind::MethodCall(_, receiver, &[], _) => check_pointer_method(cx, expr, receiver),
+            ExprKind::Call(callee, arguments) => {
                 if let Some(argument) = arguments.first()
                     && arguments.len() == 1
                 {
                     check_pointer_constructor(cx, expr, callee, argument);
                 }
             },
-            | _ => {},
+            _ => {},
         }
     }
 }
@@ -158,6 +163,11 @@ enum Origin
 /// - witness: `tests::ui_pointers`
 #[spec(ensures: |output| !matches!(place.kind, ExprKind::Unary(UnOp::Deref, _) | ExprKind::Index(..))
     || !cx.typeck_results().is_method_call(place) || output == Origin::Reference)]
+#[expect(
+    clippy::wildcard_enum_match_arm,
+    reason = "`ExprKind`, `TyKind` and `Res` are rustc's, their variants moving with the pinned \
+              nightly; only a field, an index or a resolved path leads to a place's origin"
+)]
 fn place_origin<'tcx>(
     cx: &LateContext<'tcx>,
     mut place: &'tcx Expr<'tcx>,
@@ -166,31 +176,31 @@ fn place_origin<'tcx>(
     let typeck = cx.typeck_results();
     loop {
         place = match place.kind {
-            | ExprKind::Field(base, _) | ExprKind::Index(base, ..) => {
+            ExprKind::Field(base, _) | ExprKind::Index(base, ..) => {
                 if typeck.is_method_call(place) || adjusted_through(cx, base) == Reached::Reference
                 {
                     return Origin::Reference;
                 }
                 base
             },
-            | ExprKind::Unary(UnOp::Deref, base) => {
+            ExprKind::Unary(UnOp::Deref, base) => {
                 if typeck.is_method_call(place) {
                     return Origin::Reference;
                 }
                 match *typeck.expr_ty(base).kind() {
-                    | ty::Ref(..) => return Origin::Reference,
-                    | ty::RawPtr(..) => return Origin::RawPointer,
-                    | ty::Adt(definition, _) if definition.is_box() => base,
-                    | _ => return Origin::Value,
+                    ty::Ref(..) => return Origin::Reference,
+                    ty::RawPtr(..) => return Origin::RawPointer,
+                    ty::Adt(definition, _) if definition.is_box() => base,
+                    _ => return Origin::Value,
                 }
             },
-            | ExprKind::Path(QPath::Resolved(None, path)) => {
+            ExprKind::Path(QPath::Resolved(None, path)) => {
                 return match path.res {
-                    | Res::Local(_) | Res::Def(DefKind::Static { .. }, _) => Origin::Owned,
-                    | _ => Origin::Value,
+                    Res::Local(_) | Res::Def(DefKind::Static { .. }, _) => Origin::Owned,
+                    _ => Origin::Value,
                 };
             },
-            | _ => return Origin::Value,
+            _ => return Origin::Value,
         };
     }
 }
@@ -288,11 +298,11 @@ fn check_coercion<'tcx>(
     let mut applicability = Applicability::MachineApplicable;
     let value = Sugg::hir_with_context(cx, expr, expr.span.ctxt(), "_", &mut applicability);
     let replacement = match (source_mutability, target) {
-        | (Mutability::Mut, Mutability::Mut) => format!("{std_or_core}::ptr::from_mut({value})"),
-        | (Mutability::Mut, Mutability::Not) => {
+        (Mutability::Mut, Mutability::Mut) => format!("{std_or_core}::ptr::from_mut({value})"),
+        (Mutability::Mut, Mutability::Not) => {
             format!("{std_or_core}::ptr::from_mut({value}).cast_const()")
         },
-        | (Mutability::Not, _) => format!("{std_or_core}::ptr::from_ref({value})"),
+        (Mutability::Not, _) => format!("{std_or_core}::ptr::from_ref({value})"),
     };
     span_lint_and_then(
         cx,
@@ -338,7 +348,7 @@ enum RawBorrow
 fn raw_borrow(adjustments: &[Adjustment<'_>]) -> RawBorrow
 {
     match *adjustments {
-        | [
+        [
             Adjustment {
                 kind: Adjust::Deref(DerefAdjustKind::Builtin),
                 ..
@@ -349,7 +359,7 @@ fn raw_borrow(adjustments: &[Adjustment<'_>]) -> RawBorrow
             },
             ..,
         ] => RawBorrow::Coerced(mutability),
-        | _ => RawBorrow::Other,
+        _ => RawBorrow::Other,
     }
 }
 
@@ -385,9 +395,9 @@ fn check_pointer_method<'tcx>(
         return;
     };
     let mutability = match cx.tcx.item_name(method).as_str() {
-        | "as_ptr" => Mutability::Not,
-        | "as_mut_ptr" => Mutability::Mut,
-        | _ => return,
+        "as_ptr" => Mutability::Not,
+        "as_mut_ptr" => Mutability::Mut,
+        _ => return,
     };
     let Some(implementation) = cx.tcx.inherent_impl_of_assoc(method)
     else {
@@ -412,8 +422,11 @@ fn check_pointer_method<'tcx>(
             .expr_adjustments(receiver)
             .iter()
             .map_while(|adjustment| match adjustment.kind {
-                | Adjust::Deref(kind) => Some(kind),
-                | _ => None,
+                Adjust::Deref(kind) => Some(kind),
+                Adjust::NeverToAny
+                | Adjust::Borrow(_)
+                | Adjust::Pointer(_)
+                | Adjust::GenericReborrow(_) => None,
             })
             .collect();
         if steps
@@ -559,9 +572,9 @@ fn check_pointer_constructor<'tcx>(
     let path = cx.get_def_path(function);
     let mut names = path.iter().map(rustc_span::Symbol::as_str);
     let mutability = match (names.next(), names.next(), names.next(), names.next()) {
-        | (Some("core"), Some("ptr"), Some("from_ref"), None) => Mutability::Not,
-        | (Some("core"), Some("ptr"), Some("from_mut"), None) => Mutability::Mut,
-        | _ => return,
+        (Some("core"), Some("ptr"), Some("from_ref"), None) => Mutability::Not,
+        (Some("core"), Some("ptr"), Some("from_mut"), None) => Mutability::Mut,
+        _ => return,
     };
     let ExprKind::AddrOf(BorrowKind::Ref, _, place) = argument.kind
     else {
@@ -620,14 +633,20 @@ fn check_pointer_constructor<'tcx>(
         }
         replacement = format!("{replacement} as {pointer}");
     }
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "`Node` and `ExprKind` are rustc's HIR kinds, their variants moving with the \
+                  pinned nightly; only a parent receiver, projection, unary or borrow binds \
+                  tighter than a cast"
+    )]
     let parenthesize = match cx.tcx.parent_hir_node(call.hir_id) {
-        | Node::Expr(parent) => match parent.kind {
-            | ExprKind::MethodCall(_, receiver, ..) => receiver.hir_id == call.hir_id,
-            | ExprKind::Field(base, _) | ExprKind::Index(base, ..) => base.hir_id == call.hir_id,
-            | ExprKind::Unary(..) | ExprKind::AddrOf(..) => unsized_by_call,
-            | _ => false,
+        Node::Expr(parent) => match parent.kind {
+            ExprKind::MethodCall(_, receiver, ..) => receiver.hir_id == call.hir_id,
+            ExprKind::Field(base, _) | ExprKind::Index(base, ..) => base.hir_id == call.hir_id,
+            ExprKind::Unary(..) | ExprKind::AddrOf(..) => unsized_by_call,
+            _ => false,
         },
-        | _ => false,
+        _ => false,
     };
     if parenthesize {
         replacement = format!("({replacement})");

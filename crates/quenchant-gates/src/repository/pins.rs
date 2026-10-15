@@ -96,13 +96,13 @@ fn pin(
 ) -> Maybe<SourceText<'_>, refusal::Refused>
 {
     let keys: &[&str] = match name {
-        | Pin::Channel => &["toolchain", "channel"],
-        | Pin::ClippyTag => &["workspace", "dependencies", "clippy_utils", "tag"],
-        | Pin::Linting => &["workspace", "dependencies", "dylint_linting", "version"],
-        | Pin::Testing => &["workspace", "dependencies", "dylint_testing", "version"],
-        | Pin::Driver => &["tools", "cargo:cargo-dylint"],
-        | Pin::Linker => &["tools", "cargo:dylint-link"],
-        | Pin::ConsumerBinary => &["env", "QUENCHANT_REV"],
+        Pin::Channel => &["toolchain", "channel"],
+        Pin::ClippyTag => &["workspace", "dependencies", "clippy_utils", "tag"],
+        Pin::Linting => &["workspace", "dependencies", "dylint_linting", "version"],
+        Pin::Testing => &["workspace", "dependencies", "dylint_testing", "version"],
+        Pin::Driver => &["tools", "cargo:cargo-dylint"],
+        Pin::Linker => &["tools", "cargo:dylint-link"],
+        Pin::ConsumerBinary => &["env", "QUENCHANT_REV"],
     };
     let mut item = document.as_item();
     for key in keys {
@@ -116,8 +116,8 @@ fn pin(
         .as_str()
         .or_else(|| item.get("version").and_then(toml_edit::Item::as_str));
     match value {
-        | Some(value) if !value.is_empty() => Maybe::Present(SourceText(value)),
-        | _ => Maybe::Absent(refusal::Refused::Missing(name)),
+        Some(value) if !value.is_empty() => Maybe::Present(SourceText(value)),
+        _ => Maybe::Absent(refusal::Refused::Missing(name)),
     }
 }
 
@@ -403,8 +403,8 @@ pub fn check(
         return Ok(Maybe::Absent(reason));
     }
     let remote = match options.get("--upstream-toolchain") {
-        | Some(path) => super::document(&root.join(path))?,
-        | None => upstream(tag)?,
+        Some(path) => super::document(&root.join(path))?,
+        None => upstream(tag)?,
     };
     if let Maybe::Absent(reason) = compare(&manifest, &tools, &toolchain, &remote) {
         return Ok(Maybe::Absent(reason));
@@ -413,13 +413,13 @@ pub fn check(
         options.get("--consumer-manifest"),
         options.get("--consumer-config"),
     ) {
-        | (None, None) => Ok(Maybe::Present(Passed)),
-        | (Some(manifest), Some(tools)) => {
+        (None, None) => Ok(Maybe::Present(Passed)),
+        (Some(manifest), Some(tools)) => {
             let manifest = super::document(&root.join(manifest))?;
             let tools = super::document(&root.join(tools))?;
             Ok(consumer(&manifest, &tools))
         },
-        | _ => Ok(Maybe::Absent(refusal::Refused::ConsumerPair)),
+        _ => Ok(Maybe::Absent(refusal::Refused::ConsumerPair)),
     }
 }
 
@@ -534,8 +534,8 @@ pub fn bump(
         .map_err(|error| GateError::io(&manifest_path, ErrorMessage(&error.to_string())))?;
     if let Err(error) = std::fs::write(&toolchain_path, toolchain.to_string()) {
         let message = match std::fs::write(&manifest_path, original) {
-            | Ok(()) => error.to_string(),
-            | Err(restore) => format!("{error}; restoring Cargo.toml also failed: {restore}"),
+            Ok(()) => error.to_string(),
+            Err(restore) => format!("{error}; restoring Cargo.toml also failed: {restore}"),
         };
         return Err(GateError::io(&toolchain_path, ErrorMessage(&message)));
     }

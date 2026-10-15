@@ -124,8 +124,8 @@ fn async_early_exit_reaches_postcondition()
         let mut future = core::pin::pin!(asynchronous(Err(Refused)));
         let mut context = core::task::Context::from_waker(core::task::Waker::noop());
         match future.as_mut().poll(&mut context) {
-            | core::task::Poll::Ready(value) => value,
-            | core::task::Poll::Pending => panic!("this body has no suspension point"),
+            core::task::Poll::Ready(value) => value,
+            core::task::Poll::Pending => panic!("this body has no suspension point"),
         }
     });
     assert_failure(outcome);

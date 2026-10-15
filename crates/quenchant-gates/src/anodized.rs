@@ -81,12 +81,12 @@ impl core::fmt::Display for EnforcementState
     ) -> core::fmt::Result
     {
         f.write_str(match *self {
-            | Self::Discarded => "discarded",
-            | Self::Embedded => "embedded",
-            | Self::Incompatible => "incompatible",
-            | Self::Enforcing => "enforcing",
-            | Self::PrintOnly => "print-only",
-            | Self::NonEnforcing => "non-enforcing",
+            Self::Discarded => "discarded",
+            Self::Embedded => "embedded",
+            Self::Incompatible => "incompatible",
+            Self::Enforcing => "enforcing",
+            Self::PrintOnly => "print-only",
+            Self::NonEnforcing => "non-enforcing",
         })
     }
 }
@@ -133,11 +133,11 @@ impl EnforcementState
     ) -> Verdict
     {
         match (self, requirement) {
-            | (Self::Discarded | Self::Incompatible, _)
+            (Self::Discarded | Self::Incompatible, _)
             | (Self::Embedded | Self::PrintOnly | Self::NonEnforcing, Requirement::Enforcing) => {
                 Verdict::Fail
             },
-            | (Self::Enforcing, _)
+            (Self::Enforcing, _)
             | (Self::Embedded | Self::PrintOnly | Self::NonEnforcing, Requirement::Observe) => {
                 Verdict::Pass
             },
@@ -184,17 +184,17 @@ impl core::fmt::Display for GateError
     ) -> core::fmt::Result
     {
         match *self {
-            | Self::Manifest(ref error) => write!(f, "cannot read consumer manifest: {error}"),
-            | Self::CargoNotRun(ref error) => {
+            Self::Manifest(ref error) => write!(f, "cannot read consumer manifest: {error}"),
+            Self::CargoNotRun(ref error) => {
                 write!(f, "could not run Cargo cfg query: {error}")
             },
-            | Self::CargoRefused(ref error) => {
+            Self::CargoRefused(ref error) => {
                 write!(f, "Cargo cfg query refused: {}", error.trim_end())
             },
-            | Self::InvalidText(ref error) => {
+            Self::InvalidText(ref error) => {
                 write!(f, "compiler cfg output is not UTF-8: {error}")
             },
-            | Self::MissingCompilerCfgs => {
+            Self::MissingCompilerCfgs => {
                 f.write_str("cfg query returned no compiler target evidence")
             },
         }
@@ -294,13 +294,13 @@ pub fn enforcement_state(cfgs: CfgText<'_>) -> Result<EnforcementState, GateErro
     let mut width = false;
     for line in cfgs.0.lines().map(str::trim) {
         match line {
-            | "anodized_discard_specs" => discard = true,
-            | "anodized_embed_specs" => embed = true,
-            | "anodized_charon" => charon = true,
-            | "anodized_try" => deferred = true,
-            | "anodized_panic" => panic = true,
-            | "anodized_print" => print = true,
-            | _ => {
+            "anodized_discard_specs" => discard = true,
+            "anodized_embed_specs" => embed = true,
+            "anodized_charon" => charon = true,
+            "anodized_try" => deferred = true,
+            "anodized_panic" => panic = true,
+            "anodized_print" => print = true,
+            _ => {
                 arch |= line.starts_with("target_arch=\"");
                 os |= line.starts_with("target_os=\"");
                 width |= line.starts_with("target_pointer_width=\"");
@@ -358,12 +358,12 @@ target_pointer_width="64"
     {
         for mask in 0_u8 .. 64 {
             let expected = match mask {
-                | 0 => EnforcementState::NonEnforcing,
-                | 1 => EnforcementState::Discarded,
-                | 2 | 4 | 6 => EnforcementState::Embedded,
-                | 8 | 24 | 40 | 56 => EnforcementState::Enforcing,
-                | 16 => EnforcementState::PrintOnly,
-                | _ => EnforcementState::Incompatible,
+                0 => EnforcementState::NonEnforcing,
+                1 => EnforcementState::Discarded,
+                2 | 4 | 6 => EnforcementState::Embedded,
+                8 | 24 | 40 | 56 => EnforcementState::Enforcing,
+                16 => EnforcementState::PrintOnly,
+                _ => EnforcementState::Incompatible,
             };
             let flags = [
                 (1, "anodized_discard_specs"),

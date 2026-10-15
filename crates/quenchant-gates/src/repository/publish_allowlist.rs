@@ -119,11 +119,11 @@ fn inspect(text: SourceText<'_>) -> Result<Maybe<Passed, refusal::Refused>, Gate
             )));
         };
         let agrees = match expected {
-            | Eligibility::CratesIo => publish.as_array().is_some_and(|registries| {
+            Eligibility::CratesIo => publish.as_array().is_some_and(|registries| {
                 registries.len() == 1
                     && registries.first().and_then(serde_json::Value::as_str) == Some("crates-io")
             }),
-            | Eligibility::Disabled => publish.as_array().is_some_and(Vec::is_empty),
+            Eligibility::Disabled => publish.as_array().is_some_and(Vec::is_empty),
         };
         if !agrees {
             return Ok(Maybe::Absent(refusal::Refused::Registry {

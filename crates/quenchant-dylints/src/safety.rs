@@ -94,29 +94,34 @@ impl EarlyLintPass for SafetyDocumentation
         {
             self.bridge_sections.push(safety_section(&item.attrs));
         }
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`ItemKind` is rustc's AST item kind, whose variants move with the pinned \
+                      nightly; only a function, a trait, an impl or a foreign block is unsafe"
+        )]
         let unsafe_span = match item.kind {
-            | ItemKind::Fn(ref function) => match function.sig.header.safety {
-                | Safety::Unsafe(span) => Some(span),
-                | Safety::Safe(_) | Safety::Default => None,
+            ItemKind::Fn(ref function) => match function.sig.header.safety {
+                Safety::Unsafe(span) => Some(span),
+                Safety::Safe(_) | Safety::Default => None,
             },
-            | ItemKind::Trait(ref trait_item) => match trait_item.safety {
-                | Safety::Unsafe(span) => Some(span),
-                | Safety::Safe(_) | Safety::Default => None,
+            ItemKind::Trait(ref trait_item) => match trait_item.safety {
+                Safety::Unsafe(span) => Some(span),
+                Safety::Safe(_) | Safety::Default => None,
             },
-            | ItemKind::Impl(ref implementation) => {
+            ItemKind::Impl(ref implementation) => {
                 implementation
                     .of_trait
                     .as_ref()
                     .and_then(|header| match header.safety {
-                        | Safety::Unsafe(span) => Some(span),
-                        | Safety::Safe(_) | Safety::Default => None,
+                        Safety::Unsafe(span) => Some(span),
+                        Safety::Safe(_) | Safety::Default => None,
                     })
             },
-            | ItemKind::ForeignMod(ref foreign) => match foreign.safety {
-                | Safety::Unsafe(span) => Some(span),
-                | Safety::Safe(_) | Safety::Default => None,
+            ItemKind::ForeignMod(ref foreign) => match foreign.safety {
+                Safety::Unsafe(span) => Some(span),
+                Safety::Safe(_) | Safety::Default => None,
             },
-            | _ => None,
+            _ => None,
         };
         if let Some(span) = unsafe_span
             && !(matches!(item.kind, ItemKind::ForeignMod(_))

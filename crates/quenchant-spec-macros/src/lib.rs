@@ -308,11 +308,13 @@ fn preserve_macro(
 {
     for token in frame.input.by_ref() {
         let ends_payload = match token {
-            | proc_macro::TokenTree::Group(ref group) => match boundary {
-                | MacroBoundary::Group => true,
-                | MacroBoundary::Body => group.delimiter() == proc_macro::Delimiter::Brace,
+            proc_macro::TokenTree::Group(ref group) => match boundary {
+                MacroBoundary::Group => true,
+                MacroBoundary::Body => group.delimiter() == proc_macro::Delimiter::Brace,
             },
-            | _ => false,
+            proc_macro::TokenTree::Ident(_)
+            | proc_macro::TokenTree::Punct(_)
+            | proc_macro::TokenTree::Literal(_) => false,
         };
         frame.output.extend([token]);
         if ends_payload {
@@ -356,14 +358,14 @@ fn marker(group: &proc_macro::Group) -> Marker
         return Marker::Other;
     }
     match tokens.next() {
-        | None => Marker::Specification,
-        | Some(proc_macro::TokenTree::Group(arguments))
+        None => Marker::Specification,
+        Some(proc_macro::TokenTree::Group(arguments))
             if arguments.delimiter() == proc_macro::Delimiter::Parenthesis
                 && tokens.next().is_none() =>
         {
             Marker::Specification
         },
-        | _ => Marker::Other,
+        _ => Marker::Other,
     }
 }
 
@@ -405,14 +407,17 @@ fn strip_markers(item: proc_macro::TokenStream) -> proc_macro::TokenStream
             continue;
         };
         match token {
-            | proc_macro::TokenTree::Punct(punct) if punct.as_char() == '#' => {
+            proc_macro::TokenTree::Punct(punct) if punct.as_char() == '#' => {
                 let attribute_kind = frame.input.peek().and_then(|token| match *token {
-                    | proc_macro::TokenTree::Group(ref group)
+                    proc_macro::TokenTree::Group(ref group)
                         if group.delimiter() == proc_macro::Delimiter::Bracket =>
                     {
                         Some(marker(group))
                     },
-                    | _ => None,
+                    proc_macro::TokenTree::Group(_)
+                    | proc_macro::TokenTree::Ident(_)
+                    | proc_macro::TokenTree::Punct(_)
+                    | proc_macro::TokenTree::Literal(_) => None,
                 });
                 if let Some(owned) = attribute_kind {
                     let attribute = frame.input.next();
@@ -425,27 +430,32 @@ fn strip_markers(item: proc_macro::TokenStream) -> proc_macro::TokenStream
                     frame.output.extend([proc_macro::TokenTree::Punct(punct)]);
                 }
             },
-            | proc_macro::TokenTree::Ident(name) => {
+            proc_macro::TokenTree::Ident(name) => {
                 let macro_boundary = frame.input.peek().and_then(|token| match *token {
-                    | proc_macro::TokenTree::Punct(ref punct) if punct.as_char() == '!' => {
+                    proc_macro::TokenTree::Punct(ref punct) if punct.as_char() == '!' => {
                         Some(MacroBoundary::Group)
                     },
-                    | proc_macro::TokenTree::Ident(_) if name.to_string() == "macro" => {
+                    proc_macro::TokenTree::Ident(_) if name.to_string() == "macro" => {
                         Some(MacroBoundary::Body)
                     },
-                    | _ => None,
+                    proc_macro::TokenTree::Group(_)
+                    | proc_macro::TokenTree::Ident(_)
+                    | proc_macro::TokenTree::Punct(_)
+                    | proc_macro::TokenTree::Literal(_) => None,
                 });
                 frame.output.extend([proc_macro::TokenTree::Ident(name)]);
                 if let Some(boundary) = macro_boundary {
                     preserve_macro(&mut frame, boundary);
                 }
             },
-            | proc_macro::TokenTree::Group(group) => {
+            proc_macro::TokenTree::Group(group) => {
                 let nested = Frame::new(group.stream());
                 parents.push((group, frame));
                 frame = nested;
             },
-            | token => frame.output.extend([token]),
+            token @ (proc_macro::TokenTree::Punct(_) | proc_macro::TokenTree::Literal(_)) => {
+                frame.output.extend([token]);
+            },
         }
     }
 }
