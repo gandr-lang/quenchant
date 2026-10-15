@@ -207,10 +207,14 @@ fn check_declaration<'tcx>(
 /// - hypothesis: L3 UI contrasts aliases and structural nesting with nominal
 ///   leaves, foreign generic substitution, and future output bounds.
 /// - witness: `tests::ui_options`
-#[spec(ensures: |output| match *normalize_middle_ty(cx, actual).kind() {
-    ty::Adt(adt, _) if !cx.tcx.is_diagnostic_item(sym::Option, adt.did())
-        && matches!(nominal_boundary(cx, adt), NominalBoundary::Reached) => matches!(output, Exposure::NotFound),
-    _ => true,
+#[spec(ensures: |output| {
+    #[expect(clippy::wildcard_enum_match_arm, reason = "`TyKind` is rustc's type kind, its variant set moving with the pinned nightly; only a nominal ADT other than `Option` is a boundary")]
+    let bounded = match *normalize_middle_ty(cx, actual).kind() {
+        ty::Adt(adt, _) if !cx.tcx.is_diagnostic_item(sym::Option, adt.did())
+            && matches!(nominal_boundary(cx, adt), NominalBoundary::Reached) => matches!(output, Exposure::NotFound),
+        _ => true,
+    };
+    bounded
 })]
 pub fn exposure<'tcx>(
     cx: &LateContext<'tcx>,

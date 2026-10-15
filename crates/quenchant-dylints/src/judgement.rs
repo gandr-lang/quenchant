@@ -892,10 +892,14 @@ fn scrutinee_role<'tcx>(
 /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
 ///   through their observable diagnostics.
 /// - witness: `tests::ui`
-#[spec(ensures: |output| output.0 == cx.typeck_results().expr_ty_opt(scrutinee).is_some_and(|ty| match *ty.peel_refs().kind() {
-    rustc_ty::Adt(adt, _) => adt.did().as_local().is_some_and(|id| matches!(declaration_of(cx, id), Maybe::Present(declaration) if matches!(declaration.defect, Maybe::Absent(_)) && declaration.direction.0)),
-    _ => false,
-}))]
+#[spec(ensures: |output| {
+    #[expect(clippy::wildcard_enum_match_arm, reason = "`TyKind` is rustc's type kind, its variant set moving with the pinned nightly; only an ADT can declare itself the direction")]
+    let direction = cx.typeck_results().expr_ty_opt(scrutinee).is_some_and(|ty| match *ty.peel_refs().kind() {
+        rustc_ty::Adt(adt, _) => adt.did().as_local().is_some_and(|id| matches!(declaration_of(cx, id), Maybe::Present(declaration) if matches!(declaration.defect, Maybe::Absent(_)) && declaration.direction.0)),
+        _ => false,
+    });
+    output.0 == direction
+})]
 fn scrutinee_is_direction<'tcx>(
     cx: &LateContext<'tcx>,
     scrutinee: &'tcx Expr<'tcx>,
@@ -1007,10 +1011,14 @@ fn declared_expected_parameter(
 ///   bare-binding arm, a wildcard inside an or-pattern, a binding carrying a
 ///   subpattern, and an exhaustive match naming every variant.
 /// - witness: `tests::ui`
-#[spec(ensures: |output| match pattern.kind {
-    PatKind::Wild | PatKind::Binding(_, _, _, None) => output.as_slice() == [pattern.span],
-    PatKind::Or(_) => true,
-    _ => output.is_empty(),
+#[spec(ensures: |output| {
+    #[expect(clippy::wildcard_enum_match_arm, reason = "`PatKind` is rustc's HIR pattern kind, its variant set moving with the pinned nightly; only a wildcard, a bare binding or an alternation can fall back")]
+    let spans = match pattern.kind {
+        PatKind::Wild | PatKind::Binding(_, _, _, None) => output.as_slice() == [pattern.span],
+        PatKind::Or(_) => true,
+        _ => output.is_empty(),
+    };
+    spans
 })]
 fn fallback_spans(pattern: &Pat<'_>) -> Vec<Span>
 {

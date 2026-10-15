@@ -590,9 +590,13 @@ fn is_semantic_boundary_adt(adt: rustc_ty::AdtDef<'_>) -> SemanticBoundaryAdt
 /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
 ///   through their observable diagnostics.
 /// - witness: `tests::ui`
-#[spec(ensures: |output| output.0 == match resolution {
-    Res::Def(DefKind::Struct | DefKind::Enum | DefKind::Union, def_id) if def_id.is_local() => is_semantic_boundary_adt(cx.tcx.adt_def(def_id)).0,
-    _ => false,
+#[spec(ensures: |output| {
+    #[expect(clippy::wildcard_enum_match_arm, reason = "`Res` is rustc's path resolution, its variant set moving with the pinned nightly; only a local struct, enum or union definition is a boundary")]
+    let boundary = match resolution {
+        Res::Def(DefKind::Struct | DefKind::Enum | DefKind::Union, def_id) if def_id.is_local() => is_semantic_boundary_adt(cx.tcx.adt_def(def_id)).0,
+        _ => false,
+    };
+    output.0 == boundary
 })]
 fn resolves_to_semantic_boundary(
     cx: &LateContext<'_>,

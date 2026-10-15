@@ -184,15 +184,19 @@ impl<'tcx> Visitor<'tcx> for LocalCallCollector<'_, 'tcx>
     /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
     ///   through their observable diagnostics.
     /// - witness: `tests::ui`
-    #[spec(ensures: |_| match expr.kind {
-        ExprKind::Call(callee, args) => match call_target(self.cx, callee) {
-            Maybe::Present(target) => self.calls.iter().any(|edge| edge.callee == target && edge.args.iter().copied().eq(args.iter().map(|arg| arg.hir_id))),
-            Maybe::Absent(_) => true,
-        },
-        ExprKind::MethodCall(_, receiver, args, _) => self.cx.typeck_results().type_dependent_def_id(expr.hir_id).and_then(|target| target.as_local()).is_none_or(|target| {
-            self.calls.iter().any(|edge| edge.callee == target && edge.args.iter().copied().eq(core::iter::once(receiver.hir_id).chain(args.iter().map(|arg| arg.hir_id))))
-        }),
-        _ => true,
+    #[spec(ensures: |_| {
+        #[expect(clippy::wildcard_enum_match_arm, reason = "`ExprKind` is rustc's HIR expression kind, its variant set moving with the pinned nightly; only a call or a method call records an edge")]
+        let recorded = match expr.kind {
+            ExprKind::Call(callee, args) => match call_target(self.cx, callee) {
+                Maybe::Present(target) => self.calls.iter().any(|edge| edge.callee == target && edge.args.iter().copied().eq(args.iter().map(|arg| arg.hir_id))),
+                Maybe::Absent(_) => true,
+            },
+            ExprKind::MethodCall(_, receiver, args, _) => self.cx.typeck_results().type_dependent_def_id(expr.hir_id).and_then(|target| target.as_local()).is_none_or(|target| {
+                self.calls.iter().any(|edge| edge.callee == target && edge.args.iter().copied().eq(core::iter::once(receiver.hir_id).chain(args.iter().map(|arg| arg.hir_id))))
+            }),
+            _ => true,
+        };
+        recorded
     })]
     fn visit_expr(
         &mut self,
@@ -628,10 +632,14 @@ impl<'tcx> Visitor<'tcx> for ProvenancePropagation<'_, '_, 'tcx>
 /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
 ///   through their observable diagnostics.
 /// - witness: `tests::ui`
-#[spec(ensures: |output| body.params.iter().all(|parameter| match parameter.pat.kind {
-    PatKind::Binding(_, binding, ..) => output.contains(&binding),
-    _ => true,
-}))]
+#[spec(ensures: |output| {
+    #[expect(clippy::wildcard_enum_match_arm, reason = "`PatKind` is rustc's HIR pattern kind, its variant set moving with the pinned nightly; only a binding introduces an id")]
+    let seeded = body.params.iter().all(|parameter| match parameter.pat.kind {
+        PatKind::Binding(_, binding, ..) => output.contains(&binding),
+        _ => true,
+    });
+    seeded
+})]
 pub fn parameter_binding_ids(body: &Body<'_>) -> Vec<HirId>
 {
     let mut bindings = Vec::new();
@@ -679,7 +687,11 @@ fn mark_pattern_bindings(
 /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
 ///   through their observable diagnostics.
 /// - witness: `tests::ui`
-#[spec(ensures: |_| match pat.kind { PatKind::Binding(_, id, ..) => bindings.contains(&id), _ => true })]
+#[spec(ensures: |_| {
+    #[expect(clippy::wildcard_enum_match_arm, reason = "`PatKind` is rustc's HIR pattern kind, its variant set moving with the pinned nightly; only a binding introduces an id")]
+    let collected = match pat.kind { PatKind::Binding(_, id, ..) => bindings.contains(&id), _ => true };
+    collected
+})]
 fn collect_pattern_bindings(
     pat: &Pat<'_>,
     bindings: &mut Vec<HirId>,
@@ -723,7 +735,11 @@ impl<'tcx> Visitor<'tcx> for PatternBindingCollector<'_>
     /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
     ///   through their observable diagnostics.
     /// - witness: `tests::ui`
-    #[spec(ensures: |_| match pat.kind { PatKind::Binding(_, id, ..) => self.bindings.contains(&id), _ => true })]
+    #[spec(ensures: |_| {
+        #[expect(clippy::wildcard_enum_match_arm, reason = "`PatKind` is rustc's HIR pattern kind, its variant set moving with the pinned nightly; only a binding introduces an id")]
+        let collected = match pat.kind { PatKind::Binding(_, id, ..) => self.bindings.contains(&id), _ => true };
+        collected
+    })]
     fn visit_pat(
         &mut self,
         pat: &'tcx Pat<'_>,
@@ -915,7 +931,11 @@ impl<'tcx> Visitor<'tcx> for LocalReferenceCollector<'_, 'tcx>
     /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
     ///   through their observable diagnostics.
     /// - witness: `tests::ui`
-    #[spec(ensures: |_| match expr.kind { ExprKind::Path(ref path) => match self.cx.qpath_res(path, expr.hir_id) { Res::Local(id) => self.locals.contains(&id), _ => true }, _ => true })]
+    #[spec(ensures: |_| {
+        #[expect(clippy::wildcard_enum_match_arm, reason = "`ExprKind` and `Res` are rustc's HIR expression kind and path resolution, their variant sets moving with the pinned nightly; only a path resolving to a local names one")]
+        let recorded = match expr.kind { ExprKind::Path(ref path) => match self.cx.qpath_res(path, expr.hir_id) { Res::Local(id) => self.locals.contains(&id), _ => true }, _ => true };
+        recorded
+    })]
     fn visit_expr(
         &mut self,
         expr: &'tcx Expr<'_>,
@@ -944,9 +964,13 @@ impl<'tcx> Visitor<'tcx> for LocalReferenceCollector<'_, 'tcx>
 /// - hypothesis: L2 — compiler fixtures contrast accepted and refused forms
 ///   through their observable diagnostics.
 /// - witness: `tests::ui`
-#[spec(ensures: |output| match cx.tcx.hir_node(hir_id) {
-    Node::Expr(expected) => matches!(output, Maybe::Present(actual) if core::ptr::eq(actual, expected)),
-    _ => matches!(output, Maybe::Absent(expression_lookup::Missing::NotExpression)),
+#[spec(ensures: |output| {
+    #[expect(clippy::wildcard_enum_match_arm, reason = "`Node` is rustc's HIR node kind, its variant set moving with the pinned nightly; only an expression node is looked up")]
+    let found = match cx.tcx.hir_node(hir_id) {
+        Node::Expr(expected) => matches!(output, Maybe::Present(actual) if core::ptr::eq(actual, expected)),
+        _ => matches!(output, Maybe::Absent(expression_lookup::Missing::NotExpression)),
+    };
+    found
 })]
 fn expr_for_hir_id<'tcx>(
     cx: &LateContext<'tcx>,
