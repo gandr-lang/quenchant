@@ -276,18 +276,20 @@ impl<'tcx> LateLintPass<'tcx> for DishonestAnswer
     /// # Specification
     /// - ensures: reports, through [`report`], a path or struct expression
     ///   resolving to a configured variant, a variant of a configured enum or a
-    ///   configured struct, and a string literal equal to a spelling this crate
-    ///   reads; an operand of `==` or `!=`, an expression of test code, and an
-    ///   expression an external macro expands are not read.
+    ///   configured struct, and a string or character literal equal to a
+    ///   spelling this crate reads; an operand of `==` or `!=`, an expression
+    ///   of test code, and an expression an external macro expands are not
+    ///   read.
     /// - panics: none.
     /// - executable: none — rustc owns diagnostic emission; no readback exists.
     ///
     /// # Adequacy
     /// - hypothesis: L3 — the refused fixture builds a unit variant, a called
     ///   and a passed tuple constructor, a struct-variant expression, a struct
-    ///   and the spelling, each reported; the accepted fixture builds them
-    ///   under reasoned expectations, matches them in patterns, compares
-    ///   against them and asserts them in a test, none reported.
+    ///   and the spelling as a string and as a character, each reported; the
+    ///   accepted fixture builds them under reasoned expectations, matches them
+    ///   in patterns, compares against them and asserts them in a test, none
+    ///   reported.
     /// - witness: `tests::ui_answer_totality`
     /// - witness: `tests::ui_answer_totality_refused`
     #[expect(
@@ -298,7 +300,8 @@ impl<'tcx> LateLintPass<'tcx> for DishonestAnswer
     #[expect(
         clippy::wildcard_enum_match_arm,
         reason = "`ExprKind` and `LitKind` are rustc's, whose variants move with the pinned \
-                  nightly; only a path, a struct expression and a string literal build an answer"
+                  nightly; only a path, a struct expression and a string or character literal \
+                  build an answer"
     )]
     fn check_expr(
         &mut self,
@@ -326,6 +329,14 @@ impl<'tcx> LateLintPass<'tcx> for DishonestAnswer
                     if self.spellings.iter().any(|text| text == symbol.as_str()) =>
                 {
                     format!("{:?}", symbol.as_str())
+                },
+                LitKind::Char(character)
+                    if self.spellings.iter().any(|text| {
+                        let mut buffer = [0_u8; 4];
+                        text.as_str() == &*character.encode_utf8(&mut buffer)
+                    }) =>
+                {
+                    format!("{character:?}")
                 },
                 _ => return,
             },

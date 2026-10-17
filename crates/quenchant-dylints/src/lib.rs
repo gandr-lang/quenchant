@@ -1016,47 +1016,27 @@ non_owning_generics = [
     }
 
     /// The answer-totality tables the accepted fixtures are checked against,
-    /// read from their directory's builder source.
-    ///
-    /// # Specification
-    /// trivial.
-    fn accepted_tables() -> String
-    {
-        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ui_answer_totality");
-        let rules = root.join("auxiliary/rules.rs");
-        format!(
-            r#"
+    /// read from their directory's builder source; a rule source is relative
+    /// to the compiler's working directory, here the package's.
+    const ACCEPTED_TABLES: &str = r#"
 [quenchant-dylints]
 dishonest_constructors = ["dishonest_answer::Former::Unreadable", "dishonest_answer::Unreadable"]
-dishonest_spellings = [{{ text = "?", crates = ["dishonest_answer"] }}]
+dishonest_spellings = [{ text = "?", crates = ["dishonest_answer"] }]
 presenters = [
-  {{ enum = "presenter_coverage::Node", functions = ["presenter_coverage::Walker::visit", "presenter_coverage::Walker::form"] }},
+  { enum = "presenter_coverage::Node", functions = ["presenter_coverage::Walker::visit", "presenter_coverage::Walker::form"] },
 ]
 
 [quenchant-dylints.productions]
 marker = "mold_coverage::spells"
 argument = 0
 rule_constructor = "RuleName"
-rule_sources = ["{}"]
-unproduced = [{{ rule = "shebang", reason = "a printer writes terms; a shebang is no term" }}]
-"#,
-            rules.display()
-        )
-    }
+rule_sources = ["ui_answer_totality/auxiliary/rules.rs"]
+unproduced = [{ rule = "shebang", reason = "a printer writes terms; a shebang is no term" }]
+"#;
 
     /// The answer-totality tables the refused fixtures are checked against:
     /// every table carries an entry it refuses.
-    ///
-    /// # Specification
-    /// trivial.
-    fn refused_tables() -> String
-    {
-        let root =
-            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ui_answer_totality_refused");
-        let rules = root.join("auxiliary/rules.rs");
-        let missing = root.join("auxiliary/missing.rs");
-        format!(
-            r#"
+    const REFUSED_TABLES: &str = r#"
 [quenchant-dylints]
 dishonest_constructors = [
   "dishonest_answer::Former::Unreadable",
@@ -1065,35 +1045,34 @@ dishonest_constructors = [
   "dishonest_answer::Placeholder",
   "dishonest_answer::Former::Unreadabel",
 ]
-dishonest_spellings = [{{ text = "?", crates = ["dishonest_answer"] }}, {{ crates = ["dishonest_answer"] }}]
+dishonest_spellings = [{ text = "?", crates = ["dishonest_answer"] }, { crates = ["dishonest_answer"] }]
 presenters = [
-  {{ enum = "presenter_coverage::Node", functions = ["presenter_coverage::Walker::visit", "presenter_coverage::Walker::form"] }},
-  {{ enum = "presenter_coverage::Node", functions = ["presenter_coverage::Walker::missing"] }},
+  { enum = "presenter_coverage::Node", functions = ["presenter_coverage::Walker::visit", "presenter_coverage::Walker::form"] },
+  { enum = "presenter_coverage::Node", functions = ["presenter_coverage::Walker::missing"] },
 ]
 
 [quenchant-dylints.productions]
 marker = "mold_coverage::Spells"
 argument = 0
 rule_constructor = "RuleName"
-rule_sources = ["{}", "{}"]
-unproduced = [
-  {{ rule = "shebang", reason = "a printer writes terms; a shebang is no term" }},
-  {{ rule = "unit_type", reason = "stale: a production names it" }},
-  {{ rule = "gone_type", reason = "stale: no builder defines it" }},
-  {{ rule = "record_type" }},
+rule_sources = [
+  "ui_answer_totality_refused/auxiliary/rules.rs",
+  "ui_answer_totality_refused/auxiliary/missing.rs",
 ]
-"#,
-            rules.display(),
-            missing.display()
-        )
-    }
+unproduced = [
+  { rule = "shebang", reason = "a printer writes terms; a shebang is no term" },
+  { rule = "unit_type", reason = "stale: a production names it" },
+  { rule = "gone_type", reason = "stale: no builder defines it" },
+  { rule = "record_type" },
+]
+"#;
 
     #[test]
     fn ui_answer_totality()
     {
         dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_answer_totality")
             .rustc_flags(["--edition=2024", "-Dunknown-lints"])
-            .dylint_toml(accepted_tables())
+            .dylint_toml(ACCEPTED_TABLES)
             .run();
     }
 
@@ -1102,7 +1081,7 @@ unproduced = [
     {
         dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_answer_totality_refused")
             .rustc_flags(["--edition=2024", "-Dunknown-lints"])
-            .dylint_toml(refused_tables())
+            .dylint_toml(REFUSED_TABLES)
             .run();
     }
 

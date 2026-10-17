@@ -64,6 +64,12 @@ fn spelled() -> Glyphs
     Glyphs("?")
 }
 
+/// The configured spelling as a character.
+fn pushed(text: &mut String)
+{
+    text.push('?');
+}
+
 /// An unconfigured sibling is not read.
 fn sibling() -> Former
 {
