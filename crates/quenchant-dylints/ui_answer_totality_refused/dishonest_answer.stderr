@@ -1,0 +1,82 @@
+error: `dishonest_constructors` entry `dishonest_answer::Former::Unreadabel` names no definition of this crate
+   |
+   = note: `#[deny(dishonest_answer)]` on by default
+
+error: each `dishonest_spellings` entry states a non-empty `text` and the `crates` it is read in
+
+error: builds the placeholder answer `Unreadable::Dangling`
+  --> $DIR/dishonest_answer.rs:33:5
+   |
+LL |     Unreadable::Dangling
+   |     ^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: write the answer the node deserves, or state why it cannot be had: `#[expect(answer_totality, reason = "...")]` on the item, statement or arm that builds it
+
+error: builds the placeholder answer `Former::Unreadable`
+  --> $DIR/dishonest_answer.rs:40:5
+   |
+LL |     Former::Unreadable(Unreadable::Hole)
+   |     ^^^^^^^^^^^^^^^^^^
+   |
+   = help: write the answer the node deserves, or state why it cannot be had: `#[expect(answer_totality, reason = "...")]` on the item, statement or arm that builds it
+
+error: builds the placeholder answer `Unreadable::Hole`
+  --> $DIR/dishonest_answer.rs:40:24
+   |
+LL |     Former::Unreadable(Unreadable::Hole)
+   |                        ^^^^^^^^^^^^^^^^
+   |
+   = help: write the answer the node deserves, or state why it cannot be had: `#[expect(answer_totality, reason = "...")]` on the item, statement or arm that builds it
+
+error: builds the placeholder answer `Former::Unreadable`
+  --> $DIR/dishonest_answer.rs:46:29
+   |
+LL |     reasons.into_iter().map(Former::Unreadable).collect()
+   |                             ^^^^^^^^^^^^^^^^^^
+   |
+   = help: write the answer the node deserves, or state why it cannot be had: `#[expect(answer_totality, reason = "...")]` on the item, statement or arm that builds it
+
+error: builds the placeholder answer `Former::Unknown`
+  --> $DIR/dishonest_answer.rs:52:5
+   |
+LL |     Former::Unknown { width: 1 }
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: write the answer the node deserves, or state why it cannot be had: `#[expect(answer_totality, reason = "...")]` on the item, statement or arm that builds it
+
+error: builds the placeholder answer `Placeholder`
+  --> $DIR/dishonest_answer.rs:58:5
+   |
+LL |     Placeholder
+   |     ^^^^^^^^^^^
+   |
+   = help: write the answer the node deserves, or state why it cannot be had: `#[expect(answer_totality, reason = "...")]` on the item, statement or arm that builds it
+
+error: builds the placeholder answer "?"
+  --> $DIR/dishonest_answer.rs:64:12
+   |
+LL |     Glyphs("?")
+   |            ^^^
+   |
+   = help: write the answer the node deserves, or state why it cannot be had: `#[expect(answer_totality, reason = "...")]` on the item, statement or arm that builds it
+
+error: an answer-totality exception must state why the residue exists: write `reason = "..."` on its `#[expect(answer_totality, ..)]`
+  --> $DIR/dishonest_answer.rs:77:5
+   |
+LL |     Unreadable::Hole
+   |     ^^^^^^^^^^^^^^^^
+
+error: an answer-totality exception must be stated where the answer is built: an `#[expect(answer_totality, ..)]` on an enclosing module, implementation or crate excepts nothing inside it
+  --> $DIR/dishonest_answer.rs:91:9
+   |
+LL |         super::Unreadable::Hole
+   |         ^^^^^^^^^^^^^^^^^^^^^^^
+
+error: an answer-totality residue is admitted only by `#[expect(answer_totality, reason = "...")]`; an `allow` does not say why the residue exists, nor fail when it goes
+  --> $DIR/dishonest_answer.rs:99:5
+   |
+LL |     Unreadable::Hole
+   |     ^^^^^^^^^^^^^^^^
+
+error: aborting due to 12 previous errors
+

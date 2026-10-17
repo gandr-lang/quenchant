@@ -1,0 +1,22 @@
+error: `presenters` entry for `presenter_coverage::Node` names `presenter_coverage::Walker::missing`, which is no function of this crate
+   |
+   = note: `#[deny(presenter_coverage)]` on by default
+
+error: no arm of `Walker::visit`, `Walker::form` names `Node::Record`
+  --> $DIR/presenter_coverage.rs:8:5
+   |
+LL |     Record
+   |     ^^^^^^
+   |
+   = help: write the arm that presents this variant, naming it in its pattern; a variant no presenter can answer states why with `#[expect(answer_totality, reason = "...")]`
+
+error: no arm of `Walker::visit`, `Walker::form` names `Node::Lift`
+  --> $DIR/presenter_coverage.rs:12:5
+   |
+LL |     Lift,
+   |     ^^^^
+   |
+   = help: write the arm that presents this variant, naming it in its pattern; a variant no presenter can answer states why with `#[expect(answer_totality, reason = "...")]`
+
+error: aborting due to 3 previous errors
+

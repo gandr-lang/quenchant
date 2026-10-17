@@ -236,6 +236,18 @@ semantic_copy!(
     /// A returned `Result` hides which failure occurred.
     struct ErasedError(bool);
 );
+semantic_copy!(
+    /// A configured table entry names the crate being checked.
+    struct LocalTableEntry(bool);
+);
+semantic_copy!(
+    /// An expression is an operand of an equality test rather than an answer.
+    struct ComparedOperand(bool);
+);
+semantic_copy!(
+    /// A built definition is one of the configured placeholder answers.
+    struct ConfiguredPlaceholder(bool);
+);
 semantic_borrowed_str!(
     /// Diagnostic wording selected by a compiler-policy decision.
     struct DiagnosticText;
@@ -276,4 +288,12 @@ semantic_borrowed_str!(
 semantic_borrowed_str!(
     /// Authored parameter spelling matched against compiler binding identity.
     struct ParameterName;
+);
+semantic_borrowed_str!(
+    /// Rust source text read by a lexical scan rather than compiled.
+    struct SourceText;
+);
+semantic_borrowed_str!(
+    /// A grammar rule's name, as its builder and its productions spell it.
+    struct RuleName;
 );
