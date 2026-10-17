@@ -18,7 +18,7 @@
 //! marker = "printer::walk::spells"
 //! argument = 0
 //! rule_constructor = "RuleName"
-//! rule_sources = ["/workspace/grammar/src/rules.rs"]
+//! rule_sources = ["grammar/src/rules.rs"]
 //! unproduced = [
 //!   { rule = "shebang", reason = "a printer writes terms; a shebang is no term" },
 //! ]
@@ -30,8 +30,10 @@
 //! file is scanned token by token for the constructor's name applied to one
 //! string literal, `RuleName("sum_type")`, outside every item under
 //! `#[cfg(test)]`. The files join the crate's dependency information, so an
-//! edit to a builder lints the printer again. A path is read as written:
-//! absolute, or relative to the directory the compiler runs in.
+//! edit to a builder lints the printer again. A path is relative to the
+//! directory the compiler runs in, which Cargo makes the workspace root, so
+//! the table names the builders as the repository does and reads the same on
+//! every machine.
 //!
 //! - Alternatives: running the check in a crate that depends on both and
 //!   reading the builders' MIR from metadata, which loses the productions'
@@ -111,7 +113,8 @@ declare_lint! {
     /// `[quenchant-dylints.productions]`: `marker` (a function or tuple struct
     /// path), `argument` (the index of the rule's name among its arguments),
     /// `rule_constructor` (the name the builders apply to each rule's name),
-    /// `rule_sources` (the builders' files) and `unproduced`
+    /// `rule_sources` (the builders' files, relative to the workspace root) and
+    /// `unproduced`
     /// (`{ rule, reason }`).
     ///
     /// ### Example

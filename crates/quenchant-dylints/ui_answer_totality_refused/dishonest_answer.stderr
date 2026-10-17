@@ -60,23 +60,31 @@ LL |     Glyphs("?")
    |
    = help: write the answer the node deserves, or state why it cannot be had: `#[expect(answer_totality, reason = "...")]` on the item, statement or arm that builds it
 
+error: builds the placeholder answer '?'
+  --> $DIR/dishonest_answer.rs:70:15
+   |
+LL |     text.push('?');
+   |               ^^^
+   |
+   = help: write the answer the node deserves, or state why it cannot be had: `#[expect(answer_totality, reason = "...")]` on the item, statement or arm that builds it
+
 error: an answer-totality exception must state why the residue exists: write `reason = "..."` on its `#[expect(answer_totality, ..)]`
-  --> $DIR/dishonest_answer.rs:77:5
+  --> $DIR/dishonest_answer.rs:83:5
    |
 LL |     Unreadable::Hole
    |     ^^^^^^^^^^^^^^^^
 
 error: an answer-totality exception must be stated where the answer is built: an `#[expect(answer_totality, ..)]` on an enclosing module, implementation or crate excepts nothing inside it
-  --> $DIR/dishonest_answer.rs:91:9
+  --> $DIR/dishonest_answer.rs:97:9
    |
 LL |         super::Unreadable::Hole
    |         ^^^^^^^^^^^^^^^^^^^^^^^
 
 error: an answer-totality residue is admitted only by `#[expect(answer_totality, reason = "...")]`; an `allow` does not say why the residue exists, nor fail when it goes
-  --> $DIR/dishonest_answer.rs:99:5
+  --> $DIR/dishonest_answer.rs:105:5
    |
 LL |     Unreadable::Hole
    |     ^^^^^^^^^^^^^^^^
 
-error: aborting due to 12 previous errors
+error: aborting due to 13 previous errors
 

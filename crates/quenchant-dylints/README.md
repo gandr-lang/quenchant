@@ -167,13 +167,13 @@ presenters = [
 marker = "printer::walk::spells"
 argument = 0
 rule_constructor = "RuleName"
-rule_sources = ["/workspace/grammar/src/rules.rs"]
+rule_sources = ["grammar/src/rules.rs"]
 unproduced = [{ rule = "shebang", reason = "a printer writes terms; a shebang is no term" }]
 ```
 
-- `dishonest_answer` reports each place that builds a listed placeholder: a constructor path — a variant, an enum standing for all its variants, or a struct — reached as a value, or a listed string literal in a listed crate. Patterns, operands of `==` and `!=`, test code and external macro expansions build nothing.
+- `dishonest_answer` reports each place that builds a listed placeholder: a constructor path — a variant, an enum standing for all its variants, or a struct — reached as a value, or a string or character literal of a listed spelling in a listed crate. Patterns, operands of `==` and `!=`, test code and external macro expansions build nothing.
 - `presenter_coverage` reports each variant of a listed enum that no pattern of its listed functions names; a wildcard or a bare binding names nothing. A presenter keyed by data rather than by a Rust enum — node kinds read as strings from a grammar table, a hover answering by typed span — has no such table, and its coverage stays with the runtime sweep.
-- `mold_coverage` runs in the crate defining the marker. It collects the literal at `argument` of every call of the marker, function or tuple struct, and compares that set with the rule names the builders give `rule_constructor`, scanned token by token from `rule_sources` outside every `#[cfg(test)]` item; the files are listed among the crate's dependencies, so a builder edit lints the printer again. A production naming no rule is reported where it is written; a rule with no production is reported with its builder's file and line unless `unproduced` states why no presenter writes it; a stale `unproduced` entry is refused.
+- `mold_coverage` runs in the crate defining the marker. It collects the literal at `argument` of every call of the marker, function or tuple struct, and compares that set with the rule names the builders give `rule_constructor`, scanned token by token from `rule_sources` outside every `#[cfg(test)]` item. A source path is relative to the directory the compiler runs in, which Cargo makes the workspace root, so the table reads the same on every machine; the files are listed among the crate's dependencies, so a builder edit lints the printer again. A production naming no rule is reported where it is written; a rule with no production is reported with its builder's file and line unless `unproduced` states why no presenter writes it; a stale `unproduced` entry is refused.
 
 A finding is excepted only where the residue is built: `#[expect(answer_totality, reason = "…")]`, or the rule's own name, on the site or on a node between it and its enclosing item. Under Dylint the attribute rides on `cfg_attr(dylint_lib = "quenchant_dylints", expect(...))`. An expectation on an enclosing module or crate, an expectation without its reason, and an `allow` written in the source are refused; a level set on the command line is the consumer's selection of the rule. The group is a plain lint name rather than a `quenchant::` tool path, because a tool namespace needs the unstable `register_tool` in every consumer crate.
 
