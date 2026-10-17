@@ -1,0 +1,37 @@
+error: a production names its rule through a literal
+  --> $DIR/mold_coverage.rs:23:34
+   |
+LL |         Node::Pair(..) => Spells(pair),
+   |                                  ^^^^
+   |
+   = help: pass the rule's name as a string literal, so the set can be read
+   = note: `#[deny(mold_coverage)]` on by default
+
+error: `productions` rule source `$SRC_DIR/$DIR/auxiliary/missing.rs` cannot be read
+
+error: each `unproduced` entry states its `rule` and a non-empty `reason` (entry: `record_type`)
+
+error: `unproduced` lists `gone_type`, which no builder defines; remove the entry
+
+error: `unproduced` lists `unit_type`, which a production names; remove the entry
+
+error: this production names the rule `lazy_type`, which no builder defines
+  --> $DIR/mold_coverage.rs:24:30
+   |
+LL |         Node::Lazy => Spells("lazy_type"),
+   |                              ^^^^^^^^^^^
+   |
+   = help: name the rule this production spells exactly as its builder names it; a production of a form the grammar lacks is a grammar change, not a printer one
+
+error: the rule `pair_type` has no production
+   |
+   = note: `pair_type` is defined at $SRC_DIR/$DIR/auxiliary/rules.rs:8
+   = help: write the production that spells this rule and name the rule through the marker, or list it under `unproduced` with the reason no presenter writes it
+
+error: the rule `record_type` has no production
+   |
+   = note: `record_type` is defined at $SRC_DIR/$DIR/auxiliary/rules.rs:9
+   = help: write the production that spells this rule and name the rule through the marker, or list it under `unproduced` with the reason no presenter writes it
+
+error: aborting due to 8 previous errors
+

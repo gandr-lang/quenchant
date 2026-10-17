@@ -82,6 +82,9 @@ For normal work, prefer the repository's `mise run check:tests` task, which sele
 | `adequacy_present` | A clause-bearing specification carries an `# Adequacy` section; opt-in |
 | `maybe_shape` | A crate-defined enum does not reimplement `Maybe`'s shape of two variants over two type parameters; opt-in |
 | `erased_error_signature` | A crate-defined signature does not return a `Result` whose error is erased behind `dyn Error`, `anyhow`, or `eyre`; opt-in |
+| `dishonest_answer` | A configured placeholder answer — a constructor or a literal spelling — is built only under an `expect` with its reason at the site; `answer_totality` group, configured |
+| `presenter_coverage` | Every variant of a configured enum is named by an arm of its configured presenter functions; `answer_totality` group, configured |
+| `mold_coverage` | The rules a printer's productions name through a configured marker equal the rules the grammar's builders define, less a justified exclusion table; `answer_totality` group, configured |
 
 The plugin is a policy floor, not a proof of totality or complete semantics. Call edges erased by function-pointer coercion, compiler-generated drop behavior, and unresolved type relationships require the corresponding review or evidence boundary. The ownership and call analyses address different mechanisms; neither subsumes the other.
 
@@ -147,6 +150,32 @@ A unit variant beside a type-parameter payload, `Direction<Expected> { Synthesis
 Both are `allow` by default and are selected like the specification gates, at a crate root through `cfg_attr(dylint_lib = "quenchant_dylints", deny(maybe_shape, erased_error_signature))`.
 
 Single-character lifetime names are not a plugin rule: Clippy's `single_char_lifetime_names` already refuses them where a workspace denies it, as this one does.
+
+## Answer totality
+
+A presenter — a printer, a hover — promises an answer at every node it is handed and a spelling its grammar reads back. A corpus sweep checks the promise at run time; the `answer_totality` group checks what the compiler can see of it, over tables the consumer writes in `dylint.toml`. Each rule reads nothing until its table is configured, and is `deny` by default once it is. [`src/answer_totality.rs`](src/answer_totality.rs) records the shared decisions; each rule's module records its own.
+
+```toml
+[quenchant-dylints]
+dishonest_constructors = ["printer::former::Former::Unreadable", "printer::former::Unspelled"]
+dishonest_spellings = [{ text = "?", crates = ["printer", "hover"] }]
+presenters = [
+  { enum = "printer::former::Former", functions = ["printer::walk::Walker::visit", "printer::walk::Walker::form"] },
+]
+
+[quenchant-dylints.productions]
+marker = "printer::walk::spells"
+argument = 0
+rule_constructor = "RuleName"
+rule_sources = ["/workspace/grammar/src/rules.rs"]
+unproduced = [{ rule = "shebang", reason = "a printer writes terms; a shebang is no term" }]
+```
+
+- `dishonest_answer` reports each place that builds a listed placeholder: a constructor path — a variant, an enum standing for all its variants, or a struct — reached as a value, or a listed string literal in a listed crate. Patterns, operands of `==` and `!=`, test code and external macro expansions build nothing.
+- `presenter_coverage` reports each variant of a listed enum that no pattern of its listed functions names; a wildcard or a bare binding names nothing. A presenter keyed by data rather than by a Rust enum — node kinds read as strings from a grammar table, a hover answering by typed span — has no such table, and its coverage stays with the runtime sweep.
+- `mold_coverage` runs in the crate defining the marker. It collects the literal at `argument` of every call of the marker, function or tuple struct, and compares that set with the rule names the builders give `rule_constructor`, scanned token by token from `rule_sources` outside every `#[cfg(test)]` item; the files are listed among the crate's dependencies, so a builder edit lints the printer again. A production naming no rule is reported where it is written; a rule with no production is reported with its builder's file and line unless `unproduced` states why no presenter writes it; a stale `unproduced` entry is refused.
+
+A finding is excepted only where the residue is built: `#[expect(answer_totality, reason = "…")]`, or the rule's own name, on the site or on a node between it and its enclosing item. Under Dylint the attribute rides on `cfg_attr(dylint_lib = "quenchant_dylints", expect(...))`. An expectation on an enclosing module or crate, an expectation without its reason, and an `allow` written in the source are refused; a level set on the command line is the consumer's selection of the rule. The group is a plain lint name rather than a `quenchant::` tool path, because a tool namespace needs the unstable `register_tool` in every consumer crate.
 
 ## Structured documentation
 

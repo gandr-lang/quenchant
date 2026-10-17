@@ -12,6 +12,19 @@
 //! witness resolution belongs to `quenchant-gates`, which can inspect the
 //! workspace inventory that a lint pass cannot see.
 //!
+//! The `answer_totality` group reads tables the consumer writes in its Dylint
+//! configuration: `dishonest_constructors` and `dishonest_spellings` name the
+//! placeholder answers a presenter may build only under an `expect` with its
+//! reason (`dishonest_answer`); `presenters` names an enum and the functions
+//! whose arms must name each of its variants (`presenter_coverage`); the
+//! `productions` table names a marker, the grammar's rule constructor and its
+//! builder sources, whose two rule sets must be equal up to a justified
+//! `unproduced` list (`mold_coverage`). The group is the static half of a
+//! presenter's answer guarantee; the runtime sweep over a corpus stays the
+//! other half. The alternatives — the sweep alone, a `deny` an item can
+//! `allow` without a reason, marker attributes on the constructors — and the
+//! reversal, stable tool attributes, are recorded in the group's module.
+//!
 //! Authorship is determined from both the declaration and its name. A foreign
 //! macro can manufacture a method while reusing an author's identifier; that
 //! generated sibling must not acquire the author's documentation obligation by
@@ -34,24 +47,29 @@ extern crate rustc_data_structures;
 
 extern crate rustc_errors;
 extern crate rustc_hir;
+extern crate rustc_lexer;
 extern crate rustc_lint;
 extern crate rustc_middle;
 extern crate rustc_session;
 extern crate rustc_span;
 
 mod adequacy;
+mod answer_totality;
 mod arithmetic;
 mod callgraph;
 mod clause_cost;
+mod dishonest_answer;
 mod erased_error;
 mod evidence;
 mod executable;
 mod graph;
 mod judgement;
 mod maybe_shape;
+mod mold_coverage;
 mod option_field;
 mod option_signature;
 mod ownership;
+mod presenter_coverage;
 mod raw_pointer;
 mod rustdoc;
 mod safety;
@@ -90,6 +108,7 @@ use rustc_hir::intravisit::FnKind;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
 use rustc_lint::Level;
+use rustc_lint::LintId;
 use rustc_lint::LintStore;
 use rustc_middle::lint::LintLevelSource;
 use rustc_session::Session;
@@ -368,6 +387,14 @@ pub fn register_lints(
         option_field::OPTION_FIELD,
         raw_pointer::RAW_POINTER_THROUGH_REFERENCE,
         safety::UNSAFE_SAFETY_DOCUMENTATION,
+        dishonest_answer::DISHONEST_ANSWER,
+        presenter_coverage::PRESENTER_COVERAGE,
+        mold_coverage::MOLD_COVERAGE,
+    ]);
+    lint_store.register_group(true, answer_totality::GROUP, None, vec![
+        LintId::of(dishonest_answer::DISHONEST_ANSWER),
+        LintId::of(presenter_coverage::PRESENTER_COVERAGE),
+        LintId::of(mold_coverage::MOLD_COVERAGE),
     ]);
     lint_store.register_pre_expansion_pass(Box::new(|| {
         Box::new(safety::SafetyDocumentation::default())
@@ -402,6 +429,15 @@ pub fn register_lints(
     }));
     lint_store.register_late_pass(Box::new(|_| {
         Box::new(raw_pointer::RawPointerThroughReference)
+    }));
+    lint_store.register_late_pass(Box::new(|tcx| {
+        Box::new(dishonest_answer::DishonestAnswer::configured(tcx))
+    }));
+    lint_store.register_late_pass(Box::new(|tcx| {
+        Box::new(presenter_coverage::PresenterCoverage::configured(tcx))
+    }));
+    lint_store.register_late_pass(Box::new(|tcx| {
+        Box::new(mold_coverage::MoldCoverage::configured(tcx))
     }));
     if let Maybe::Present(directory) = evidence::evidence_directory() {
         let clause_index = evidence::ClauseIndex::default();
@@ -976,6 +1012,97 @@ non_owning_generics = [
     {
         dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_config")
             .dylint_toml(ALLOW_LIST)
+            .run();
+    }
+
+    /// The answer-totality tables the accepted fixtures are checked against,
+    /// read from their directory's builder source.
+    ///
+    /// # Specification
+    /// trivial.
+    fn accepted_tables() -> String
+    {
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ui_answer_totality");
+        let rules = root.join("auxiliary/rules.rs");
+        format!(
+            r#"
+[quenchant-dylints]
+dishonest_constructors = ["dishonest_answer::Former::Unreadable", "dishonest_answer::Unreadable"]
+dishonest_spellings = [{{ text = "?", crates = ["dishonest_answer"] }}]
+presenters = [
+  {{ enum = "presenter_coverage::Node", functions = ["presenter_coverage::Walker::visit", "presenter_coverage::Walker::form"] }},
+]
+
+[quenchant-dylints.productions]
+marker = "mold_coverage::spells"
+argument = 0
+rule_constructor = "RuleName"
+rule_sources = ["{}"]
+unproduced = [{{ rule = "shebang", reason = "a printer writes terms; a shebang is no term" }}]
+"#,
+            rules.display()
+        )
+    }
+
+    /// The answer-totality tables the refused fixtures are checked against:
+    /// every table carries an entry it refuses.
+    ///
+    /// # Specification
+    /// trivial.
+    fn refused_tables() -> String
+    {
+        let root =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ui_answer_totality_refused");
+        let rules = root.join("auxiliary/rules.rs");
+        let missing = root.join("auxiliary/missing.rs");
+        format!(
+            r#"
+[quenchant-dylints]
+dishonest_constructors = [
+  "dishonest_answer::Former::Unreadable",
+  "dishonest_answer::Former::Unknown",
+  "dishonest_answer::Unreadable",
+  "dishonest_answer::Placeholder",
+  "dishonest_answer::Former::Unreadabel",
+]
+dishonest_spellings = [{{ text = "?", crates = ["dishonest_answer"] }}, {{ crates = ["dishonest_answer"] }}]
+presenters = [
+  {{ enum = "presenter_coverage::Node", functions = ["presenter_coverage::Walker::visit", "presenter_coverage::Walker::form"] }},
+  {{ enum = "presenter_coverage::Node", functions = ["presenter_coverage::Walker::missing"] }},
+]
+
+[quenchant-dylints.productions]
+marker = "mold_coverage::Spells"
+argument = 0
+rule_constructor = "RuleName"
+rule_sources = ["{}", "{}"]
+unproduced = [
+  {{ rule = "shebang", reason = "a printer writes terms; a shebang is no term" }},
+  {{ rule = "unit_type", reason = "stale: a production names it" }},
+  {{ rule = "gone_type", reason = "stale: no builder defines it" }},
+  {{ rule = "record_type" }},
+]
+"#,
+            rules.display(),
+            missing.display()
+        )
+    }
+
+    #[test]
+    fn ui_answer_totality()
+    {
+        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_answer_totality")
+            .rustc_flags(["--edition=2024", "-Dunknown-lints"])
+            .dylint_toml(accepted_tables())
+            .run();
+    }
+
+    #[test]
+    fn ui_answer_totality_refused()
+    {
+        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_answer_totality_refused")
+            .rustc_flags(["--edition=2024", "-Dunknown-lints"])
+            .dylint_toml(refused_tables())
             .run();
     }
 
