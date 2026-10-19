@@ -22,6 +22,8 @@
 //! every candidate is kept: a spurious obligation costs a re-read, a missed
 //! one costs the evidence.
 //!
+//! # Boundaries
+//!
 //! Only clauses carry obligations. A link counts when it sits in a bullet of
 //! the `# Specification` section, keyed by the bullet's lead word
 //! (`requires`, `ensures`, …), or anywhere in an `# Errors`, `# Panics`,

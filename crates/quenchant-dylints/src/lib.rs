@@ -12,6 +12,8 @@
 //! witness resolution belongs to `quenchant-gates`, which can inspect the
 //! workspace inventory that a lint pass cannot see.
 //!
+//! # Items
+//!
 //! The `answer_totality` group reads tables the consumer writes in its Dylint
 //! configuration: `dishonest_constructors` and `dishonest_spellings` name the
 //! placeholder answers a presenter may build only under an `expect` with its
@@ -21,9 +23,12 @@
 //! builder sources, whose two rule sets must be equal up to a justified
 //! `unproduced` list (`mold_coverage`). The group is the static half of a
 //! presenter's answer guarantee; the runtime sweep over a corpus stays the
-//! other half. The alternatives — the sweep alone, a `deny` an item can
-//! `allow` without a reason, marker attributes on the constructors — and the
-//! reversal, stable tool attributes, are recorded in the group's module.
+//! other half.
+//!
+//! The `rustdoc_shape` group holds module documentation to a shape
+//! ([`doc_shape`]).
+//!
+//! # Boundaries
 //!
 //! Authorship is determined from both the declaration and its name. A foreign
 //! macro can manufacture a method while reusing an author's identifier; that
@@ -392,10 +397,11 @@ pub fn register_lints(
         presenter_coverage::PRESENTER_COVERAGE,
         mold_coverage::MOLD_COVERAGE,
         doc_shape::MODULE_DOC_HEADING,
-        doc_shape::MODULE_DOC_DECISION,
-        doc_shape::DOC_HISTORY_PROSE,
+        doc_shape::DOC_DECISION_RECORD,
+        doc_shape::DOC_ISSUE_REFERENCE,
         doc_shape::MODULE_DOC_BUDGET,
         doc_shape::MODULE_DOC_DUPLICATION,
+        doc_shape::DOC_HISTORY_PROSE,
         doc_shape::MODULE_DOC_MEASURE,
     ]);
     lint_store.register_group(true, answer_totality::GROUP, None, vec![
@@ -405,8 +411,8 @@ pub fn register_lints(
     ]);
     lint_store.register_group(true, doc_shape::GROUP, None, vec![
         LintId::of(doc_shape::MODULE_DOC_HEADING),
-        LintId::of(doc_shape::MODULE_DOC_DECISION),
-        LintId::of(doc_shape::DOC_HISTORY_PROSE),
+        LintId::of(doc_shape::DOC_DECISION_RECORD),
+        LintId::of(doc_shape::DOC_ISSUE_REFERENCE),
         LintId::of(doc_shape::MODULE_DOC_BUDGET),
         LintId::of(doc_shape::MODULE_DOC_DUPLICATION),
     ]);
@@ -1336,9 +1342,10 @@ unproduced = [
             .run();
     }
 
-    /// The shape rules run as their group; the duplication fixture names a
-    /// README directory of its own through `rustc-env`, and the measure
-    /// fixture selects the measure itself.
+    /// The shape refusals run as their group; the duplication fixture names a
+    /// README directory of its own through `rustc-env`, the history and
+    /// measure fixtures select their reports themselves, and the
+    /// test-compilation fixture compiles with `--test`.
     #[test]
     fn ui_doc_shape()
     {

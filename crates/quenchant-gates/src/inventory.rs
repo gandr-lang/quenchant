@@ -810,8 +810,8 @@ fn merge_cargo_test_listing(
 /// # Adequacy
 /// - hypothesis: L3 — modern named identifiers, omitted-name path and git
 ///   identifiers and legacy identifiers, a git revision among them, retain
-///   their package names; reading an omitted-name fragment as the name yields
-///   the version (#20).
+///   their package names; the omitted-name fragment is the row that would read
+///   the version as the name.
 /// - witness: `inventory::tests::package_identifier_forms_retain_ownership`
 #[spec(ensures: |ref output| !output.contains(['/', '#', '@', ' ', '?']))]
 fn package_name_of(id: PackageId<'_>) -> String

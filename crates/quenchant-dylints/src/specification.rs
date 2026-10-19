@@ -314,7 +314,7 @@ impl SpecificationDefect
     }
 }
 
-/// Exact heading used to locate the item's authored specification.
+/// Exact heading that locates the item's authored specification.
 const HEADING: &str = "# Specification";
 
 /// Marker vocabulary for an explicit claim of trivial specification.
@@ -481,11 +481,11 @@ fn carries_clauses(body: &[String]) -> ClauseBearing
 ///   generates under the author's own identifier (exempt) beside the authored
 ///   method of the same expansion and name (reported), and a `cxx` bridge's
 ///   plain function and its function returning a `Result`, each undocumented
-///   (both reported; the second was exempt while a foreign declaration span
-///   alone exempted, #27). `cargo-mutants` offers one mutant here, the
-///   `Default::default()` return, and it is unviable: [`AuthoredItem`] has no
-///   `Default`. The generated sibling row kills a sibling search that finds
-///   none, and the `cxx` row one that always finds one.
+///   (both reported; a foreign declaration span alone would exempt the second).
+///   `cargo-mutants` offers one mutant here, the `Default::default()` return,
+///   and it is unviable: [`AuthoredItem`] has no `Default`. The generated
+///   sibling row kills a sibling search that finds none, and the `cxx` row one
+///   that always finds one.
 /// - witness: `tests::ui`
 /// - witness: `tests::ui_specifications`
 #[spec(ensures: |output| output.0 == (name_authored(cx, def_id).0

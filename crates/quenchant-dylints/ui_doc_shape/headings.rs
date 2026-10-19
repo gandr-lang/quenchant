@@ -1,44 +1,60 @@
-// compile-flags: --test
 #![allow(dead_code)]
-//! A crate root opening headings outside the set.
+//! A crate root opening headings outside the vocabulary.
 //!
 //! # Status
 //!
-//! A status section narrates; it is refused.
+//! A status section is refused by name.
+//!
+//! # Overview
+//!
+//! The lead is the overview.
+//!
+//! # Decisions
 //!
 //! # Items
 //!
 //! ## Detail
 //!
-//! A sub-heading outside `# Decisions` is outside the set too.
+//! A sub-section is refused: module documentation has one level.
 //!
 //! ```text
 //! # A `#` line inside a fence opens no heading.
 //! ```
 //!
-//! # Items
+//! # The rule
 //!
-//! A module heading opened twice is refused the second time.
+//! A topic heading is outside the vocabulary.
 //!
-//! # Safety
+//! # Example
 //!
-//! - unsafe invariants: an evidence heading is sanctioned in a module too.
+//! # Examples
+//!
+//! A section opened through its fold-in and again under its own spelling is
+//! refused the second time.
 
 /// A struct's own headings are not module headings.
 ///
-/// # Why this item exists
-///
-/// Item documentation is read for history prose alone.
+/// # Notes
 pub struct Frame;
 
 /// An outer comment on a module is not the module's own documentation.
 ///
-/// # Notes
+/// # Background
 pub mod reader
 {
-    //! A module's own documentation is held to the same set.
+    //! A module's own documentation is held to the same vocabulary.
     //!
     //! # History
     //!
-    //! A history section is refused.
+    //! # Changelog
+    //!
+    //! # Notes
+    //!
+    //! # Background
+    //!
+    //! # Decision
+}
+
+fn main()
+{
 }

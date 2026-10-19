@@ -7,6 +7,17 @@
 //! record can name; `quenchant-gates` reads the second kind from rustdoc's JSON
 //! output and joins both on this index.
 //!
+//! Clauses are located by source, as [`crate::clause_cost`] locates them: a
+//! pre-expansion pass records each clause's key and the source range of its
+//! value, and the late pass reads the expressions and patterns whose call site
+//! those ranges enclose, which is where the attribute's predicates land after
+//! expansion. The expression's HIR owner is the specified item. The same
+//! pre-expansion pass records where each item's outer attributes begin: after
+//! expansion an attribute macro is gone and a parsed attribute carries no
+//! general span, so the authored attributes are only visible there.
+//!
+//! # Boundaries
+//!
 //! **Names are resolved, not read.** A clause's names are the definitions the
 //! compiler resolved for the typed expressions and patterns inside the clause's
 //! source range: a path to a function, constant, static, type, trait or
@@ -19,14 +30,7 @@
 //! specification on a change to the core; the named set is what the clause
 //! states a claim about.
 //!
-//! Clauses are located by source, as [`crate::clause_cost`] locates them: a
-//! pre-expansion pass records each clause's key and the source range of its
-//! value, and the late pass reads the expressions and patterns whose call site
-//! those ranges enclose, which is where the attribute's predicates land after
-//! expansion. The expression's HIR owner is the specified item. The same
-//! pre-expansion pass records where each item's outer attributes begin: after
-//! expansion an attribute macro is gone and a parsed attribute carries no
-//! general span, so the authored attributes are only visible there.
+//! # Items
 //!
 //! **Records, not diagnostics.** The pass runs only when the Dylint
 //! configuration names an `evidence_directory`, and then writes one JSON-lines
@@ -41,6 +45,8 @@
 //!   byte of the item does;
 //! - a `clause` record per specified item and clause key: the item's path and
 //!   revision, the key, and the sorted paths of the items the clause names.
+//!
+//! # Dependencies
 //!
 //! Paths are printed from definition paths with the crate name and without
 //! re-export shortening, so a defining crate and its consumers spell an item
@@ -58,14 +64,6 @@
 //! stay fresh for a later run that sets it, which would then write nothing for
 //! the unit. A failed write is a compilation error: an evidence run that lost a
 //! record must not pass.
-//!
-//! **Alternatives.** Diagnostics carrying the edges would need a parser of
-//! rendered compiler output; a whole-workspace rustc driver of its own would
-//! duplicate Dylint's loading and toolchain pairing. Reading the clause tokens
-//! as text, as a syntax tree, cannot tell a constant from a local of the same
-//! name or resolve an import. **Reversal:** a rename-stable identity for items,
-//! a specification id or metadata anchor, replaces the definition path as the
-//! join key; the record shape keeps its fields.
 
 use alloc::collections::BTreeMap;
 use alloc::collections::BTreeSet;

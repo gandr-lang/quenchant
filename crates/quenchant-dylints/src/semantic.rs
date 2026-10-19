@@ -272,6 +272,15 @@ semantic_copy!(
     /// A documentation line opens or closes fenced code.
     struct OpensFence(bool);
 );
+semantic_copy!(
+    /// The documentation read is an item's outer documentation, not a module's
+    /// own.
+    struct OuterDocumentation(bool);
+);
+semantic_copy!(
+    /// A table row records decisions: it names a choice and a reversal.
+    struct DecisionTable(bool);
+);
 semantic_borrowed_str!(
     /// Diagnostic wording selected by a compiler-policy decision.
     struct DiagnosticText;

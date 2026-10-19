@@ -1,0 +1,44 @@
+error: `#577` cites an issue; documentation states its reasons without one
+  --> $DIR/issue_references.rs:2:1
+   |
+LL | //! A crate root citing an issue as its design's origin (#577).
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: state the reason here, and cite the issue in the pull request or the commit
+   = note: `-D doc-issue-reference` implied by `-D rustdoc-shape`
+   = help: to override `-D rustdoc-shape` add `#[allow(doc_issue_reference)]`
+
+error: `gandr-lang/gandr#12` cites an issue; documentation states its reasons without one
+  --> $DIR/issue_references.rs:4:1
+   |
+LL | //! The reader follows gandr-lang/gandr#12, and `#5` in a code span, &#35; a
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: state the reason here, and cite the issue in the pull request or the commit
+
+error: `#41` cites an issue; documentation states its reasons without one
+  --> $DIR/issue_references.rs:11:1
+   |
+LL | /// The reader, shaped by #41 and #42.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: state the reason here, and cite the issue in the pull request or the commit
+
+error: `#42` cites an issue; documentation states its reasons without one
+  --> $DIR/issue_references.rs:11:1
+   |
+LL | /// The reader, shaped by #41 and #42.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: state the reason here, and cite the issue in the pull request or the commit
+
+error: `#9` cites an issue; documentation states its reasons without one
+  --> $DIR/issue_references.rs:17:5
+   |
+LL |     //! Frames, as #9 settled.
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: state the reason here, and cite the issue in the pull request or the commit
+
+error: aborting due to 5 previous errors
+

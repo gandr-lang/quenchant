@@ -403,8 +403,8 @@ fn sorted_function_ids(functions: &HashMap<LocalDefId, FunctionNode>) -> Vec<Loc
 /// - requires: `scc` is one component returned by [`recursive_sccs`].
 /// - ensures: answers affirmatively when some intra-component callsite has an
 ///   argument mentioning a local whose provenance reaches a parameter of the
-///   calling function, and conservatively when an argument's HIR node can no
-///   longer be resolved.
+///   calling function, and conservatively when an argument's HIR node cannot be
+///   resolved.
 /// - ensures: an affirmative answer requires an input call edge with arguments
 ///   whose endpoints belong to the component and whose caller has a function
 ///   node.

@@ -8,6 +8,8 @@
 //! the consumer lists as the enum's presenters, so a new variant is a lint
 //! failure naming it until an arm presents it.
 //!
+//! # Examples
+//!
 //! ```toml
 //! [quenchant-dylints]
 //! presenters = [
@@ -17,6 +19,8 @@
 //!   ] },
 //! ]
 //! ```
+//!
+//! # Boundaries
 //!
 //! An entry is checked in the crate its functions name, which defines them;
 //! the enum may be foreign. A variant counts as named when a pattern anywhere

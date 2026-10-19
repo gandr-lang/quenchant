@@ -1,5 +1,5 @@
-// compile-flags: --test
 #![allow(dead_code)]
+#![warn(doc_history_prose)]
 //! A crate root reading frame headers; the checksum is no longer verified.
 //!
 //! A header is used to route its frame, and the reader used to buffer it.
@@ -45,3 +45,7 @@ documented!(
     /// the macro's definition.
     struct Carried;
 );
+
+fn main()
+{
+}
