@@ -1,5 +1,7 @@
 # quenchant
 
+[![CI](https://github.com/gandr-lang/quenchant/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/gandr-lang/quenchant/actions/workflows/ci.yml) [![codecov](https://codecov.io/gh/gandr-lang/quenchant/graph/badge.svg)](https://codecov.io/gh/gandr-lang/quenchant) [![licence](https://img.shields.io/badge/license-Apache--2.0_WITH_LLVM--exception-blue)](LICENSE.Apache-2.0.txt) [![rustc](https://img.shields.io/badge/rustc-nightly--2026--06--25-blue)](rust-toolchain.toml)
+
 Specification-first hardening for Rust: types, obligations, tests, and gates that make evidence explicit.
 
 Arithmetic and domain boundaries are stated in types, obligations are authored beside the code they constrain, and the compiler and source gates refuse what leaves either implicit. One workspace pins the toolchain, the dependencies, and the verification tasks; the policy library is built from the same tree it checks.
