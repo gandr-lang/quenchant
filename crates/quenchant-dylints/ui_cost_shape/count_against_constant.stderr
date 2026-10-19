@@ -1,0 +1,43 @@
+error: this counts every element to compare the count with a constant
+  --> $DIR/count_against_constant.rs:10:5
+   |
+LL |     label.chars().count() > 24
+   |     ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: bound the walk: compare `take(25).count()`, or test `next()` or `nth(k)`
+   = note: requested on the command line with `-D count-against-constant`
+
+error: this counts every element to compare the count with a constant
+  --> $DIR/count_against_constant.rs:16:10
+   |
+LL |     0 == values.iter().filter(|value| **value > 2).count()
+   |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: bound the walk: compare `take(1).count()`, or test `next()` or `nth(k)`
+
+error: this counts every element to compare the count with a constant
+  --> $DIR/count_against_constant.rs:22:5
+   |
+LL |     text.lines().count() == 1
+   |     ^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: bound the walk: compare `take(2).count()`, or test `next()` or `nth(k)`
+
+error: this counts every element to compare the count with a constant
+  --> $DIR/count_against_constant.rs:28:5
+   |
+LL |     path.split('/').count() <= LIMIT
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: bound the walk: compare `take(4).count()`, or test `next()` or `nth(k)`
+
+error: this counts every element to compare the count with a constant
+  --> $DIR/count_against_constant.rs:34:5
+   |
+LL |     text.matches(',').count() != 0
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: bound the walk: compare `take(1).count()`, or test `next()` or `nth(k)`
+
+error: aborting due to 5 previous errors
+

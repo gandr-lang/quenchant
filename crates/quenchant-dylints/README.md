@@ -92,8 +92,15 @@ For normal work, prefer the repository's `mise run check:tests` task, which sele
 | `module_doc_duplication` | A paragraph of 25 words or more is written once, in the README or in one module; `rustdoc_shape` group, opt-in |
 | `doc_history_prose` | Reports the phrases that narrate a past in module and item documentation; a report selected with `--force-warn`, outside the group |
 | `module_doc_measure` | Prints each documented module's bytes, lead, largest section and decision records; opt-in |
+| `reverse_after_build` | A `Vec` just built by `collect`, `to_vec`, `clone` or `split_off`, or a suffix `extend` just appended, is built in its final order instead of reversed |
+| `front_shift_in_loop` | A loop does not shift a `Vec`'s every element through `remove(0)` or `insert(0, _)`; `VecDeque` is accepted |
+| `linear_search_in_loop` | A loop does not scan a `Vec` or slice by equality per element of another collection; arrays are accepted |
+| `count_against_constant` | A `count()` compared with a constant stops after the constant, unless the iterator is `ExactSizeIterator` |
+| `collect_read_once` | A vector is not collected only to be read once by a move or copy, where `needless_collect` does not reach |
 
 The plugin is a policy floor, not a proof of totality or complete semantics. Call edges erased by function-pointer coercion, compiler-generated drop behavior, and unresolved type relationships require the corresponding review or evidence boundary. The ownership and call analyses address different mechanisms; neither subsumes the other.
+
+The five cost-shape rules are `Deny` by default and type-directed: the receiver's type decides, and a form cheap on its receiver is never refused. `src/cost_shape.rs` states the shared repetition and placement analysis; each lint's module states its cost claim, its accepted shapes and the Clippy lint it complements. A `#[spec]` clause is left to `spec_clause_traversal`.
 
 The primitive-signature rule does not establish a wrapper's meaning, visibility, conversions, or absence policy. `option_signature` checks absence exposure separately; neither rule proves that a chosen wrapper or reason enum models the domain correctly.
 

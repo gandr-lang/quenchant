@@ -1,0 +1,59 @@
+error: this reverses what the statement before it just built from a source that reads backward
+  --> $DIR/reverse_after_build.rs:9:5
+   |
+LL |     doubled.reverse();
+   |     ^^^^^^^^^^^^^^^^^
+   |
+   = help: collect the iterator's `.rev()` instead
+   = note: requested on the command line with `-D reverse-after-build`
+
+error: this reverses what the statement before it just built from a source that reads backward
+  --> $DIR/reverse_after_build.rs:17:5
+   |
+LL |     copy.reverse();
+   |     ^^^^^^^^^^^^^^
+   |
+   = help: collect `iter().rev().cloned()` from the source instead
+
+error: this reverses what the statement before it just built from a source that reads backward
+  --> $DIR/reverse_after_build.rs:25:5
+   |
+LL |     copy.reverse();
+   |     ^^^^^^^^^^^^^^
+   |
+   = help: collect `iter().rev().cloned()` from the source instead
+
+error: this reverses what the statement before it just built from a source that reads backward
+  --> $DIR/reverse_after_build.rs:36:5
+   |
+LL |     tail.reverse();
+   |     ^^^^^^^^^^^^^^
+   |
+   = help: collect `drain(at..).rev()` from the source instead
+
+error: this reverses what the statement before it just built from a source that reads backward
+  --> $DIR/reverse_after_build.rs:49:5
+   |
+LL |     out[start ..].reverse();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: extend with the source's `.rev()` instead
+
+error: this reverses what the statement before it just built from a source that reads backward
+  --> $DIR/reverse_after_build.rs:61:9
+   |
+LL |         suffix.reverse();
+   |         ^^^^^^^^^^^^^^^^
+   |
+   = help: extend with the source's `.rev()` instead
+
+error: this reverses what the statement before it just built from a source that reads backward
+  --> $DIR/reverse_after_build.rs:73:5
+   |
+LL |     out.get_mut(start ..).ok_or(())?.reverse();
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: extend with the source's `.rev()` instead
+
+error: aborting due to 7 previous errors
+

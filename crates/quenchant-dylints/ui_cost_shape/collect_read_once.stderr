@@ -1,0 +1,116 @@
+error: this collects a vector that is read once and dropped
+  --> $DIR/collect_read_once.rs:14:55
+   |
+LL |     for value in values.iter().map(|value| value + 1).collect::<Vec<u32>>() {
+   |                                                       ^^^^^^^^^^^^^^^^^^^^^
+   |
+note: its only read
+  --> $DIR/collect_read_once.rs:14:18
+   |
+LL |     for value in values.iter().map(|value| value + 1).collect::<Vec<u32>>() {
+   |                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: iterate the source iterator itself
+   = note: requested on the command line with `-D collect-read-once`
+
+error: this collects a vector that is read once and dropped
+  --> $DIR/collect_read_once.rs:23:66
+   |
+LL |     let doubled: Vec<u32> = values.iter().map(|value| value * 2).collect();
+   |                                                                  ^^^^^^^^^
+   |
+note: its only read
+  --> $DIR/collect_read_once.rs:24:20
+   |
+LL |     for &value in &doubled {
+   |                    ^^^^^^^
+   = help: iterate the source iterator itself
+
+error: this collects a vector that is read once and dropped
+  --> $DIR/collect_read_once.rs:32:67
+   |
+LL |     let shifted: Vec<u32> = values.iter().map(|value| value << 1).collect();
+   |                                                                   ^^^^^^^^^
+   |
+note: its only read
+  --> $DIR/collect_read_once.rs:33:5
+   |
+LL |     shifted.iter().copied().sum()
+   |     ^^^^^^^^^^^^^^
+   = help: iterate the source iterator itself
+
+error: this collects a vector that is read once and dropped
+  --> $DIR/collect_read_once.rs:39:77
+   |
+LL |     let large: Vec<u32> = values.iter().copied().filter(|value| *value > 9).collect();
+   |                                                                             ^^^^^^^^^
+   |
+note: its only read
+  --> $DIR/collect_read_once.rs:40:5
+   |
+LL |     large.first().copied()
+   |     ^^^^^^^^^^^^^
+   = help: call `next()` on the source iterator
+
+error: this collects a vector that is read once and dropped
+  --> $DIR/collect_read_once.rs:46:77
+   |
+LL |     let small: Vec<u32> = values.iter().copied().filter(|value| *value < 9).collect();
+   |                                                                             ^^^^^^^^^
+   |
+note: its only read
+  --> $DIR/collect_read_once.rs:47:5
+   |
+LL |     small.last().copied()
+   |     ^^^^^^^^^^^^
+   = help: call `last()` on the source iterator, or `next_back()` when it is double-ended
+
+error: this collects a vector that is read once and dropped
+  --> $DIR/collect_read_once.rs:57:10
+   |
+LL |         .collect::<Vec<u32>>()
+   |          ^^^^^^^^^^^^^^^^^^^^^
+   |
+note: its only read
+  --> $DIR/collect_read_once.rs:53:5
+   |
+LL | /     values
+LL | |         .iter()
+LL | |         .copied()
+LL | |         .filter(|value| *value > 1)
+LL | |         .collect::<Vec<u32>>()
+LL | |         .get(2)
+   | |_______________^
+   = help: call `nth(i)` on the source iterator
+
+error: this collects a vector that is read once and dropped
+  --> $DIR/collect_read_once.rs:68:10
+   |
+LL |         .collect::<Vec<u32>>()
+   |          ^^^^^^^^^^^^^^^^^^^^^
+   |
+note: its only read
+  --> $DIR/collect_read_once.rs:65:5
+   |
+LL | /     values
+LL | |         .iter()
+LL | |         .map(|value| value + 3)
+LL | |         .collect::<Vec<u32>>()
+LL | |         .into_iter()
+   | |____________________^
+   = help: iterate the source iterator itself
+
+error: this collects a vector that is read once and dropped
+  --> $DIR/collect_read_once.rs:76:55
+   |
+LL |     let queue: VecDeque<u32> = values.iter().copied().collect();
+   |                                                       ^^^^^^^^^
+   |
+note: its only read
+  --> $DIR/collect_read_once.rs:77:18
+   |
+LL |     for value in queue {
+   |                  ^^^^^
+   = help: iterate the source iterator itself
+
+error: aborting due to 8 previous errors
+

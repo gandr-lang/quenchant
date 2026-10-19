@@ -22,6 +22,18 @@
 //! reference definitions. Rustdoc JSON reporting each link's source range
 //! would make the parse unnecessary.
 
+// Cost-shape sites, classified in #59's census and listed in #62: one
+// `count_against_constant` (a tool's one-line output) and one
+// `linear_search_in_loop` (one package's integration targets), both bounded.
+#![cfg_attr(
+    dylint_lib = "quenchant_dylints",
+    expect(
+        count_against_constant,
+        linear_search_in_loop,
+        reason = "2 bounded sites (1 count_against_constant, 1 linear_search_in_loop); #62 lists them"
+    )
+)]
+
 extern crate alloc;
 
 pub mod anodized;

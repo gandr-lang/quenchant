@@ -203,7 +203,7 @@ const HANDED_PREFIX: &str = "hands state reached through the receiver or a mutab
 
 /// Whether a span lies inside an authored `spec` attribute.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-enum Enclosure
+pub enum Enclosure
 {
     /// The span is inside a recorded attribute.
     Inside,
@@ -258,9 +258,11 @@ impl ClauseRegions
     ///
     /// # Adequacy
     /// - hypothesis: L3 — the UI fixture walks the same state in a clause and
-    ///   in a body; only the clause is reported.
+    ///   in a body; only the clause is reported. The cost-shape fixtures state
+    ///   a refused form in a clause and in a body; only the body is reported.
     /// - witness: `tests::ui_spec_cost`
-    fn encloses(
+    /// - witness: `tests::ui_cost_shape`
+    pub fn encloses(
         &self,
         span: Span,
     ) -> Enclosure
