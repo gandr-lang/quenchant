@@ -59,6 +59,7 @@ mod arithmetic;
 mod callgraph;
 mod clause_cost;
 mod dishonest_answer;
+mod doc_shape;
 mod erased_error;
 mod evidence;
 mod executable;
@@ -390,11 +391,24 @@ pub fn register_lints(
         dishonest_answer::DISHONEST_ANSWER,
         presenter_coverage::PRESENTER_COVERAGE,
         mold_coverage::MOLD_COVERAGE,
+        doc_shape::MODULE_DOC_HEADING,
+        doc_shape::MODULE_DOC_DECISION,
+        doc_shape::DOC_HISTORY_PROSE,
+        doc_shape::MODULE_DOC_BUDGET,
+        doc_shape::MODULE_DOC_DUPLICATION,
+        doc_shape::MODULE_DOC_MEASURE,
     ]);
     lint_store.register_group(true, answer_totality::GROUP, None, vec![
         LintId::of(dishonest_answer::DISHONEST_ANSWER),
         LintId::of(presenter_coverage::PRESENTER_COVERAGE),
         LintId::of(mold_coverage::MOLD_COVERAGE),
+    ]);
+    lint_store.register_group(true, doc_shape::GROUP, None, vec![
+        LintId::of(doc_shape::MODULE_DOC_HEADING),
+        LintId::of(doc_shape::MODULE_DOC_DECISION),
+        LintId::of(doc_shape::DOC_HISTORY_PROSE),
+        LintId::of(doc_shape::MODULE_DOC_BUDGET),
+        LintId::of(doc_shape::MODULE_DOC_DUPLICATION),
     ]);
     lint_store.register_pre_expansion_pass(Box::new(|| {
         Box::new(safety::SafetyDocumentation::default())
@@ -438,6 +452,9 @@ pub fn register_lints(
     }));
     lint_store.register_late_pass(Box::new(|tcx| {
         Box::new(mold_coverage::MoldCoverage::configured(tcx))
+    }));
+    lint_store.register_late_pass(Box::new(|tcx| {
+        Box::new(doc_shape::DocShape::configured(tcx))
     }));
     if let Maybe::Present(directory) = evidence::evidence_directory() {
         let clause_index = evidence::ClauseIndex::default();
@@ -1313,6 +1330,23 @@ unproduced = [
                 "--edition=2024",
                 "-Dunknown-lints",
                 "-Draw_pointer_through_reference",
+                "-Aprimitive_signature",
+                "-Aspecification_present",
+            ])
+            .run();
+    }
+
+    /// The shape rules run as their group; the duplication fixture names a
+    /// README directory of its own through `rustc-env`, and the measure
+    /// fixture selects the measure itself.
+    #[test]
+    fn ui_doc_shape()
+    {
+        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_doc_shape")
+            .rustc_flags([
+                "--edition=2024",
+                "-Dunknown-lints",
+                "-Drustdoc_shape",
                 "-Aprimitive_signature",
                 "-Aspecification_present",
             ])

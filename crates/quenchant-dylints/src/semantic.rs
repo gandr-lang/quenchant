@@ -248,6 +248,30 @@ semantic_copy!(
     /// A built definition is one of the configured placeholder answers.
     struct ConfiguredPlaceholder(bool);
 );
+semantic_copy!(
+    /// The module whose documentation is read is its crate's root.
+    struct CrateRoot(bool);
+);
+semantic_copy!(
+    /// The bytes of a module's documentation text, one per line break.
+    struct DocBytes(usize);
+);
+semantic_copy!(
+    /// The level of the heading a documentation line opens; zero for none.
+    struct HeadingLevel(usize);
+);
+semantic_copy!(
+    /// The position of a line within one node's documentation.
+    struct LineIndex(usize);
+);
+semantic_copy!(
+    /// The position of a word within one node's documentation prose.
+    struct WordIndex(usize);
+);
+semantic_copy!(
+    /// A documentation line opens or closes fenced code.
+    struct OpensFence(bool);
+);
 semantic_borrowed_str!(
     /// Diagnostic wording selected by a compiler-policy decision.
     struct DiagnosticText;
@@ -296,4 +320,8 @@ semantic_borrowed_str!(
 semantic_borrowed_str!(
     /// A grammar rule's name, as its builder and its productions spell it.
     struct RuleName;
+);
+semantic_borrowed_str!(
+    /// A phrase of documentation prose that narrates a past.
+    struct HistoryPhrase;
 );

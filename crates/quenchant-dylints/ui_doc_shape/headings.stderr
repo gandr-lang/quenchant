@@ -1,0 +1,36 @@
+error: `# Status` is not a module documentation heading
+  --> $DIR/headings.rs:5:1
+   |
+LL | //! # Status
+   | ^^^^^^^^^^^^
+   |
+   = help: a module's documentation is a lead paragraph, then at most `# Decisions`, `# Items` and `# References`, beside the evidence sections `# Specification`, `# Adequacy`, `# Termination`, `# Judgement` and `# Safety`; status belongs in the tracker, history in version control
+   = note: `-D module-doc-heading` implied by `-D rustdoc-shape`
+   = help: to override `-D rustdoc-shape` add `#[allow(module_doc_heading)]`
+
+error: `## Detail` is not a module documentation heading
+  --> $DIR/headings.rs:11:1
+   |
+LL | //! ## Detail
+   | ^^^^^^^^^^^^^
+   |
+   = help: a module's documentation is a lead paragraph, then at most `# Decisions`, `# Items` and `# References`, beside the evidence sections `# Specification`, `# Adequacy`, `# Termination`, `# Judgement` and `# Safety`; status belongs in the tracker, history in version control
+
+error: `# Items` opens twice in this module's documentation
+  --> $DIR/headings.rs:19:1
+   |
+LL | //! # Items
+   | ^^^^^^^^^^^
+   |
+   = help: a module's documentation is a lead paragraph, then at most `# Decisions`, `# Items` and `# References`, beside the evidence sections `# Specification`, `# Adequacy`, `# Termination`, `# Judgement` and `# Safety`; status belongs in the tracker, history in version control
+
+error: `# History` is not a module documentation heading
+  --> $DIR/headings.rs:41:5
+   |
+LL |     //! # History
+   |     ^^^^^^^^^^^^^
+   |
+   = help: a module's documentation is a lead paragraph, then at most `# Decisions`, `# Items` and `# References`, beside the evidence sections `# Specification`, `# Adequacy`, `# Termination`, `# Judgement` and `# Safety`; status belongs in the tracker, history in version control
+
+error: aborting due to 4 previous errors
+
