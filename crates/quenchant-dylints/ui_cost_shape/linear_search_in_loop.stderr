@@ -1,0 +1,200 @@
+error: this linear search runs once per pass of a loop over a collection that outlives it
+  --> $DIR/linear_search_in_loop.rs:22:13
+   |
+LL |         if !seen.contains(name) {
+   |             ----^^^^^^^^^^^^^^^
+   |             |
+   |             searched again on every pass
+   |
+note: the loop that repeats it
+  --> $DIR/linear_search_in_loop.rs:21:5
+   |
+LL | /     for name in names {
+LL | |         if !seen.contains(name) {
+LL | |             seen.push(name.clone());
+LL | |         }
+LL | |     }
+   | |_____^
+   = help: build a `HashSet` or `BTreeSet` of the collection once before the loop, or sort it once and use `binary_search`
+   = note: requested on the command line with `-D linear-search-in-loop`
+
+error: this linear search runs once per pass of a loop over a collection that outlives it
+  --> $DIR/linear_search_in_loop.rs:35:12
+   |
+LL |         if known.contains(&next) {
+   |            -----^^^^^^^^^^^^^^^^
+   |            |
+   |            searched again on every pass
+   |
+note: the loop that repeats it
+  --> $DIR/linear_search_in_loop.rs:34:5
+   |
+LL | /     while let Some(next) = queue.pop() {
+LL | |         if known.contains(&next) {
+LL | |             continue;
+LL | |         }
+LL | |     }
+   | |_____^
+   = help: build a `HashSet` or `BTreeSet` of the collection once before the loop, or sort it once and use `binary_search`
+
+error: this linear search runs once per pass of a loop over a collection that outlives it
+  --> $DIR/linear_search_in_loop.rs:45:33
+   |
+LL |     items.iter().filter(|item| !excluded.contains(item)).count()
+   |                                 --------^^^^^^^^^^^^^^^
+   |                                 |
+   |                                 searched again on every pass
+   |
+note: the loop that repeats it
+  --> $DIR/linear_search_in_loop.rs:45:25
+   |
+LL |     items.iter().filter(|item| !excluded.contains(item)).count()
+   |                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: build a `HashSet` or `BTreeSet` of the collection once before the loop, or sort it once and use `binary_search`
+
+error: this linear search runs once per pass of a loop over a collection that outlives it
+  --> $DIR/linear_search_in_loop.rs:55:13
+   |
+LL |         if !window.contains(&next) {
+   |             ------^^^^^^^^^^^^^^^^
+   |             |
+   |             searched again on every pass
+   |
+note: the loop that repeats it
+  --> $DIR/linear_search_in_loop.rs:54:5
+   |
+LL | /     loop {
+LL | |         if !window.contains(&next) {
+LL | |             break;
+...  |
+LL | |     }
+   | |_____^
+   = help: build a `HashSet` or `BTreeSet` of the collection once before the loop, or sort it once and use `binary_search`
+
+error: this linear search runs once per pass of a loop over a collection that outlives it
+  --> $DIR/linear_search_in_loop.rs:69:12
+   |
+LL |         if registry.items.contains(candidate) {
+   |            --------------^^^^^^^^^^^^^^^^^^^^
+   |            |
+   |            searched again on every pass
+   |
+note: the loop that repeats it
+  --> $DIR/linear_search_in_loop.rs:68:5
+   |
+LL | /     for candidate in candidates {
+LL | |         if registry.items.contains(candidate) {
+LL | |             return;
+LL | |         }
+LL | |     }
+   | |_____^
+   = help: build a `HashSet` or `BTreeSet` of the collection once before the loop, or sort it once and use `binary_search`
+
+error: this linear search runs once per pass of a loop over a collection that outlives it
+  --> $DIR/linear_search_in_loop.rs:82:21
+   |
+LL |         let found = entries.iter().position(|entry| entry.name == *name);
+   |                     -------^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |                     |
+   |                     searched again on every pass
+   |
+note: the loop that repeats it
+  --> $DIR/linear_search_in_loop.rs:81:5
+   |
+LL | /     for name in names {
+LL | |         let found = entries.iter().position(|entry| entry.name == *name);
+LL | |     }
+   | |_____^
+   = help: build a `HashSet` or `BTreeSet` of the collection once before the loop, or sort it once and use `binary_search`
+
+error: this linear search runs once per pass of a loop over a collection that outlives it
+  --> $DIR/linear_search_in_loop.rs:92:26
+   |
+LL |     kept.retain(|value| !removed.iter().any(|other| other == value));
+   |                          -------^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |                          |
+   |                          searched again on every pass
+   |
+note: the loop that repeats it
+  --> $DIR/linear_search_in_loop.rs:92:17
+   |
+LL |     kept.retain(|value| !removed.iter().any(|other| other == value));
+   |                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: build a `HashSet` or `BTreeSet` of the collection once before the loop, or sort it once and use `binary_search`
+
+error: this linear search runs once per pass of a loop over a collection that outlives it
+  --> $DIR/linear_search_in_loop.rs:103:21
+   |
+LL |         let first = entries.iter().find(|entry| *name == entry.name);
+   |                     -------^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |                     |
+   |                     searched again on every pass
+   |
+note: the loop that repeats it
+  --> $DIR/linear_search_in_loop.rs:102:5
+   |
+LL | /     for name in names {
+LL | |         let first = entries.iter().find(|entry| *name == entry.name);
+LL | |         let last = entries.iter().rposition(|entry| entry.name == *name);
+LL | |     }
+   | |_____^
+   = help: build a `HashSet` or `BTreeSet` of the collection once before the loop, or sort it once and use `binary_search`
+
+error: this linear search runs once per pass of a loop over a collection that outlives it
+  --> $DIR/linear_search_in_loop.rs:104:20
+   |
+LL |         let last = entries.iter().rposition(|entry| entry.name == *name);
+   |                    -------^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |                    |
+   |                    searched again on every pass
+   |
+note: the loop that repeats it
+  --> $DIR/linear_search_in_loop.rs:102:5
+   |
+LL | /     for name in names {
+LL | |         let first = entries.iter().find(|entry| *name == entry.name);
+LL | |         let last = entries.iter().rposition(|entry| entry.name == *name);
+LL | |     }
+   | |_____^
+   = help: build a `HashSet` or `BTreeSet` of the collection once before the loop, or sort it once and use `binary_search`
+
+error: this linear search runs once per pass of a loop over a collection that outlives it
+  --> $DIR/linear_search_in_loop.rs:116:12
+   |
+LL |         if seen.contains(row) && *row > 9 {
+   |            ----^^^^^^^^^^^^^^
+   |            |
+   |            searched again on every pass
+   |
+note: the loop that repeats it
+  --> $DIR/linear_search_in_loop.rs:115:5
+   |
+LL | /     for row in rows {
+LL | |         if seen.contains(row) && *row > 9 {
+LL | |             return true;
+LL | |         }
+LL | |     }
+   | |_____^
+   = help: build a `HashSet` or `BTreeSet` of the collection once before the loop, or sort it once and use `binary_search`
+
+error: this linear search runs once per pass of a loop over a collection that outlives it
+  --> $DIR/linear_search_in_loop.rs:131:13
+   |
+LL |         if !seen.contains(&row) {
+   |             ----^^^^^^^^^^^^^^^
+   |             |
+   |             searched again on every pass
+   |
+note: the loop that repeats it
+  --> $DIR/linear_search_in_loop.rs:130:5
+   |
+LL | /     for &row in rows {
+LL | |         if !seen.contains(&row) {
+LL | |             continue;
+...  |
+LL | |     }
+   | |_____^
+   = help: build a `HashSet` or `BTreeSet` of the collection once before the loop, or sort it once and use `binary_search`
+
+error: aborting due to 11 previous errors
+

@@ -26,7 +26,8 @@
 //! other half.
 //!
 //! The `rustdoc_shape` group holds module documentation to a shape
-//! ([`doc_shape`]).
+//! ([`doc_shape`]). Five `deny` lints refuse a standard-library operation
+//! whose cost is wrong for its receiver's type ([`cost_shape`]).
 //!
 //! # Boundaries
 //!
@@ -44,6 +45,13 @@
 #![expect(
     unstable_features,
     reason = "rustc_private is the lint driver's substrate"
+)]
+// Cost-shape sites, classified in #59's census and listed in #62: four
+// `linear_search_in_loop` deduplications of a path's resolutions or a
+// signature's opaque types, each a handful of entries.
+#![cfg_attr(
+    dylint_lib = "quenchant_dylints",
+    expect(linear_search_in_loop, reason = "4 bounded sites; #62 lists them")
 )]
 
 extern crate alloc;
@@ -63,13 +71,18 @@ mod answer_totality;
 mod arithmetic;
 mod callgraph;
 mod clause_cost;
+mod collect_read_once;
+mod cost_shape;
+mod count_comparison;
 mod dishonest_answer;
 mod doc_shape;
 mod erased_error;
 mod evidence;
 mod executable;
+mod front_shift;
 mod graph;
 mod judgement;
+mod linear_search;
 mod maybe_shape;
 mod mold_coverage;
 mod option_field;
@@ -77,6 +90,7 @@ mod option_signature;
 mod ownership;
 mod presenter_coverage;
 mod raw_pointer;
+mod reverse_after_build;
 mod rustdoc;
 mod safety;
 mod semantic;
@@ -374,6 +388,7 @@ pub fn register_lints(
     let collected_spelling = spelling.clone();
     let clause_regions = clause_cost::ClauseRegions::default();
     let collected_regions = clause_regions.clone();
+    let cost_regions = clause_regions.clone();
     lint_store.register_lints(&[
         SINGLE_FIELD_STRUCT_NEEDS_TRANSPARENT_REPR,
         PRIMITIVE_SIGNATURE,
@@ -403,6 +418,11 @@ pub fn register_lints(
         doc_shape::MODULE_DOC_DUPLICATION,
         doc_shape::DOC_HISTORY_PROSE,
         doc_shape::MODULE_DOC_MEASURE,
+        collect_read_once::COLLECT_READ_ONCE,
+        count_comparison::COUNT_AGAINST_CONSTANT,
+        front_shift::FRONT_SHIFT_IN_LOOP,
+        linear_search::LINEAR_SEARCH_IN_LOOP,
+        reverse_after_build::REVERSE_AFTER_BUILD,
     ]);
     lint_store.register_group(true, answer_totality::GROUP, None, vec![
         LintId::of(dishonest_answer::DISHONEST_ANSWER),
@@ -461,6 +481,27 @@ pub fn register_lints(
     }));
     lint_store.register_late_pass(Box::new(|tcx| {
         Box::new(doc_shape::DocShape::configured(tcx))
+    }));
+    let read_once = cost_regions.clone();
+    lint_store.register_late_pass(Box::new(move |_| {
+        Box::new(collect_read_once::CollectReadOnce::new(read_once.clone()))
+    }));
+    let counted = cost_regions.clone();
+    lint_store.register_late_pass(Box::new(move |_| {
+        Box::new(count_comparison::CountAgainstConstant::new(counted.clone()))
+    }));
+    let shifted = cost_regions.clone();
+    lint_store.register_late_pass(Box::new(move |_| {
+        Box::new(front_shift::FrontShiftInLoop::new(shifted.clone()))
+    }));
+    let searched = cost_regions.clone();
+    lint_store.register_late_pass(Box::new(move |_| {
+        Box::new(linear_search::LinearSearchInLoop::new(searched.clone()))
+    }));
+    lint_store.register_late_pass(Box::new(move |_| {
+        Box::new(reverse_after_build::ReverseAfterBuild::new(
+            cost_regions.clone(),
+        ))
     }));
     if let Maybe::Present(directory) = evidence::evidence_directory() {
         let clause_index = evidence::ClauseIndex::default();
@@ -1357,6 +1398,29 @@ unproduced = [
                 "-Aprimitive_signature",
                 "-Aspecification_present",
             ])
+            .run();
+    }
+
+    #[test]
+    fn ui_cost_shape()
+    {
+        let mut flags = fixture_extern_flags();
+        flags.extend(
+            [
+                "-Dunknown-lints",
+                "-Dcollect_read_once",
+                "-Dcount_against_constant",
+                "-Dfront_shift_in_loop",
+                "-Dlinear_search_in_loop",
+                "-Dreverse_after_build",
+                "-Aprimitive_signature",
+                "-Asingle_field_struct_needs_transparent_repr",
+                "-Aspecification_present",
+            ]
+            .map(str::to_owned),
+        );
+        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_cost_shape")
+            .rustc_flags(flags)
             .run();
     }
 
