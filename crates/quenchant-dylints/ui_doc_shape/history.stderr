@@ -1,0 +1,72 @@
+error: `no longer` narrates a history; documentation states the present
+  --> $DIR/history.rs:3:1
+   |
+LL | //! A crate root reading frame headers; the checksum is no longer verified.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: replace a superseded statement with the current one; history lives in version control
+   = note: `-D doc-history-prose` implied by `-D rustdoc-shape`
+   = help: to override `-D rustdoc-shape` add `#[allow(doc_history_prose)]`
+
+error: `used to` narrates a history; documentation states the present
+  --> $DIR/history.rs:5:1
+   |
+LL | //! A header is used to route its frame, and the reader used to buffer it.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: replace a superseded statement with the current one; history lives in version control
+
+error: `previously` narrates a history; documentation states the present
+  --> $DIR/history.rs:7:1
+   |
+LL | /// The reader. Previously it owned its socket.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: replace a superseded statement with the current one; history lives in version control
+
+error: `as of` narrates a history; documentation states the present
+  --> $DIR/history.rs:10:1
+   |
+LL | /// The header, as of the second wire version.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: replace a superseded statement with the current one; history lives in version control
+
+error: `was renamed in` narrates a history; documentation states the present
+  --> $DIR/history.rs:13:1
+   |
+LL | /// A field that was renamed in the second version; `formerly` in a code span
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: replace a superseded statement with the current one; history lives in version control
+
+error: `no longer` narrates a history; documentation states the present
+  --> $DIR/history.rs:17:1
+   |
+LL | /// A buffer that the reader no
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: replace a superseded statement with the current one; history lives in version control
+
+error: `historically` narrates a history; documentation states the present
+  --> $DIR/history.rs:32:5
+   |
+LL |     //! Historically part of the reader.
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: replace a superseded statement with the current one; history lives in version control
+
+error: `formerly` narrates a history; documentation states the present
+  --> $DIR/history.rs:43:1
+   |
+LL | / documented!(
+LL | |     /// A comment a macro carries is reported at its invocation, formerly at
+LL | |     /// the macro's definition.
+LL | |     struct Carried;
+LL | | );
+   | |_^
+   |
+   = help: replace a superseded statement with the current one; history lives in version control
+
+error: aborting due to 8 previous errors
+

@@ -1,0 +1,26 @@
+error: this paragraph repeats the crate's README: "The frame reader keeps one buffer per connection, …"
+  --> $DIR/duplication.rs:4:1
+   |
+LL | //! The frame reader keeps one buffer per connection, drains each buffer in
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: `README.md` line 5 carries the same paragraph
+   = help: state the paragraph once, and link to it from the other
+   = note: `-D module-doc-duplication` implied by `-D rustdoc-shape`
+   = help: to override `-D rustdoc-shape` add `#[allow(module_doc_duplication)]`
+
+error: this paragraph repeats another module's documentation: "Every handler receives its frame by value and …"
+  --> $DIR/duplication.rs:25:5
+   |
+LL |     //! Every handler receives its frame by value and owns it from then on,
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the same paragraph
+  --> $DIR/duplication.rs:17:5
+   |
+LL |     //! Every handler receives its frame by value and owns it from then on, so
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: state the paragraph once, and link to it from the other
+
+error: aborting due to 2 previous errors
+

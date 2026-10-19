@@ -1,0 +1,68 @@
+error: this decision is not one row of three bullets: it reads `Choice:`, `Alternatives:`, `Reversal:`, `Alternatives:`
+  --> $DIR/decisions.rs:10:1
+   |
+LL | //! - Choice: a row with a fourth bullet.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: write each decision under `# Decisions` as three bullets: `- Choice:` what the module does, `- Alternatives:` what it does not do and why, `- Reversal:` when the choice changes
+   = note: `-D module-doc-decision` implied by `-D rustdoc-shape`
+   = help: to override `-D rustdoc-shape` add `#[allow(module_doc_decision)]`
+
+error: this decision is not one row of three bullets: it reads `Choice:`, `Reversal:`, `Alternatives:`
+  --> $DIR/decisions.rs:14:1
+   |
+LL | //! - Choice: a row out of order.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: write each decision under `# Decisions` as three bullets: `- Choice:` what the module does, `- Alternatives:` what it does not do and why, `- Reversal:` when the choice changes
+
+error: this decision's `Alternatives:` bullet states nothing
+  --> $DIR/decisions.rs:17:1
+   |
+LL | //! - Choice: a row with an empty bullet.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: write each decision under `# Decisions` as three bullets: `- Choice:` what the module does, `- Alternatives:` what it does not do and why, `- Reversal:` when the choice changes
+
+error: this decision is not a row: its bullet opens with none of `Choice:`, `Alternatives:` and `Reversal:`
+  --> $DIR/decisions.rs:20:1
+   |
+LL | //! - **A bold lead.** The bullet opens with no label.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: write each decision under `# Decisions` as three bullets: `- Choice:` what the module does, `- Alternatives:` what it does not do and why, `- Reversal:` when the choice changes
+
+error: prose under `# Decisions` is not a decision row
+  --> $DIR/decisions.rs:22:1
+   |
+LL | //! A paragraph under `# Decisions` is not a row,
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: write each decision under `# Decisions` as three bullets: `- Choice:` what the module does, `- Alternatives:` what it does not do and why, `- Reversal:` when the choice changes
+
+error: a sub-heading under `# Decisions` is not a decision row
+  --> $DIR/decisions.rs:25:1
+   |
+LL | //! ## Eviction
+   | ^^^^^^^^^^^^^^^
+   |
+   = help: write each decision under `# Decisions` as three bullets: `- Choice:` what the module does, `- Alternatives:` what it does not do and why, `- Reversal:` when the choice changes
+
+error: this decision stands outside `# Decisions`
+  --> $DIR/decisions.rs:5:1
+   |
+LL | //! **Choice.** A decision labelled outside `# Decisions` is refused.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: write each decision under `# Decisions` as three bullets: `- Choice:` what the module does, `- Alternatives:` what it does not do and why, `- Reversal:` when the choice changes
+
+error: this module records 8 decisions, over the cap of 7
+  --> $DIR/decisions.rs:39:5
+   |
+LL |     //! # Decisions
+   |     ^^^^^^^^^^^^^^^
+   |
+   = help: a module carrying more decisions than the cap is doing too much, or carries decisions that belong to another module
+
+error: aborting due to 8 previous errors
+

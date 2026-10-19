@@ -1,0 +1,20 @@
+warning: crate root documentation: 108 bytes, 1 decisions, 1 rows
+  --> $DIR/measure.rs:4:1
+   |
+LL | //! A crate root measured.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the lint level is defined here
+  --> $DIR/measure.rs:3:9
+   |
+LL | #![warn(module_doc_measure)]
+   |         ^^^^^^^^^^^^^^^^^^
+
+warning: module documentation: 11 bytes, 0 decisions, 0 rows
+  --> $DIR/measure.rs:15:5
+   |
+LL |     //! One line.
+   |     ^^^^^^^^^^^^^
+
+warning: 2 warnings emitted
+

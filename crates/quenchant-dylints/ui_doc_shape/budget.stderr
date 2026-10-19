@@ -1,0 +1,20 @@
+error: this crate root's documentation is 8320 bytes, over its 8192-byte budget
+  --> $DIR/budget.rs:3:1
+   |
+LL | //! A crate root over its budget.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: split the module, or move a section to the item it describes; never compress the prose to fit
+   = note: `-D module-doc-budget` implied by `-D rustdoc-shape`
+   = help: to override `-D rustdoc-shape` add `#[allow(module_doc_budget)]`
+
+error: this module's documentation is 4189 bytes, over its 4096-byte budget
+  --> $DIR/budget.rs:121:5
+   |
+LL |     //! A module over its budget.
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: split the module, or move a section to the item it describes; never compress the prose to fit
+
+error: aborting due to 2 previous errors
+
