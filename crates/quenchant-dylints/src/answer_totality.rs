@@ -19,7 +19,7 @@
 //! The three share the `answer_totality` lint group. Each is also selectable
 //! and expectable by its own name.
 //!
-//! # Exceptions
+//! # Boundaries
 //!
 //! A reported site is excepted by `#[expect(answer_totality, reason = "…")]`,
 //! or the rule's own name, written at the site or on a node between it and its
@@ -28,15 +28,6 @@
 //! answer is built, and is refused; so is an expectation without its reason and
 //! an `allow` written in the source. A level set on the command line is the
 //! consumer's selection of the rule and is not an exception.
-//!
-//! - Alternatives: the runtime sweep alone, which sees a dishonest answer only
-//!   when a corpus source happens to reach it; a `deny` an item can `allow`,
-//!   which admits a residue without saying why it exists; marker attributes on
-//!   the constructors, which a consumer cannot place on a foreign type and
-//!   which this library's other tables do not use.
-//! - Reversal: a compiler that registers tool attributes on stable Rust, which
-//!   would let a consumer mark constructors and arms in place of a
-//!   configuration table.
 
 use anodized::spec;
 use clippy_utils::diagnostics::span_lint_hir;

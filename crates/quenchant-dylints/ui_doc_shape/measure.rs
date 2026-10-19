@@ -1,15 +1,14 @@
-// compile-flags: --test
-#![allow(dead_code)]
+#![allow(dead_code, doc_decision_record)]
 #![warn(module_doc_measure)]
 //! A crate root measured.
 //!
-//! # Decisions
+//! # Items
 //!
-//! - Choice: one row.
+//! - Choice: one record, counted.
 //! - Alternatives: another.
 //! - Reversal: a change.
 
-/// A module measured: one line, no decision.
+/// A module measured: one line, no section, no record.
 pub mod measured
 {
     //! One line.
@@ -18,3 +17,7 @@ pub mod measured
 /// A module without documentation of its own is not measured.
 pub mod undocumented
 {}
+
+fn main()
+{
+}

@@ -160,7 +160,7 @@ semantic_borrowed_str!(
     struct TargetName;
 );
 semantic_borrowed_str!(
-    /// Cargo target category used to select witness-prefix behavior.
+    /// Cargo target category that selects witness-prefix behavior.
     struct TargetKind;
 );
 semantic_borrowed_str!(

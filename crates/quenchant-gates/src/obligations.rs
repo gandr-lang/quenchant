@@ -15,12 +15,16 @@
 //! when it changed itself. Only named dependencies count, never the call
 //! graph: an item reached only through a body is not an obligation.
 //!
+//! # Boundaries
+//!
 //! **Early cutoff.** Obligations are one hop from the changed items. A
 //! specification that is obligated but whose own source is unchanged stops
 //! the cascade: what names it is not flagged. If re-verifying it leads to an
 //! edit, the edit makes it a changed item and the next run flags what names
 //! it, as an incremental build reruns a dependent only when its input's
 //! output changed.
+//!
+//! # Witnesses
 //!
 //! **Discharge.** An executable obligation is discharged by rerunning the
 //! specification's witnesses with specifications enforced; the report lists

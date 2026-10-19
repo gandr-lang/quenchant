@@ -189,9 +189,7 @@ pub fn section_body(
 ///   its own.
 /// - ensures: answers affirmatively exactly when the line carries indentation
 ///   beyond that single leading space.
-/// - provides: the rule separating a wrapped bullet value from a new paragraph,
-///   shared by the section readers and the decision rows of
-///   [`crate::doc_shape`].
+/// - provides: the rule separating a wrapped bullet value from a new paragraph.
 /// - panics: none.
 ///
 /// # Adequacy
@@ -201,7 +199,7 @@ pub fn section_body(
 /// - witness: `adequacy::tests::a_trailing_link_definition_joins_no_bullet`
 #[spec(ensures: |output| output.0 ==
     line.0.strip_prefix(' ').unwrap_or(line.0).starts_with(char::is_whitespace))]
-pub fn is_indented_continuation(line: RustdocLine<'_>) -> IndentedContinuation
+fn is_indented_continuation(line: RustdocLine<'_>) -> IndentedContinuation
 {
     let content = line.0.strip_prefix(' ').unwrap_or(line.0);
     IndentedContinuation(content.chars().next().is_some_and(char::is_whitespace))

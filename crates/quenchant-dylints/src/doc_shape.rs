@@ -1,72 +1,29 @@
-//! Module documentation keeps a shape that a reader scans and a reviewer
-//! prunes.
+//! Module documentation keeps a shape a reader scans and a reviewer prunes: a
+//! lead paragraph, then sections from one vocabulary, each within a budget,
+//! stating what the code does and nothing of how it came to be.
 //!
-//! A crate's README is held to a byte budget and sends its detail into
-//! rustdoc; these rules hold the rustdoc in turn. A module's `//!`
-//! documentation is a lead paragraph, then at most `# Decisions`, `# Items`
-//! and `# References`, beside the evidence headings this library's other
-//! readers own: `# Specification`, `# Adequacy`, `# Termination`,
-//! `# Judgement` and `# Safety`. Five rules read it, and the `rustdoc_shape`
-//! group selects them together:
+//! The `rustdoc_shape` group gathers the refusals: [`MODULE_DOC_HEADING`],
+//! [`DOC_DECISION_RECORD`], [`DOC_ISSUE_REFERENCE`], [`MODULE_DOC_BUDGET`] and
+//! [`MODULE_DOC_DUPLICATION`]. [`DOC_HISTORY_PROSE`] stands outside it, a
+//! report a lane forces to `warn`, and [`MODULE_DOC_MEASURE`] prints each
+//! module's sizes. A test compilation is not read: a regression test names the
+//! defect it pins.
 //!
-//! - [`MODULE_DOC_HEADING`]: a heading outside that set, or a module heading
-//!   written twice;
-//! - [`MODULE_DOC_DECISION`]: a decision that is not one row of three bullets,
-//!   a decision written outside `# Decisions`, and more than [`DECISION_CAP`]
-//!   decisions in one module;
-//! - [`DOC_HISTORY_PROSE`]: words that narrate a past instead of stating the
-//!   present, in module and item documentation alike;
-//! - [`MODULE_DOC_BUDGET`]: a crate root's documentation over
-//!   [`CRATE_ROOT_BUDGET`] bytes, any other module's over [`MODULE_BUDGET`];
-//! - [`MODULE_DOC_DUPLICATION`]: a paragraph of [`DUPLICATE_WORDS`] words or
-//!   more that the crate's README or another module's documentation also
-//!   carries.
+//! # Items
 //!
-//! [`MODULE_DOC_MEASURE`] stands outside the group: it prints each documented
-//! module's size and decision count, the distribution the caps are chosen
-//! from. A decision row reads:
+//! - [`SECTIONS`], [`EVIDENCE_HEADINGS`], [`FOLD_INS`] and
+//!   [`REFUSED_HEADINGS`]: the heading vocabulary.
+//! - [`LEAD_BUDGET`], [`SECTION_BUDGET`], [`CRATE_ROOT_BUDGET`] and
+//!   [`MODULE_BUDGET`]: the byte budgets, measured over the documentation's
+//!   text with its comment markers stripped and one byte per line break.
+//! - [`DUPLICATE_WORDS`]: the length at which a repeated paragraph is refused.
 //!
-//! ```text
-//! - Choice: what the module does.
-//! - Alternatives: what it does not do, and why not.
-//! - Reversal: the condition under which the choice changes.
-//! ```
+//! # Boundaries
 //!
-//! Fenced code is read as code: a `#` line inside a fence opens no heading,
-//! and a history word inside a fence or a code span is an identifier.
-//!
-//! # Decisions
-//!
-//! - Choice: a row is three labelled bullets, `Choice:`, `Alternatives:` (or
-//!   `Alternative:`) and `Reversal:`, in that order; the next `Choice:` opens
-//!   the next row.
-//! - Alternatives: three unlabelled bullets bounded by blank lines, which
-//!   rustdoc renders as one list and a reflow merges; a bold lead sentence per
-//!   decision, whose end no reader can find.
-//! - Reversal: rustdoc gaining a definition-list or table form whose rows a
-//!   reader can bound.
-//! - Choice: every cap is a constant of this module, named in its lint's
-//!   documentation.
-//! - Alternatives: a cap in the consumer's Dylint configuration, which each
-//!   landing could move and which drifts between repositories.
-//! - Reversal: consumers whose documentation differs in kind, each needing a
-//!   cap of its own.
-//! - Choice: history prose is a fixed list of words and phrases; `used to`
-//!   after a form of *be* is the present passive and passes.
-//! - Alternatives: every past tense, which refuses a present statement about a
-//!   past event, such as a receipt recording a landing.
-//! - Reversal: a report showing the list refusing present statements or missing
-//!   narration.
-//! - Choice: a duplicate is the same paragraph once wrapping, emphasis, code
-//!   marks and link targets are set aside.
-//! - Alternatives: similarity over word sequences, which reports paraphrase as
-//!   well and needs a threshold of its own.
-//! - Reversal: paraphrased copies the exact comparison misses.
-//! - Choice: every rule is `allow` by default; a consumer selects the group.
-//! - Alternatives: `deny`, as the type and signature rules are, which refuses
-//!   documentation written before the caps were agreed.
-//! - Reversal: agreed caps that the consumers' documentation meets, so a `deny`
-//!   costs nothing.
+//! Fenced code is code: a `#` line inside a fence opens no heading, and a
+//! phrase, a label or an issue number inside a fence or a code span is not
+//! read. The rules read words, not meaning: a decision written without its
+//! labels and a past narrated without the listed phrases pass.
 
 use alloc::collections::BTreeMap;
 use std::path::PathBuf;
@@ -90,14 +47,14 @@ use rustc_session::impl_lint_pass;
 use rustc_span::Span;
 use rustc_span::Symbol;
 
-use crate::rustdoc::is_indented_continuation;
-use crate::rustdoc::section_lookup;
 use crate::semantic::CrateRoot;
+use crate::semantic::DecisionTable;
 use crate::semantic::DocBytes;
 use crate::semantic::HeadingLevel;
 use crate::semantic::HistoryPhrase;
 use crate::semantic::LineIndex;
 use crate::semantic::OpensFence;
+use crate::semantic::OuterDocumentation;
 use crate::semantic::RustdocLine;
 use crate::semantic::RustdocText;
 use crate::semantic::WordIndex;
@@ -111,25 +68,12 @@ quenchant_shape::reason_enum! {
         pub enum Admitted {
             /// The line opens no heading, or sits inside fenced code.
             NotAHeading,
-            /// The heading is a module heading written for the first time.
-            ModuleHeading,
-            /// The heading opens an evidence section another reader owns.
-            EvidenceHeading,
-            /// A sub-heading under `# Decisions` is the decision rule's.
-            UnderDecisions,
-        }
-    }
-}
-
-quenchant_shape::reason_enum! {
-    /// A decision can be one well-formed row.
-    mod row_check {
-        /// Why a decision raises no row finding.
-        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-        pub enum Accepted {
-            /// The decision is `Choice:`, `Alternatives:`, `Reversal:`, each
-            /// with a value.
-            Row,
+            /// The heading is a section of the vocabulary, opened once.
+            Section,
+            /// The heading is a fold-in spelling of a section, opened once.
+            FoldIn,
+            /// The heading opens an evidence section an item reader owns.
+            Evidence,
         }
     }
 }
@@ -149,22 +93,22 @@ quenchant_shape::reason_enum! {
 quenchant_shape::reason_enum! {
     /// Documentation can fit its budget.
     mod budget_check {
-        /// Why a module's documentation raises no budget finding.
+        /// Why a measured span of documentation raises no budget finding.
         #[derive(Clone, Copy, Debug, Eq, PartialEq)]
         pub enum Within {
-            /// The documentation is at or under its cap.
+            /// The span is at or under its cap.
             UnderBudget,
         }
     }
 }
 
 quenchant_shape::reason_enum! {
-    /// A line can name no decision outside `# Decisions`.
+    /// A line can carry no list marker or decision label.
     mod marker_check {
-        /// Why a line carries no decision label.
+        /// Why a line or a sentence carries no marker.
         #[derive(Clone, Copy, Debug, Eq, PartialEq)]
         pub enum Unmarked {
-            /// The line opens with none of the three labels.
+            /// The text opens with none of the markers looked for.
             NoLabel,
         }
     }
@@ -185,35 +129,88 @@ quenchant_shape::reason_enum! {
     }
 }
 
-/// The decisions one module may record.
-pub const DECISION_CAP: usize = 7;
+/// The bytes a module's lead, the text before its first heading, may carry.
+pub const LEAD_BUDGET: usize = 1_536;
+
+/// The bytes one section, from its heading to the next, may carry.
+pub const SECTION_BUDGET: usize = 2_048;
 
 /// The bytes of documentation a crate root may carry.
-pub const CRATE_ROOT_BUDGET: usize = 8_usize * 1_024_usize;
+pub const CRATE_ROOT_BUDGET: usize = 16_usize * 1_024_usize;
 
 /// The bytes of documentation any other module may carry.
-pub const MODULE_BUDGET: usize = 4_usize * 1_024_usize;
+pub const MODULE_BUDGET: usize = 8_usize * 1_024_usize;
 
-/// The words a paragraph carries before its repetition is reported.
+/// The words a paragraph carries before its repetition is refused.
 pub const DUPLICATE_WORDS: usize = 25;
 
-/// The lint group the five shape rules share.
+/// The lint group the shape refusals share.
 pub const GROUP: &str = "rustdoc_shape";
 
-/// The section the decision rows live under.
-const DECISIONS: &str = "# Decisions";
-
-/// Headings a module's own documentation may open, each once.
-const MODULE_HEADINGS: [&str; 3] = [DECISIONS, "# Items", "# References"];
-
-/// Evidence headings this library's other readers own.
-const EVIDENCE_HEADINGS: [&str; 5] = [
-    "# Specification",
-    "# Adequacy",
-    "# Termination",
-    "# Judgement",
-    "# Safety",
+/// Sections a module's documentation may open, each once.
+const SECTIONS: [&str; 6] = [
+    "Examples",
+    "Witnesses",
+    "Boundaries",
+    "Items",
+    "Dependencies",
+    "References",
 ];
+
+/// Evidence sections the item readers own, admitted in a module too.
+const EVIDENCE_HEADINGS: [&str; 5] = ["Specification", "Adequacy", "Errors", "Panics", "Safety"];
+
+/// Spellings read as a section of the vocabulary: the spelling, then the
+/// section.
+const FOLD_INS: [(&str, &str); 8] = [
+    ("Example", "Examples"),
+    ("Specification attributes", "Witnesses"),
+    ("Specification evidence", "Witnesses"),
+    ("Specification discipline", "Witnesses"),
+    ("Specification and adequacy", "Witnesses"),
+    ("Specification and evidence", "Witnesses"),
+    ("Exit codes", "Boundaries"),
+    ("Boundary wrappers", "Boundaries"),
+];
+
+/// Headings refused by name, each with where its content belongs.
+const REFUSED_HEADINGS: [(&str, &str); 8] = [
+    ("History", "history lives in version control"),
+    ("Status", "status lives in the tracker"),
+    (
+        "Notes",
+        "a note belongs in the section it qualifies, or in the lead",
+    ),
+    (
+        "Changelog",
+        "the changelog is written from the commits when a release is cut",
+    ),
+    (
+        "Background",
+        "background belongs in the references the module cites",
+    ),
+    ("Overview", "the lead paragraph is the overview"),
+    ("Decisions", DECISION_HOME),
+    ("Decision", DECISION_HOME),
+];
+
+/// Where a decision lives instead of rustdoc.
+const DECISION_HOME: &str =
+    "a decision lives in the pull request and the issue, where Git dates it";
+
+/// Help attached to every heading finding.
+const VOCABULARY_HELP: &str = concat!(
+    "a module's documentation is a lead paragraph, then sections from `# Examples`, ",
+    "`# Witnesses`, `# Boundaries`, `# Items`, `# Dependencies` and `# References`, beside the ",
+    "evidence sections `# Specification`, `# Adequacy`, `# Errors`, `# Panics` and `# Safety`; ",
+    "fold the section into one of them, into the lead, or onto the item it describes",
+);
+
+/// Help attached to every decision finding.
+const DECISION_HELP: &str = concat!(
+    "state the decision, its alternatives and its reversal in the pull request body and the ",
+    "issue, where Git dates them; the documentation states what the code does",
+);
 
 /// A form of *be* or *get* before `used to` makes it the present passive.
 const PASSIVE_AUXILIARIES: [&str; 12] = [
@@ -223,20 +220,14 @@ const PASSIVE_AUXILIARIES: [&str; 12] = [
 /// Words that narrate a past on their own.
 const HISTORY_WORDS: [&str; 3] = ["previously", "formerly", "historically"];
 
-/// Help attached to every decision finding.
-const ROW_HELP: &str = concat!(
-    "write each decision under `# Decisions` as three bullets: `- Choice:` what the module does, ",
-    "`- Alternatives:` what it does not do and why, `- Reversal:` when the choice changes",
-);
-
 declare_lint! {
     /// ### What it does
     ///
-    /// Reads every module's own `//!` documentation and reports each heading outside the set a module opens: `# Decisions`, `# Items` and `# References`, each at most once, beside the evidence headings `# Specification`, `# Adequacy`, `# Termination`, `# Judgement` and `# Safety`. The text before the first heading is the lead paragraph. A sub-heading under `# Decisions` is [`MODULE_DOC_DECISION`]'s to report.
+    /// Reads every module's own `//!` documentation and reports each heading outside its vocabulary. The text before the first heading is the lead paragraph; the sections are `# Examples`, `# Witnesses`, `# Boundaries`, `# Items`, `# Dependencies` and `# References`, each at most once, beside the evidence sections `# Specification`, `# Adequacy`, `# Errors`, `# Panics` and `# Safety`. Eight spellings fold into a section and count as it ([`FOLD_INS`]): `# Example`; `# Specification attributes`, `evidence`, `discipline`, `and adequacy` and `and evidence`; `# Exit codes` and `# Boundary wrappers`. `# History`, `# Status`, `# Notes`, `# Changelog`, `# Background`, `# Overview`, `# Decisions` and `# Decision` are refused by name, each with where its content belongs ([`REFUSED_HEADINGS`]). Any other heading is outside the vocabulary, and a heading below `#` is a sub-section: module documentation has one level of sections.
     ///
     /// ### Why is this bad?
     ///
-    /// A module's documentation states what the module is, the decisions it carries and what it holds. A `# Status`, `# History` or `# Notes` section narrates instead: status belongs in the tracker and history in version control, and both go stale where they stand.
+    /// A reader scans a module's documentation by its sections. Topic headings make every module a different document; a status, a history or a decision record narrates instead of stating, and goes stale where it stands.
     ///
     /// ### Activation
     ///
@@ -259,17 +250,17 @@ declare_lint! {
     /// ```
     pub MODULE_DOC_HEADING,
     Allow,
-    "module documentation opens only its sanctioned headings"
+    "module documentation opens only the sections of its vocabulary"
 }
 
 declare_lint! {
     /// ### What it does
     ///
-    /// Reads each module's `# Decisions` section as rows: `- Choice:`, then `- Alternatives:` (or `- Alternative:`), then `- Reversal:`, each with a value, and nothing else. It reports a decision with a fourth bullet, a missing or misplaced bullet, an empty value, an unlabelled bullet, a paragraph, a sub-heading, and a decision labelled outside the section (`Choice`, `Alternatives` or `Reversal` opening a line, bold or bulleted). A module recording more than 7 decisions ([`DECISION_CAP`]), counted in the section and outside it, is reported at its `# Decisions` heading.
+    /// Reports a decision record in module and item documentation alike: a `Choice`, `Alternative`, `Alternatives` or `Reversal` label followed by `:` or `.` opening a line, a bullet or a sentence, bold or plain; a table row with a `Choice` cell and a `Reversal` cell; and, in item documentation, a `# Decisions` or `# Decision` heading ([`MODULE_DOC_HEADING`] refuses it in a module's). Labels read in order form one record: a `Choice` opens one, a `Reversal` closes it, and each record is reported once at its first label.
     ///
     /// ### Why is this bad?
     ///
-    /// A decision stated as prose grows by appending and is never pruned; a row states the choice, what it was chosen over and when it changes, and a superseded row is replaced. A module carrying more decisions than the cap is doing too much, or carries decisions that belong to another module.
+    /// Documentation states what the code does. A decision's alternatives and reversal accumulate, outlive the choice and keep the reasons for paths already abandoned; the pull request and the issue hold them with their date.
     ///
     /// ### Activation
     ///
@@ -278,35 +269,32 @@ declare_lint! {
     /// ### Example
     ///
     /// ```rust,ignore
-    /// //! # Decisions
+    /// //! The cache is per process.
     /// //!
-    /// //! **The cache is per process.** A shared cache was considered, but its
-    /// //! invalidation costs more than a rebuild.
-    /// ```
-    ///
-    /// Use instead:
-    ///
-    /// ```rust,ignore
-    /// //! # Decisions
-    /// //!
-    /// //! - Choice: the cache is per process.
-    /// //! - Alternatives: a shared cache, whose invalidation costs more than a
-    /// //!   rebuild.
+    /// //! - Choice: one cache per process.
+    /// //! - Alternatives: a shared cache, whose invalidation costs more.
     /// //! - Reversal: a rebuild slower than the invalidation.
     /// ```
-    pub MODULE_DOC_DECISION,
+    ///
+    /// Use instead:
+    ///
+    /// ```rust,ignore
+    /// //! The cache is per process: a rebuild costs less than invalidating a
+    /// //! shared one.
+    /// ```
+    pub DOC_DECISION_RECORD,
     Allow,
-    "a module's decisions are rows of choice, alternatives and reversal, under a cap"
+    "documentation states what the code does, not the decisions that led to it"
 }
 
 declare_lint! {
     /// ### What it does
     ///
-    /// Reports the words and phrases that narrate a past instead of stating the present — `previously`, `formerly`, `historically`, `no longer`, `as of`, `used to` and `was added`, `removed`, `renamed` or `changed` `in` — in module and item documentation alike. `used to` after a form of *be* or *get* is the present passive and passes. Fenced code and code spans are not read.
+    /// Reports an issue reference — `#` followed by digits, alone or after an `owner/repository` — in module and item documentation. Fenced code, code spans and HTML character references are not read, and neither is a test compilation: a regression test names the defect it pins.
     ///
     /// ### Why is this bad?
     ///
-    /// Documentation states what is. A superseded statement is replaced, never annotated; history lives in version control.
+    /// An issue number in documentation points at a design's origin instead of stating the design. The reader follows it into a discussion that has moved on; the pull request and the commit carry the reference with their date.
     ///
     /// ### Activation
     ///
@@ -315,34 +303,34 @@ declare_lint! {
     /// ### Example
     ///
     /// ```rust,ignore
-    /// /// Reads the header. The checksum is no longer verified here.
+    /// /// Reads the header first (#577).
     /// ```
     ///
     /// Use instead:
     ///
     /// ```rust,ignore
-    /// /// Reads the header; the frame reader verifies the checksum.
+    /// /// Reads the header first, because the frame length lives there.
     /// ```
-    pub DOC_HISTORY_PROSE,
+    pub DOC_ISSUE_REFERENCE,
     Allow,
-    "documentation states the present, not a history"
+    "documentation states its reasons instead of citing an issue"
 }
 
 declare_lint! {
     /// ### What it does
     ///
-    /// Measures each module's `//!` documentation: the bytes of its text with one byte per line break. A crate root may carry 8192 bytes ([`CRATE_ROOT_BUDGET`]), any other module 4096 ([`MODULE_BUDGET`]); the excess is reported at the documentation's first line.
+    /// Measures each module's `//!` documentation: the bytes of its text with one byte per line break. A crate root may carry 16384 bytes ([`CRATE_ROOT_BUDGET`]) and any other module 8192 ([`MODULE_BUDGET`]); the lead, the text before the first heading, 1536 ([`LEAD_BUDGET`]); and each section, from its heading to the next, 2048 ([`SECTION_BUDGET`]). The whole and the lead are reported at the documentation's first line, a section at its heading.
     ///
     /// ### Why is this bad?
     ///
-    /// A README's budget moves detail into rustdoc, where nothing prunes it. A budget per module makes growth a decision: the module splits, or a section moves to the item it describes.
+    /// A README's budget moves detail into rustdoc, where nothing prunes it. A budget by structure makes growth a decision: the module splits, or a section moves to the item it describes.
     ///
     /// ### Activation
     ///
     /// The lint is `allow` by default and belongs to the `rustdoc_shape` group.
     pub MODULE_DOC_BUDGET,
     Allow,
-    "a module's documentation fits its byte budget"
+    "a module's documentation, its lead and each section fit their byte budgets"
 }
 
 declare_lint! {
@@ -365,26 +353,56 @@ declare_lint! {
 declare_lint! {
     /// ### What it does
     ///
-    /// Prints, at the first line of each module's `//!` documentation, its bytes as [`MODULE_DOC_BUDGET`] measures them, the decisions [`MODULE_DOC_DECISION`] counts and how many of those are rows.
+    /// Reports the words and phrases that narrate a past instead of stating the present — `previously`, `formerly`, `historically`, `no longer`, `as of`, `used to` and `was added`, `removed`, `renamed` or `changed` `in` — in module and item documentation alike. `used to` after a form of *be* or *get* is the present passive and passes, and so does the comparison `no longer than`. Fenced code and code spans are not read.
     ///
     /// ### Why is this bad?
     ///
-    /// Nothing is wrong with a measured module. The measure is the distribution the caps are chosen from, read over a consumer by selecting the lint alone.
+    /// Documentation states what is. A superseded statement is replaced, never annotated; history lives in version control. The phrases also state the present — a postcondition, a runtime order — so the lint reports and a reader judges.
+    ///
+    /// ### Activation
+    ///
+    /// The lint is `allow` by default and outside the `rustdoc_shape` group: a lane selects it with `--force-warn`, as a report that denied warnings never turn into a refusal.
+    ///
+    /// ### Example
+    ///
+    /// ```rust,ignore
+    /// /// Reads the header. The checksum is no longer verified here.
+    /// ```
+    ///
+    /// Use instead:
+    ///
+    /// ```rust,ignore
+    /// /// Reads the header; the frame reader verifies the checksum.
+    /// ```
+    pub DOC_HISTORY_PROSE,
+    Allow,
+    "documentation states the present, not a history"
+}
+
+declare_lint! {
+    /// ### What it does
+    ///
+    /// Prints, at the first line of each module's `//!` documentation, its bytes as [`MODULE_DOC_BUDGET`] measures them, its lead's bytes, its largest section's bytes and the decision records [`DOC_DECISION_RECORD`] reads in it.
+    ///
+    /// ### Why is this bad?
+    ///
+    /// Nothing is wrong with a measured module. The measure is the distribution a report reads, selected alone over a consumer.
     ///
     /// ### Activation
     ///
     /// The lint is `allow` by default and outside the `rustdoc_shape` group.
     pub MODULE_DOC_MEASURE,
     Allow,
-    "print each module's documentation bytes and decision count"
+    "print each module's documentation sizes and decision records"
 }
 
 impl_lint_pass!(DocShape => [
     MODULE_DOC_HEADING,
-    MODULE_DOC_DECISION,
-    DOC_HISTORY_PROSE,
+    DOC_DECISION_RECORD,
+    DOC_ISSUE_REFERENCE,
     MODULE_DOC_BUDGET,
     MODULE_DOC_DUPLICATION,
+    DOC_HISTORY_PROSE,
     MODULE_DOC_MEASURE,
 ]);
 
@@ -411,96 +429,89 @@ struct DocText
 #[derive(Clone, Debug, Eq, PartialEq)]
 enum HeadingDefect
 {
-    /// The heading is outside the sanctioned set.
-    OutsideSet(String),
-    /// A module heading is written a second time.
-    Repeated(String),
+    /// The heading is outside the vocabulary.
+    OutsideVocabulary(String),
+    /// The heading is refused by name, with where its content belongs.
+    Refused(String, &'static str),
+    /// A section, under its own spelling or a fold-in, opens a second time.
+    Repeated(&'static str),
+    /// The heading sits below `#`.
+    SubSection(String),
 }
 
-/// One part of a decision, as its line opens.
+/// One decision label.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Part
 {
-    /// `- Choice:`.
+    /// `Choice`.
     Choice,
-    /// `- Alternatives:` or `- Alternative:`.
+    /// `Alternatives` or `Alternative`.
     Alternatives,
-    /// `- Reversal:`.
+    /// `Reversal`.
     Reversal,
-    /// A bullet opening with none of the three labels.
-    Unlabelled,
-    /// A paragraph, or a fenced block outside every bullet.
-    Prose,
-    /// A heading below `# Decisions`.
-    SubHeading,
 }
 
-/// One decision under `# Decisions`: where it opens and its parts.
+/// The form a decision record takes.
 #[derive(Clone, Debug, Eq, PartialEq)]
-struct Decision
+enum RecordKind
 {
-    /// The line the decision opens at.
+    /// Labelled lines, bullets or sentences, in the order read.
+    Labelled(Vec<Part>),
+    /// A table row naming a choice and a reversal.
+    Table,
+    /// A decision heading in item documentation.
+    Heading(String),
+}
+
+/// One decision record and the line it opens on.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct DecisionRecord
+{
+    /// The line of the record's first label, row or heading.
     line: usize,
-    /// Each part, with whether its value states anything.
-    parts: Vec<(Part, bool)>,
+    /// The record's form.
+    kind: RecordKind,
 }
 
-/// One way a decision fails to be a row.
+/// One issue reference and the line it stands on.
 #[derive(Clone, Debug, Eq, PartialEq)]
-enum DecisionDefect
+struct IssueReference
 {
-    /// A paragraph or fenced block outside every bullet.
-    Prose,
-    /// A heading below `# Decisions`.
-    SubHeading,
-    /// A bullet without a label.
-    Unlabelled,
-    /// The labelled bullets are not exactly the three, in order.
-    NotOneRow(Vec<Part>),
-    /// A labelled bullet states nothing.
-    EmptyValue(Part),
-}
-
-/// What a module's `# Decisions` section and its other lines record.
-#[derive(Clone, Debug, Eq, PartialEq)]
-struct DecisionReading
-{
-    /// The `# Decisions` heading's line, when the module has one.
-    heading: Maybe<usize, section_lookup::Missing>,
-    /// Each decision inside the section.
-    inside: Vec<Decision>,
-    /// The opening line of each decision labelled outside the section.
-    outside: Vec<usize>,
+    /// The line carrying the reference.
+    line: usize,
+    /// The reference as written, its repository included.
+    text: String,
 }
 
 /// The headings a module's documentation has opened, carried line to line.
 #[derive(Default)]
+#[repr(transparent)]
 struct HeadingState
 {
-    /// The module headings opened so far.
-    opened: Vec<String>,
-    /// A `# Decisions` section is open.
-    under_decisions: bool,
+    /// The sections opened so far, each under its vocabulary spelling.
+    opened: Vec<&'static str>,
 }
 
-/// The line before the one a `# Decisions` section reads.
-#[derive(Clone, Copy)]
-struct SectionCursor
+/// One section of a module's documentation and its size.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct SectionSize
 {
-    /// The line before is blank, or the section's heading.
-    blank: bool,
-    /// The line before is fenced code.
-    code: bool,
+    /// The line of the section's heading.
+    line: usize,
+    /// The heading as written.
+    heading: String,
+    /// The section's bytes, its heading line included.
+    bytes: DocBytes,
 }
 
-/// The decisions one module records and how many are rows.
-#[derive(Clone, Copy)]
-struct DecisionTally
+/// A module's documentation measured by its structure.
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct Structure
 {
-    /// Every decision, inside `# Decisions` and outside it.
-    decisions: usize,
-    /// The decisions that are rows.
-    rows: usize,
+    /// The bytes before the first heading.
+    lead: DocBytes,
+    /// Each section, in order.
+    sections: Vec<SectionSize>,
 }
 
 /// One history phrase and the line it opens on.
@@ -596,22 +607,25 @@ impl DocShape
 
 impl<'tcx> LateLintPass<'tcx> for DocShape
 {
-    /// Read every node's documentation for history prose.
+    /// Read every node's documentation for decision records, issue references
+    /// and history prose.
     ///
     /// # Specification
-    /// - ensures: reports [`DOC_HISTORY_PROSE`] at the attribute carrying each
-    ///   phrase [`history_findings`] finds in the node's outer documentation
-    ///   and, separately, in its inner documentation; documentation an external
-    ///   macro wrote is not read.
+    /// - ensures: outside a test compilation, reports at the attribute carrying
+    ///   it each record [`decision_records`] reads, each reference
+    ///   [`issue_references`] reads and each phrase [`history_findings`] finds,
+    ///   in the node's outer documentation and, separately, its inner
+    ///   documentation; a decision heading is read in the outer documentation
+    ///   alone, and documentation an external macro wrote is not read.
     /// - panics: none.
     /// - executable: none — rustc owns the diagnostic sink; this callback has
     ///   no readback of emitted or suppressed diagnostics.
     ///
     /// # Adequacy
-    /// - hypothesis: L3 — the history fixture carries each phrase in item and
-    ///   module documentation, a phrase wrapped across two lines, the passive
-    ///   `is used to`, and the words inside a code span and a fence, the last
-    ///   three not reported.
+    /// - hypothesis: L3 — the decision, issue and history fixtures carry each
+    ///   form in item and module documentation, beside code spans, fences and a
+    ///   decision heading in a module, none of those three reported; the
+    ///   test-compilation fixture carries every form and reports none.
     /// - witness: `tests::ui_doc_shape`
     fn check_attributes(
         &mut self,
@@ -619,8 +633,52 @@ impl<'tcx> LateLintPass<'tcx> for DocShape
         attrs: &'tcx [Attribute],
     )
     {
+        if cx.tcx.sess.is_test_crate() {
+            return;
+        }
         for style in [AttrStyle::Outer, AttrStyle::Inner] {
             let text = doc_text(cx, attrs, style);
+            if text.lines.is_empty() {
+                continue;
+            }
+            let outer = OuterDocumentation(matches!(style, AttrStyle::Outer));
+            for record in decision_records(&text.lines, outer) {
+                let Some(&span) = text.spans.get(record.line)
+                else {
+                    continue;
+                };
+                let message = match record.kind {
+                    RecordKind::Labelled(parts) => format!(
+                        "this decision record reads {}; documentation states what the code does",
+                        part_names(&parts)
+                    ),
+                    RecordKind::Table => {
+                        "this table records decisions; documentation states what the code does"
+                            .to_owned()
+                    },
+                    RecordKind::Heading(heading) => {
+                        format!("`{heading}` opens a decision record in item documentation")
+                    },
+                };
+                span_lint_and_help(cx, DOC_DECISION_RECORD, span, message, None, DECISION_HELP);
+            }
+            for reference in issue_references(&text.lines) {
+                let Some(&span) = text.spans.get(reference.line)
+                else {
+                    continue;
+                };
+                span_lint_and_help(
+                    cx,
+                    DOC_ISSUE_REFERENCE,
+                    span,
+                    format!(
+                        "`{}` cites an issue; documentation states its reasons without one",
+                        reference.text
+                    ),
+                    None,
+                    "state the reason here, and cite the issue in the pull request or the commit",
+                );
+            }
             for finding in history_findings(&text.lines) {
                 let Some(&span) = text.spans.get(finding.line)
                 else {
@@ -645,14 +703,12 @@ impl<'tcx> LateLintPass<'tcx> for DocShape
     /// Judge every module's own documentation once the crate is read.
     ///
     /// # Specification
-    /// - ensures: for the crate root and each module, reads its inner
-    ///   documentation and reports, at the module, each heading
-    ///   [`heading_judgement`] refuses, each decision [`row_judgement`]
-    ///   refuses, each decision labelled outside `# Decisions`, a decision
-    ///   count over [`DECISION_CAP`], documentation over its budget, and each
-    ///   paragraph of [`DUPLICATE_WORDS`] words or more the README or an
-    ///   earlier module carries; then prints [`MODULE_DOC_MEASURE`] for every
-    ///   documented module.
+    /// - ensures: outside a test compilation, for the crate root and each
+    ///   module, reads its inner documentation and reports, at the module, each
+    ///   heading [`heading_judgement`] refuses, documentation, a lead or a
+    ///   section over its budget, and each paragraph of [`DUPLICATE_WORDS`]
+    ///   words or more the README or an earlier module carries; then prints
+    ///   [`MODULE_DOC_MEASURE`] for every documented module.
     /// - panics: none.
     /// - executable: none — rustc owns the diagnostic sink; this callback has
     ///   no readback of emitted or suppressed diagnostics.
@@ -660,62 +716,52 @@ impl<'tcx> LateLintPass<'tcx> for DocShape
     /// # Adequacy
     /// - hypothesis: L3 — one fixture per refusal carries the refused shapes at
     ///   a crate root and in modules, and the accepted fixture carries every
-    ///   sanctioned heading, rows at the cap, documentation at a module's
-    ///   budget and a repeated short paragraph, none reported.
+    ///   section, fold-ins and evidence headings and a repeated short
+    ///   paragraph, none reported.
     /// - witness: `tests::ui_doc_shape`
     fn check_crate_post(
         &mut self,
         cx: &LateContext<'tcx>,
     )
     {
+        if cx.tcx.sess.is_test_crate() {
+            return;
+        }
         let mut seen: BTreeMap<Vec<String>, FirstSeen> = BTreeMap::new();
         cx.tcx.hir_for_each_module(|module| {
             let def_id = module.to_local_def_id();
             let hir_id = cx.tcx.local_def_id_to_hir_id(def_id);
             let root = CrateRoot(hir_id == CRATE_HIR_ID);
-            let place = if root.0 { "crate root" } else { "module" };
             let text = doc_text(cx, cx.tcx.hir_attrs(hir_id), AttrStyle::Inner);
             let Some(&first) = text.spans.first()
             else {
                 return;
             };
             report_headings(cx, hir_id, &text, first);
-            let reading = read_decisions(&text.lines);
-            let tally = report_decisions(cx, hir_id, &reading, &text, first);
             let bytes = doc_bytes(&text.lines);
-            if let Maybe::Present(excess) = budget_judgement(bytes, root) {
-                let (place, cap) = if root.0 {
-                    ("crate root", CRATE_ROOT_BUDGET)
-                }
-                else {
-                    ("module", MODULE_BUDGET)
-                };
-                span_lint_hir_and_then(
-                    cx,
-                    MODULE_DOC_BUDGET,
-                    hir_id,
-                    first,
-                    format!(
-                        "this {place}'s documentation is {} bytes, over its {cap}-byte budget",
-                        excess.0
-                    ),
-                    |diag| {
-                        diag.help(
-                            "split the module, or move a section to the item it describes; \
-                             never compress the prose to fit",
-                        );
-                    },
-                );
-            }
+            let structure = structure(&text.lines);
+            report_budgets(cx, hir_id, &text, first, (bytes, root), &structure);
             self.report_duplicates(cx, hir_id, &text, &mut seen);
+            let largest = structure
+                .sections
+                .iter()
+                .map(|section| section.bytes.0)
+                .max()
+                .unwrap_or(0_usize);
+            let records = decision_records(&text.lines, OuterDocumentation(false)).len();
             span_lint_hir(
                 cx,
                 MODULE_DOC_MEASURE,
                 hir_id,
                 first,
                 format!(
-                    "{place} documentation: {} bytes, {} decisions, {} rows",
-                    bytes.0, tally.decisions, tally.rows
+                    "{} documentation: {} bytes, lead {} bytes, largest section {} bytes, {} \
+                     decision records",
+                    if root.0 { "crate root" } else { "module" },
+                    bytes.0,
+                    structure.lead.0,
+                    largest,
+                    records
                 ),
             );
         });
@@ -825,9 +871,9 @@ impl DocShape
 ///   readback of emitted or suppressed diagnostics.
 ///
 /// # Adequacy
-/// - hypothesis: L3 — the heading fixture carries headings outside the set at
-///   two levels, a repeated module heading and a `#` line inside a fence, the
-///   last not reported.
+/// - hypothesis: L3 — the heading fixture carries each refused name it reports,
+///   a heading outside the vocabulary, a sub-section, a section repeated
+///   through a fold-in, and a `#` line inside a fence, the last not reported.
 /// - witness: `tests::ui_doc_shape`
 fn report_headings(
     cx: &LateContext<'_>,
@@ -843,133 +889,106 @@ fn report_headings(
             continue;
         };
         let span = text.spans.get(index).copied().unwrap_or(first);
-        let message = match defect {
-            HeadingDefect::OutsideSet(heading) => {
-                format!("`{heading}` is not a module documentation heading")
-            },
-            HeadingDefect::Repeated(heading) => {
-                format!("`{heading}` opens twice in this module's documentation")
-            },
+        let (message, help) = match defect {
+            HeadingDefect::OutsideVocabulary(heading) => (
+                format!("`{heading}` is outside the module documentation vocabulary"),
+                VOCABULARY_HELP,
+            ),
+            HeadingDefect::Refused(heading, home) => (
+                format!("`{heading}` is refused in module documentation"),
+                home,
+            ),
+            HeadingDefect::Repeated(section) => (
+                format!("`# {section}` opens twice in this module's documentation"),
+                VOCABULARY_HELP,
+            ),
+            HeadingDefect::SubSection(heading) => (
+                format!("`{heading}` is a sub-section; module documentation has one level"),
+                VOCABULARY_HELP,
+            ),
         };
         span_lint_hir_and_then(cx, MODULE_DOC_HEADING, hir_id, span, message, |diag| {
-            diag.help(
-                "a module's documentation is a lead paragraph, then at most `# Decisions`, \
-                 `# Items` and `# References`, beside the evidence sections `# Specification`, \
-                 `# Adequacy`, `# Termination`, `# Judgement` and `# Safety`; status belongs in \
-                 the tracker, history in version control",
-            );
+            diag.help(help);
         });
     }
 }
 
-/// Report each decision finding of one module and count its rows.
+/// Report a module's documentation, lead and sections over their budgets.
 ///
 /// # Specification
-/// - requires: `reading` is [`read_decisions`] over `text`, the inner
-///   documentation of the module `hir_id`, and `first` the span of its first
-///   line.
-/// - ensures: reports [`MODULE_DOC_DECISION`] at each decision
-///   [`row_judgement`] refuses, at each decision labelled outside the section,
-///   and at the section's heading (or the first line) when the decisions
-///   outnumber [`DECISION_CAP`]; returns the number of decisions, a sub-heading
-///   not counted, and of rows.
+/// - requires: `text` is the inner documentation of the module `hir_id`,
+///   `first` the span of its first line, `measured` its [`doc_bytes`] and
+///   whether it is the crate root, and `structure` its [`structure`].
+/// - ensures: reports [`MODULE_DOC_BUDGET`] at the first line when
+///   [`budget_judgement`] refuses the whole or the lead, and at each section's
+///   heading when it refuses the section.
 /// - panics: none.
 /// - executable: none — rustc owns the diagnostic sink; this function has no
 ///   readback of emitted or suppressed diagnostics.
 ///
 /// # Adequacy
-/// - hypothesis: L3 — the decision fixture carries each way a decision fails to
-///   be a row, a labelled decision outside the section, and a module over the
-///   cap; the accepted fixture carries a module at the cap.
+/// - hypothesis: L3 — the budget fixture carries a crate root over its cap with
+///   every section under its own, and a module over its cap with a lead and one
+///   section over theirs, each reported once.
 /// - witness: `tests::ui_doc_shape`
-fn report_decisions(
+fn report_budgets(
     cx: &LateContext<'_>,
     hir_id: HirId,
-    reading: &DecisionReading,
     text: &DocText,
     first: Span,
-) -> DecisionTally
+    measured: (DocBytes, CrateRoot),
+    structure: &Structure,
+)
 {
-    let span_of = |line: usize| text.spans.get(line).copied().unwrap_or(first);
-    let mut rows = 0_usize;
-    let mut decisions = reading.outside.len();
-    for decision in &reading.inside {
-        let defect = match row_judgement(decision) {
-            Maybe::Absent(row_check::Accepted::Row) => {
-                rows = rows.saturating_add(1);
-                decisions = decisions.saturating_add(1);
-                continue;
-            },
-            Maybe::Present(defect) => defect,
-        };
-        let message = match defect {
-            DecisionDefect::Prose => "prose under `# Decisions` is not a decision row".to_owned(),
-            DecisionDefect::SubHeading => {
-                "a sub-heading under `# Decisions` is not a decision row".to_owned()
-            },
-            DecisionDefect::Unlabelled => concat!(
-                "this decision is not a row: its bullet opens with none of `Choice:`, ",
-                "`Alternatives:` and `Reversal:`"
-            )
-            .to_owned(),
-            DecisionDefect::NotOneRow(parts) => format!(
-                "this decision is not one row of three bullets: it reads {}",
-                part_names(&parts)
+    let (bytes, root) = measured;
+    let (place, cap) = if root.0 {
+        ("crate root", CRATE_ROOT_BUDGET)
+    }
+    else {
+        ("module", MODULE_BUDGET)
+    };
+    let report = |span: Span, message: String, help: &'static str| {
+        span_lint_hir_and_then(cx, MODULE_DOC_BUDGET, hir_id, span, message, |diag| {
+            diag.help(help);
+        });
+    };
+    if let Maybe::Present(excess) = budget_judgement(bytes, DocBytes(cap)) {
+        report(
+            first,
+            format!(
+                "this {place}'s documentation is {} bytes, over its {cap}-byte budget",
+                excess.0
             ),
-            DecisionDefect::EmptyValue(part) => format!(
-                "this decision's {} bullet states nothing",
-                part_names(&[part])
+            "split the module, or move a section to the item it describes; never compress the \
+             prose to fit",
+        );
+    }
+    if let Maybe::Present(excess) = budget_judgement(structure.lead, DocBytes(LEAD_BUDGET)) {
+        report(
+            first,
+            format!(
+                "this {place}'s lead is {} bytes, over its {LEAD_BUDGET}-byte budget",
+                excess.0
             ),
-        };
-        if !matches!(decision.parts.first(), Some(&(Part::SubHeading, _))) {
-            decisions = decisions.saturating_add(1);
+            "keep the lead to what the module is; move the detail into a section or onto the \
+             item it describes",
+        );
+    }
+    for section in &structure.sections {
+        if let Maybe::Present(excess) = budget_judgement(section.bytes, DocBytes(SECTION_BUDGET)) {
+            report(
+                text.spans.get(section.line).copied().unwrap_or(first),
+                format!(
+                    "the section `{}` is {} bytes, over its {SECTION_BUDGET}-byte budget",
+                    section.heading, excess.0
+                ),
+                "move the detail onto the items the section describes, or split the module",
+            );
         }
-        span_lint_hir_and_then(
-            cx,
-            MODULE_DOC_DECISION,
-            hir_id,
-            span_of(decision.line),
-            message,
-            |diag| {
-                diag.help(ROW_HELP);
-            },
-        );
     }
-    for &line in &reading.outside {
-        span_lint_hir_and_then(
-            cx,
-            MODULE_DOC_DECISION,
-            hir_id,
-            span_of(line),
-            "this decision stands outside `# Decisions`",
-            |diag| {
-                diag.help(ROW_HELP);
-            },
-        );
-    }
-    if decisions > DECISION_CAP {
-        let line = match reading.heading {
-            Maybe::Present(line) => line,
-            Maybe::Absent(_) => 0_usize,
-        };
-        span_lint_hir_and_then(
-            cx,
-            MODULE_DOC_DECISION,
-            hir_id,
-            span_of(line),
-            format!("this module records {decisions} decisions, over the cap of {DECISION_CAP}"),
-            |diag| {
-                diag.help(
-                    "a module carrying more decisions than the cap is doing too much, or carries \
-                     decisions that belong to another module",
-                );
-            },
-        );
-    }
-    DecisionTally { decisions, rows }
 }
 
-/// Name a run of decision parts as their labels.
+/// Name a run of decision labels.
 ///
 /// # Specification
 /// trivial.
@@ -978,12 +997,9 @@ fn part_names(parts: &[Part]) -> String
     parts
         .iter()
         .map(|part| match *part {
-            Part::Choice => "`Choice:`",
-            Part::Alternatives => "`Alternatives:`",
-            Part::Reversal => "`Reversal:`",
-            Part::Unlabelled => "an unlabelled bullet",
-            Part::Prose => "a paragraph",
-            Part::SubHeading => "a sub-heading",
+            Part::Choice => "`Choice`",
+            Part::Alternatives => "`Alternatives`",
+            Part::Reversal => "`Reversal`",
         })
         .collect::<Vec<&str>>()
         .join(", ")
@@ -1004,8 +1020,7 @@ fn part_names(parts: &[Part]) -> String
 ///
 /// # Adequacy
 /// - hypothesis: L2 — the fixtures distinguish inner from outer documentation
-///   on one module and an empty line from a paragraph's last, and report a
-///   comment a local macro carries at the macro's invocation.
+///   on one module and an empty line from a paragraph's last.
 /// - witness: `tests::ui_doc_shape`
 fn doc_text(
     cx: &LateContext<'_>,
@@ -1127,24 +1142,42 @@ fn heading_level(line: RustdocLine<'_>) -> HeadingLevel
     )
 }
 
+/// The title a heading line carries, its `#` run and spaces removed.
+///
+/// # Specification
+/// - ensures: returns the trimmed line without its leading `#` run, trimmed
+///   again.
+/// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the tests read titles at two levels and with trailing
+///   spaces.
+/// - witness: `doc_shape::tests::headings_are_judged_against_the_vocabulary`
+#[spec(ensures: |output| line.0.contains(output.0))]
+fn heading_title(line: RustdocLine<'_>) -> RustdocLine<'_>
+{
+    RustdocLine::from(line.0.trim().trim_start_matches('#').trim())
+}
+
 /// Judge one line of a module's documentation as a heading.
 ///
 /// # Specification
 /// - requires: the lines of one module are judged in order, with `state`
 ///   carried from line to line and starting empty.
-/// - ensures: refuses a heading outside [`MODULE_HEADINGS`] and
-///   [`EVIDENCE_HEADINGS`], and a module heading `state` has opened already;
-///   admits a line that opens no heading or sits in fenced code, and a
-///   sub-heading while a `# Decisions` section is open.
+/// - ensures: admits a line that opens no heading or sits in fenced code, an
+///   evidence heading, and a section of [`SECTIONS`] or a spelling of
+///   [`FOLD_INS`] whose section `state` has not opened; refuses a heading below
+///   `#`, then a title of [`REFUSED_HEADINGS`] with its reason, then a section
+///   opened again, then any other heading as outside the vocabulary.
 /// - provides: `heading_check::Admitted` names why the line is admitted.
 /// - panics: none.
 /// - executable: none — the judgement threads mutable state across calls; the
-///   UI fixtures are the oracle.
+///   tests and the UI fixtures are the oracle.
 ///
 /// # Adequacy
-/// - hypothesis: L3 — the tests separate every admitted reason and both
-///   refusals.
-/// - witness: `doc_shape::tests::headings_are_judged_against_the_set`
+/// - hypothesis: L3 — the tests separate every admitted reason and every
+///   refusal, a fold-in repeating its section among them.
+/// - witness: `doc_shape::tests::headings_are_judged_against_the_vocabulary`
 fn heading_judgement(
     line: &DocLine,
     state: &mut HeadingState,
@@ -1154,242 +1187,209 @@ fn heading_judgement(
     if line.code || level == 0 {
         return Maybe::Absent(heading_check::Admitted::NotAHeading);
     }
-    if level > 1 && state.under_decisions {
-        return Maybe::Absent(heading_check::Admitted::UnderDecisions);
-    }
     let heading = line.text.trim();
-    state.under_decisions = heading == DECISIONS;
-    if MODULE_HEADINGS.contains(&heading) {
-        if state.opened.iter().any(|seen| seen == heading) {
-            return Maybe::Present(HeadingDefect::Repeated(heading.to_owned()));
-        }
-        state.opened.push(heading.to_owned());
-        return Maybe::Absent(heading_check::Admitted::ModuleHeading);
+    if level > 1 {
+        return Maybe::Present(HeadingDefect::SubSection(heading.to_owned()));
     }
-    if EVIDENCE_HEADINGS.contains(&heading) {
-        return Maybe::Absent(heading_check::Admitted::EvidenceHeading);
+    let title = heading_title(RustdocLine::from(heading)).0;
+    if let Some(refused) = REFUSED_HEADINGS.iter().find(|entry| entry.0 == title) {
+        return Maybe::Present(HeadingDefect::Refused(heading.to_owned(), refused.1));
     }
-    Maybe::Present(HeadingDefect::OutsideSet(heading.to_owned()))
+    let (section, admitted) = if let Some(fold_in) = FOLD_INS.iter().find(|entry| entry.0 == title)
+    {
+        (fold_in.1, heading_check::Admitted::FoldIn)
+    }
+    else if let Some(&section) = SECTIONS.iter().find(|&&section| section == title) {
+        (section, heading_check::Admitted::Section)
+    }
+    else if EVIDENCE_HEADINGS.contains(&title) {
+        return Maybe::Absent(heading_check::Admitted::Evidence);
+    }
+    else {
+        return Maybe::Present(HeadingDefect::OutsideVocabulary(heading.to_owned()));
+    };
+    if state.opened.contains(&section) {
+        return Maybe::Present(HeadingDefect::Repeated(section));
+    }
+    state.opened.push(section);
+    Maybe::Absent(admitted)
 }
 
-/// The decisions a module's documentation records, inside `# Decisions` and
-/// out.
+/// The decision records a node's documentation carries.
 ///
 /// # Specification
-/// - ensures: the section runs from the first `# Decisions` heading outside
-///   fenced code to the next level-one heading; inside it, a `- Choice:`
-///   bullet, an unlabelled bullet, a paragraph, an unindented fence and a
-///   sub-heading each open a decision, an `- Alternatives:` or `- Reversal:`
-///   bullet joins the open decision (opening one when none is open), and an
-///   indented line continues the bullet above it. Outside it, each line
-///   [`decision_label`] marks a `Reversal` closes a decision opened at the last
-///   unclosed `Choice` (or at itself), and a `Choice` left unclosed by the next
-///   `Choice` or the end is a decision of its own.
+/// - ensures: returns, ordered by line, one record per table row
+///   [`decision_table`] reads; when `outer` holds, one per heading titled
+///   `Decisions` or `Decision`; and one per run of [`decision_labels`] read in
+///   order, where a `Choice` closes the open run and opens one, an
+///   `Alternatives` joins the open run or opens one, a `Reversal` joins the
+///   open run or opens one and closes it, and a heading or a table row closes
+///   the open run. Fenced lines are not read.
 /// - panics: none.
 /// - executable: none — the reading is a fold over the lines whose statement
 ///   restates it; the tests and the UI fixtures are the oracle.
 ///
 /// # Adequacy
-/// - hypothesis: L3 — the tests separate a row, a row with a wrapped value, a
-///   fourth bullet, a bullet out of order, an unlabelled bullet, a paragraph, a
-///   sub-heading, and labelled decisions outside the section with and without
-///   their `Choice`.
-/// - witness: `doc_shape::tests::a_row_is_three_labelled_bullets_in_order`
-/// - witness: `doc_shape::tests::decisions_outside_the_section_are_counted`
-fn read_decisions(lines: &[DocLine]) -> DecisionReading
+/// - hypothesis: L3 — the tests separate a three-bullet record, a bold-lead
+///   paragraph with inline labels, a record without its choice, two choices in
+///   a row, a table row, a decision heading in outer and inner documentation,
+///   and labels in a fence and a code span.
+/// - witness: `doc_shape::tests::labelled_runs_are_decision_records`
+fn decision_records(
+    lines: &[DocLine],
+    outer: OuterDocumentation,
+) -> Vec<DecisionRecord>
 {
-    let start = lines
-        .iter()
-        .position(|line| !line.code && line.text.trim() == DECISIONS);
-    let end = start.map_or(0_usize, |start| {
-        lines
-            .iter()
-            .enumerate()
-            .skip(start.saturating_add(1))
-            .find(|&(_, line)| !line.code && heading_level(RustdocLine::from(&line.text)).0 == 1)
-            .map_or(lines.len(), |(index, _)| index)
-    });
-    let mut inside: Vec<Decision> = Vec::new();
-    let mut outside = Vec::new();
-    let mut open_choice: Option<usize> = None;
-    let mut previous = SectionCursor {
-        blank: true,
-        code: false,
+    let mut records = Vec::new();
+    let mut open: Option<(usize, Vec<Part>)> = None;
+    let close = |run: Option<(usize, Vec<Part>)>| {
+        run.map(|(line, parts)| DecisionRecord {
+            line,
+            kind: RecordKind::Labelled(parts),
+        })
     };
     for (index, line) in lines.iter().enumerate() {
-        if start.is_some_and(|start| index > start && index < end) {
-            read_section_line(line, LineIndex(index), &mut inside, previous);
-            previous = SectionCursor {
-                blank: line.text.trim().is_empty(),
-                code: line.code,
-            };
+        if line.code {
             continue;
         }
-        if line.code || Some(index) == start {
+        let text = RustdocLine::from(&line.text);
+        if heading_level(text).0 > 0 {
+            records.extend(close(open.take()));
+            let title = heading_title(text).0;
+            if outer.0 && (title == "Decisions" || title == "Decision") {
+                records.push(DecisionRecord {
+                    line: index,
+                    kind: RecordKind::Heading(line.text.trim().to_owned()),
+                });
+            }
             continue;
         }
-        match decision_label(RustdocLine::from(&line.text)) {
-            Maybe::Present(Part::Choice) => {
-                outside.extend(open_choice.replace(index));
-            },
-            Maybe::Present(Part::Reversal) => {
-                outside.push(open_choice.take().unwrap_or(index));
-            },
-            Maybe::Present(
-                Part::Alternatives | Part::Unlabelled | Part::Prose | Part::SubHeading,
-            )
-            | Maybe::Absent(marker_check::Unmarked::NoLabel) => {},
-        }
-    }
-    outside.extend(open_choice);
-    DecisionReading {
-        heading: start.map_or(
-            Maybe::Absent(section_lookup::Missing::HeadingAbsent),
-            Maybe::Present,
-        ),
-        inside,
-        outside,
-    }
-}
-
-/// Fold one line of a `# Decisions` section into its decisions.
-///
-/// # Specification
-/// - requires: `line` is line `index` of the section, and `previous` describes
-///   the line before it.
-/// - ensures: as [`read_decisions`] states for a line inside the section.
-/// - panics: none.
-/// - executable: none — the fold mutates the decision list it extends; the
-///   tests are the oracle.
-///
-/// # Adequacy
-/// - hypothesis: L3 — as [`read_decisions`].
-/// - witness: `doc_shape::tests::a_row_is_three_labelled_bullets_in_order`
-fn read_section_line(
-    line: &DocLine,
-    index: LineIndex,
-    inside: &mut Vec<Decision>,
-    previous: SectionCursor,
-)
-{
-    let index = index.0;
-    let trimmed = line.text.trim();
-    let continuation = is_indented_continuation(RustdocLine::from(&line.text)).0;
-    if line.code {
-        if previous.code || continuation {
-            return;
-        }
-        inside.push(Decision {
-            line: index,
-            parts: vec![(Part::Prose, true)],
-        });
-        return;
-    }
-    if trimmed.is_empty() {
-        return;
-    }
-    if heading_level(RustdocLine::from(trimmed)).0 > 1 {
-        inside.push(Decision {
-            line: index,
-            parts: vec![(Part::SubHeading, true)],
-        });
-        return;
-    }
-    if continuation && let Some(open) = inside.last_mut() {
-        if let Some(&mut (Part::Choice | Part::Alternatives | Part::Reversal, ref mut stated)) =
-            open.parts.last_mut()
-        {
-            *stated = true;
-        }
-        return;
-    }
-    let Some(bullet) = trimmed.strip_prefix("- ")
-    else {
-        let continues_prose = !previous.blank
-            && inside
-                .last()
-                .is_some_and(|open| matches!(open.parts.last(), Some(&(Part::Prose, _))));
-        if !continues_prose {
-            inside.push(Decision {
+        if decision_table(text).0 {
+            records.extend(close(open.take()));
+            records.push(DecisionRecord {
                 line: index,
-                parts: vec![(Part::Prose, true)],
+                kind: RecordKind::Table,
             });
+            continue;
         }
-        return;
-    };
-    let (part, value) = labelled(RustdocLine::from(bullet));
-    let stated = !value.0.trim().is_empty();
-    let joins = matches!(part, Part::Alternatives | Part::Reversal)
-        && inside.last().is_some_and(|open| {
-            matches!(
-                open.parts.first(),
-                Some(&(Part::Choice | Part::Alternatives | Part::Reversal, _))
-            )
-        });
-    if joins && let Some(open) = inside.last_mut() {
-        open.parts.push((part, stated));
-        return;
+        for part in decision_labels(text) {
+            match part {
+                Part::Choice => {
+                    records.extend(close(open.replace((index, vec![Part::Choice]))));
+                },
+                Part::Alternatives => match open {
+                    Some((_, ref mut parts)) => parts.push(Part::Alternatives),
+                    None => open = Some((index, vec![Part::Alternatives])),
+                },
+                Part::Reversal => {
+                    let (start, mut parts) = open.take().unwrap_or((index, Vec::new()));
+                    parts.push(Part::Reversal);
+                    records.extend(close(Some((start, parts))));
+                },
+            }
+        }
     }
-    inside.push(Decision {
-        line: index,
-        parts: vec![(part, stated)],
-    });
+    records.extend(close(open));
+    records.sort_by_key(|record| record.line);
+    records
 }
 
-/// A bullet's label and the value after it.
+/// A table row names a choice and a reversal.
 ///
 /// # Specification
-/// - requires: `bullet` is a bullet's text after its `- ` marker.
-/// - ensures: returns `Choice`, `Alternatives` or `Reversal` with the text
-///   after the label when the bullet opens with `Choice:`, `Alternatives:` or
-///   `Alternative:`, or `Reversal:`; otherwise `Unlabelled` with the whole
-///   bullet.
+/// - ensures: answers affirmatively exactly when the trimmed line opens with
+///   `|` and, once emphasis and code marks are trimmed from each cell, one cell
+///   is `Choice` and another opens with `Reversal`.
 /// - panics: none.
 ///
 /// # Adequacy
-/// - hypothesis: L3 — the tests separate each label, the singular alternative,
-///   and a bold lead.
-/// - witness: `doc_shape::tests::a_row_is_three_labelled_bullets_in_order`
-#[spec(ensures: |output| matches!(output.0, Part::Unlabelled) == (output.1 == bullet))]
-fn labelled(bullet: RustdocLine<'_>) -> (Part, RustdocLine<'_>)
+/// - hypothesis: L3 — the tests separate a decision table's header from a row
+///   naming one of the two and from a line that opens no table.
+/// - witness: `doc_shape::tests::labelled_runs_are_decision_records`
+#[spec(ensures: |output| !output.0 || line.0.trim_start().starts_with('|'))]
+fn decision_table(line: RustdocLine<'_>) -> DecisionTable
 {
-    for (label, part) in [
-        ("Choice:", Part::Choice),
-        ("Alternatives:", Part::Alternatives),
-        ("Alternative:", Part::Alternatives),
-        ("Reversal:", Part::Reversal),
-    ] {
-        if let Some(value) = bullet.0.strip_prefix(label) {
-            return (part, RustdocLine::from(value));
-        }
+    let trimmed = line.0.trim();
+    if !trimmed.starts_with('|') {
+        return DecisionTable(false);
     }
-    (Part::Unlabelled, bullet)
+    let cells: Vec<&str> = trimmed
+        .split('|')
+        .map(|cell| cell.trim().trim_matches(['*', '_', '`']).trim())
+        .collect();
+    DecisionTable(
+        cells.contains(&"Choice") && cells.iter().any(|cell| cell.starts_with("Reversal")),
+    )
 }
 
-/// The decision label a line outside `# Decisions` opens with.
+/// The decision labels opening a line's sentences, in order.
+///
+/// # Specification
+/// - ensures: returns the label [`decision_label`] reads at each sentence
+///   opening of the line once its code spans are masked: the line's start after
+///   an optional list marker, a position after `(`, and a position after
+///   whitespace that follows `.`, `!`, `?`, `;` or `:`.
+/// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the tests separate a bulleted, a bold and a plain label,
+///   a label opening a later sentence and a parenthesis, a label inside a
+///   sentence, a plural that is no label, and a label in a code span.
+/// - witness: `doc_shape::tests::labelled_runs_are_decision_records`
+#[spec(ensures: |output| output.is_empty()
+    || ["Choice", "Alternative", "Reversal"].iter().any(|label| line.0.contains(label)))]
+fn decision_labels(line: RustdocLine<'_>) -> Vec<Part>
+{
+    let masked = masked_code_spans(line);
+    let trimmed = masked.trim();
+    let body = match list_item(RustdocLine::from(trimmed)) {
+        Maybe::Present(rest) => rest.0,
+        Maybe::Absent(marker_check::Unmarked::NoLabel) => trimmed,
+    };
+    let mut labels = Vec::new();
+    let mut boundary = false;
+    let mut spaced = false;
+    let mut previous = ' ';
+    for (offset, character) in body.char_indices() {
+        if character.is_whitespace() {
+            spaced = true;
+            previous = character;
+            continue;
+        }
+        let opens = offset == 0 || (boundary && spaced) || previous == '(';
+        if opens
+            && let Some(rest) = body.get(offset ..)
+            && let Maybe::Present(part) = decision_label(RustdocLine::from(rest))
+        {
+            labels.push(part);
+        }
+        boundary = matches!(character, '.' | '!' | '?' | ';' | ':');
+        spaced = false;
+        previous = character;
+    }
+    labels
+}
+
+/// The decision label a sentence opens with.
 ///
 /// # Specification
 /// - ensures: returns `Choice`, `Alternatives` or `Reversal` exactly when the
-///   trimmed line, after an optional `- ` or `* ` bullet and optional `**` or
-///   `*` emphasis, opens with `Choice`, `Alternative`, `Alternatives` or
-///   `Reversal` followed by `:` or `.`.
-/// - provides: `marker_check::Unmarked::NoLabel` for every other line.
+///   text, after optional `*` or `_` emphasis, opens with `Choice`,
+///   `Alternative`, `Alternatives` or `Reversal`, then optional emphasis, then
+///   `:` or `.`.
+/// - provides: `marker_check::Unmarked::NoLabel` for every other text.
 /// - panics: none.
 ///
 /// # Adequacy
-/// - hypothesis: L3 — the tests separate a plain, a bulleted and a bold label,
-///   a label followed by a word, and the word inside a sentence.
-/// - witness: `doc_shape::tests::decisions_outside_the_section_are_counted`
+/// - hypothesis: L3 — the tests separate a plain and a bold label, the emphasis
+///   closing before and after the colon, a label followed by a word, and a
+///   plural.
+/// - witness: `doc_shape::tests::labelled_runs_are_decision_records`
 #[spec(ensures: |output| matches!(output, Maybe::Absent(_))
-    || ["Choice", "Alternative", "Reversal"].iter().any(|label| line.0.contains(label)))]
-fn decision_label(line: RustdocLine<'_>) -> Maybe<Part, marker_check::Unmarked>
+    || ["Choice", "Alternative", "Reversal"].iter().any(|label| text.0.contains(label)))]
+fn decision_label(text: RustdocLine<'_>) -> Maybe<Part, marker_check::Unmarked>
 {
-    let trimmed = line.0.trim();
-    let unbulleted = trimmed
-        .strip_prefix("- ")
-        .or_else(|| trimmed.strip_prefix("* "))
-        .unwrap_or(trimmed);
-    let plain = unbulleted.trim_start_matches('*');
+    let plain = text.0.trim_start_matches(['*', '_']);
     for (label, part) in [
         ("Choice", Part::Choice),
         ("Alternatives", Part::Alternatives),
@@ -1398,7 +1398,7 @@ fn decision_label(line: RustdocLine<'_>) -> Maybe<Part, marker_check::Unmarked>
     ] {
         if plain
             .strip_prefix(label)
-            .is_some_and(|rest| rest.starts_with(':') || rest.starts_with('.'))
+            .is_some_and(|rest| rest.trim_start_matches(['*', '_']).starts_with([':', '.']))
         {
             return Maybe::Present(part);
         }
@@ -1406,44 +1406,135 @@ fn decision_label(line: RustdocLine<'_>) -> Maybe<Part, marker_check::Unmarked>
     Maybe::Absent(marker_check::Unmarked::NoLabel)
 }
 
-/// Judge one decision as a row.
+/// A line with the text of its code spans masked.
 ///
 /// # Specification
-/// - ensures: accepts exactly `Choice`, `Alternatives`, `Reversal`, in that
-///   order, each stating a value; otherwise refuses, in this order of
-///   precedence, a decision opening with prose or a sub-heading, one carrying
-///   an unlabelled bullet, one whose labels are not exactly the three in order,
-///   and one whose first empty bullet is named.
+/// - ensures: returns the line with every character between a pair of backticks
+///   replaced by `\u{1}`, the backticks kept; an unclosed backtick masks the
+///   rest of the line.
 /// - panics: none.
 ///
 /// # Adequacy
-/// - hypothesis: L3 — the tests separate a row and every refusal.
-/// - witness: `doc_shape::tests::a_row_is_three_labelled_bullets_in_order`
-#[spec(ensures: |output| matches!(output, Maybe::Absent(_)) == matches!(
-    decision.parts.as_slice(),
-    [(Part::Choice, true), (Part::Alternatives, true), (Part::Reversal, true)]
-))]
-fn row_judgement(decision: &Decision) -> Maybe<DecisionDefect, row_check::Accepted>
+/// - hypothesis: L3 — the tests read a label and an issue number in a code
+///   span, neither found.
+/// - witness: `doc_shape::tests::labelled_runs_are_decision_records`
+/// - witness: `doc_shape::tests::issue_numbers_in_prose_are_references`
+#[spec(ensures: |output| output.chars().count() == line.0.chars().count())]
+fn masked_code_spans(line: RustdocLine<'_>) -> String
 {
-    let parts: Vec<Part> = decision.parts.iter().map(|&(part, _)| part).collect();
-    match parts.first() {
-        Some(&Part::Prose) => return Maybe::Present(DecisionDefect::Prose),
-        Some(&Part::SubHeading) => return Maybe::Present(DecisionDefect::SubHeading),
-        Some(&(Part::Choice | Part::Alternatives | Part::Reversal | Part::Unlabelled)) | None => {},
-    }
-    if parts.contains(&Part::Unlabelled) {
-        return Maybe::Present(DecisionDefect::Unlabelled);
-    }
-    if parts != [Part::Choice, Part::Alternatives, Part::Reversal] {
-        return Maybe::Present(DecisionDefect::NotOneRow(parts));
-    }
-    if let Some(&(part, _)) = decision.parts.iter().find(|&&(_, stated)| !stated) {
-        return Maybe::Present(DecisionDefect::EmptyValue(part));
-    }
-    Maybe::Absent(row_check::Accepted::Row)
+    let mut in_span = false;
+    line.0
+        .chars()
+        .map(|character| {
+            if character == '`' {
+                in_span = !in_span;
+                return character;
+            }
+            if in_span { '\u{1}' } else { character }
+        })
+        .collect()
 }
 
-/// The bytes a module's documentation carries.
+/// The issue references a node's documentation carries.
+///
+/// # Specification
+/// - ensures: returns, in order, one reference per `#` outside fenced code and
+///   code spans followed by one or more ASCII digits and then a character that
+///   is neither alphanumeric nor `_`, when the character before the `#` is
+///   absent, whitespace or punctuation other than `&`, or closes an
+///   `owner/repository` run of alphanumerics, `-`, `_` and `.` around one `/`,
+///   which the reference then includes.
+/// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the tests separate a bare and a parenthesised number, an
+///   `owner/repository` reference, a number in a code span and a fence, an HTML
+///   character reference, a number glued to a word, and a `#` followed by a
+///   letter.
+/// - witness: `doc_shape::tests::issue_numbers_in_prose_are_references`
+#[spec(ensures: |output| output.iter().all(|reference| reference.line < lines.len()
+    && reference.text.contains('#')))]
+fn issue_references(lines: &[DocLine]) -> Vec<IssueReference>
+{
+    let mut references = Vec::new();
+    for (index, line) in lines.iter().enumerate() {
+        if line.code {
+            continue;
+        }
+        let masked = masked_code_spans(RustdocLine::from(&line.text));
+        for (offset, character) in masked.char_indices() {
+            if character != '#' {
+                continue;
+            }
+            let after = masked.get(offset.saturating_add(1) ..).unwrap_or("");
+            let digits: String = after.chars().take_while(char::is_ascii_digit).collect();
+            let closed = after
+                .chars()
+                .nth(digits.chars().count())
+                .is_none_or(|next| !next.is_alphanumeric() && next != '_');
+            if digits.is_empty() || !closed {
+                continue;
+            }
+            let before = masked.get(.. offset).unwrap_or("");
+            if let Maybe::Present(repository) = repository_before(RustdocLine::from(before)) {
+                references.push(IssueReference {
+                    line: index,
+                    text: format!("{}#{digits}", repository.0),
+                });
+            }
+        }
+    }
+    references
+}
+
+/// The repository an issue number's `#` follows, empty for none.
+///
+/// # Specification
+/// - ensures: returns the empty text when `before` is empty or ends in
+///   whitespace or punctuation other than `&`, `-`, `_`, `.` and `/`; returns
+///   the run of alphanumerics, `-`, `_`, `.` and `/` it ends in when that run
+///   is two non-empty parts around one `/`.
+/// - provides: `marker_check::Unmarked::NoLabel` when the `#` is glued to a
+///   word, ends an HTML character reference's `&`, or follows a run that names
+///   no repository.
+/// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — as [`issue_references`].
+/// - witness: `doc_shape::tests::issue_numbers_in_prose_are_references`
+#[spec(ensures: |output| !matches!(output, Maybe::Present(repository) if !before.0.ends_with(repository.0)))]
+fn repository_before(before: RustdocLine<'_>) -> Maybe<RustdocLine<'_>, marker_check::Unmarked>
+{
+    let in_run = |character: char| character.is_alphanumeric() || "-_./".contains(character);
+    let Some(last) = before.0.chars().next_back()
+    else {
+        return Maybe::Present(RustdocLine::from(""));
+    };
+    if last == '&' {
+        return Maybe::Absent(marker_check::Unmarked::NoLabel);
+    }
+    if !in_run(last) {
+        return Maybe::Present(RustdocLine::from(""));
+    }
+    let start = before
+        .0
+        .char_indices()
+        .rev()
+        .take_while(|&(_, character)| in_run(character))
+        .last()
+        .map_or(0_usize, |(offset, _)| offset);
+    let run = before.0.get(start ..).unwrap_or("");
+    match run.split_once('/') {
+        Some((owner, repository))
+            if !owner.is_empty() && !repository.is_empty() && !repository.contains('/') =>
+        {
+            Maybe::Present(RustdocLine::from(run))
+        },
+        Some(_) | None => Maybe::Absent(marker_check::Unmarked::NoLabel),
+    }
+}
+
+/// The bytes a run of documentation lines carries.
 ///
 /// # Specification
 /// - ensures: returns the bytes of every line's text plus one per line break,
@@ -1453,7 +1544,7 @@ fn row_judgement(decision: &Decision) -> Maybe<DecisionDefect, row_check::Accept
 /// # Adequacy
 /// - hypothesis: L3 — the tests measure an empty line, a multi-byte character
 ///   and the budget's cap.
-/// - witness: `doc_shape::tests::the_budget_admits_its_cap_and_refuses_one_byte_more`
+/// - witness: `doc_shape::tests::the_budgets_admit_their_caps_and_refuse_one_byte_more`
 #[spec(ensures: |output| output.0 == lines.iter().map(|line| line.text.len()).sum::<usize>().saturating_add(lines.len()))]
 fn doc_bytes(lines: &[DocLine]) -> DocBytes
 {
@@ -1462,31 +1553,67 @@ fn doc_bytes(lines: &[DocLine]) -> DocBytes
     }))
 }
 
-/// Judge a module's documentation bytes against its budget.
+/// A module's documentation measured by its structure.
 ///
 /// # Specification
-/// - ensures: refuses with the bytes exactly when they exceed
-///   [`CRATE_ROOT_BUDGET`] at a crate root or [`MODULE_BUDGET`] elsewhere.
+/// - ensures: the lead is the [`doc_bytes`] of the lines before the first
+///   heading outside fenced code; each section runs from such a heading to the
+///   line before the next, and carries its heading line, the heading as written
+///   and its [`doc_bytes`]. The lead and the sections together are the
+///   documentation's bytes.
 /// - panics: none.
 ///
 /// # Adequacy
-/// - hypothesis: L3 — the tests separate each cap, one byte over each, and a
-///   module's size at a crate root.
-/// - witness: `doc_shape::tests::the_budget_admits_its_cap_and_refuses_one_byte_more`
-#[spec(ensures: |output| matches!(output, Maybe::Present(_))
-    == (bytes.0 > (if root.0 { CRATE_ROOT_BUDGET } else { MODULE_BUDGET })))]
+/// - hypothesis: L3 — the tests measure a lead, two sections, a fenced `#` line
+///   inside a section and documentation without a heading.
+/// - witness: `doc_shape::tests::the_budgets_admit_their_caps_and_refuse_one_byte_more`
+#[spec(ensures: |output| output.sections.iter().fold(output.lead.0, |total, section| total.saturating_add(section.bytes.0)) == doc_bytes(lines).0)]
+fn structure(lines: &[DocLine]) -> Structure
+{
+    let headings: Vec<usize> = lines
+        .iter()
+        .enumerate()
+        .filter(|&(_, line)| !line.code && heading_level(RustdocLine::from(&line.text)).0 > 0)
+        .map(|(index, _)| index)
+        .collect();
+    let lead_end = headings.first().copied().unwrap_or(lines.len());
+    let lead = doc_bytes(lines.get(.. lead_end).unwrap_or_default());
+    let sections = headings
+        .iter()
+        .enumerate()
+        .map(|(position, &start)| {
+            let end = headings
+                .get(position.saturating_add(1))
+                .copied()
+                .unwrap_or(lines.len());
+            SectionSize {
+                line: start,
+                heading: lines
+                    .get(start)
+                    .map_or_else(String::new, |line| line.text.trim().to_owned()),
+                bytes: doc_bytes(lines.get(start .. end).unwrap_or_default()),
+            }
+        })
+        .collect();
+    Structure { lead, sections }
+}
+
+/// Judge documentation bytes against a cap.
+///
+/// # Specification
+/// - ensures: refuses with the bytes exactly when they exceed the cap.
+/// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the tests separate each cap and one byte over each.
+/// - witness: `doc_shape::tests::the_budgets_admit_their_caps_and_refuse_one_byte_more`
+#[spec(ensures: |output| matches!(output, Maybe::Present(_)) == (bytes.0 > cap.0))]
 fn budget_judgement(
     bytes: DocBytes,
-    root: CrateRoot,
+    cap: DocBytes,
 ) -> Maybe<DocBytes, budget_check::Within>
 {
-    let cap = if root.0 {
-        CRATE_ROOT_BUDGET
-    }
-    else {
-        MODULE_BUDGET
-    };
-    if bytes.0 > cap {
+    if bytes.0 > cap.0 {
         return Maybe::Present(bytes);
     }
     Maybe::Absent(budget_check::Within::UnderBudget)
@@ -1756,23 +1883,28 @@ mod tests
     use quenchant_shape::shape::Maybe;
 
     use super::CRATE_ROOT_BUDGET;
-    use super::DecisionDefect;
     use super::DocLine;
     use super::HeadingDefect;
     use super::HeadingState;
+    use super::LEAD_BUDGET;
     use super::MODULE_BUDGET;
     use super::Part;
+    use super::RecordKind;
+    use super::SECTION_BUDGET;
     use super::budget_judgement;
     use super::classify;
+    use super::decision_records;
     use super::doc_bytes;
+    use super::heading_check::Admitted;
     use super::heading_judgement;
     use super::heading_level;
     use super::history_findings;
+    use super::issue_references;
     use super::paragraphs;
-    use super::read_decisions;
-    use super::row_judgement;
-    use crate::semantic::CrateRoot;
+    use super::structure;
     use crate::semantic::DocBytes;
+    use crate::semantic::LineIndex;
+    use crate::semantic::OuterDocumentation;
     use crate::semantic::RustdocLine;
     use crate::semantic::RustdocText;
 
@@ -1794,6 +1926,21 @@ mod tests
         history_findings(&doc(text))
             .into_iter()
             .map(|finding| finding.phrase.to_owned())
+            .collect()
+    }
+
+    /// The decision records a fixture's reading finds, as their line and form.
+    ///
+    /// # Specification
+    /// trivial.
+    fn records(
+        text: RustdocText<'_>,
+        outer: OuterDocumentation,
+    ) -> Vec<(LineIndex, RecordKind)>
+    {
+        decision_records(&doc(text), outer)
+            .into_iter()
+            .map(|record| (LineIndex(record.line), record.kind))
             .collect()
     }
 
@@ -1835,15 +1982,20 @@ mod tests
     }
 
     #[test]
-    fn headings_are_judged_against_the_set()
+    fn headings_are_judged_against_the_vocabulary()
     {
         let lines = doc(concat!(
-            " # Decisions\n",
-            " ## Sub\n",
-            " # Status\n",
-            " ## Detail\n",
+            " # Examples  \n",
+            " # Example\n",
+            " # Exit codes\n",
+            " # Boundaries\n",
             " # Specification\n",
-            " # Decisions\n"
+            " # Specification\n",
+            " ## Detail\n",
+            " # Overview\n",
+            " # Decision\n",
+            " # The rule\n",
+            " Prose.\n"
         )
         .into());
         let mut state = HeadingState::default();
@@ -1854,100 +2006,105 @@ mod tests
         assert_eq!(
             judged,
             [
-                Maybe::Absent(super::heading_check::Admitted::ModuleHeading),
-                Maybe::Absent(super::heading_check::Admitted::UnderDecisions),
-                Maybe::Present(HeadingDefect::OutsideSet("# Status".to_owned())),
-                Maybe::Present(HeadingDefect::OutsideSet("## Detail".to_owned())),
-                Maybe::Absent(super::heading_check::Admitted::EvidenceHeading),
-                Maybe::Present(HeadingDefect::Repeated("# Decisions".to_owned())),
-                Maybe::Absent(super::heading_check::Admitted::NotAHeading),
+                Maybe::Absent(Admitted::Section),
+                Maybe::Present(HeadingDefect::Repeated("Examples")),
+                Maybe::Absent(Admitted::FoldIn),
+                Maybe::Present(HeadingDefect::Repeated("Boundaries")),
+                Maybe::Absent(Admitted::Evidence),
+                Maybe::Absent(Admitted::Evidence),
+                Maybe::Present(HeadingDefect::SubSection("## Detail".to_owned())),
+                Maybe::Present(HeadingDefect::Refused(
+                    "# Overview".to_owned(),
+                    "the lead paragraph is the overview"
+                )),
+                Maybe::Present(HeadingDefect::Refused(
+                    "# Decision".to_owned(),
+                    super::DECISION_HOME
+                )),
+                Maybe::Present(HeadingDefect::OutsideVocabulary("# The rule".to_owned())),
+                Maybe::Absent(Admitted::NotAHeading),
+                Maybe::Absent(Admitted::NotAHeading),
             ],
-            "a sub-heading is the decision rule's only under `# Decisions`"
+            "a fold-in opens its section, and a section opens once under either spelling"
         );
     }
 
     #[test]
-    fn a_row_is_three_labelled_bullets_in_order()
+    fn labelled_runs_are_decision_records()
     {
-        let reading = read_decisions(&doc(concat!(
-            " # Decisions\n",
-            " - Choice: one.\n",
-            " - Alternative: the singular.\n",
-            " - Reversal:\n",
-            "   wrapped value.\n",
-            " - Choice: two.\n",
-            " - Alternatives: a.\n",
-            " - Reversal: b.\n",
-            " - Alternatives: a fourth bullet.\n",
-            " - Choice: three.\n",
-            " - Reversal: before the alternatives.\n",
-            " - Alternatives: late.\n",
-            " - **Bold.** an unlabelled bullet.\n",
-            " - Choice: four.\n",
-            " - Alternatives:\n",
-            " - Reversal: c.\n",
-            "\n",
-            " A paragraph\n",
-            " of two lines.\n",
-            " ## Sub\n",
-            " # Items\n",
-            " - Choice: past the section.\n"
-        )
-        .into()));
-        let judged: Vec<_> = reading.inside.iter().map(row_judgement).collect();
+        let labelled = |parts: &[Part]| RecordKind::Labelled(parts.to_vec());
         assert_eq!(
-            judged,
+            records(
+                concat!(
+                    " - Choice: one.\n",
+                    " - Alternatives: two.\n",
+                    " - Reversal: three.\n",
+                    " **The cache is per process.** A shared one costs more. Alternative: a\n",
+                    " shared cache (Reversal: a slow rebuild).\n",
+                    " Reversal: without its choice.\n",
+                    " **Choice.** first; **Choice**: second.\n",
+                    " The Reversal: inside a sentence. Reversals are no label.\n",
+                    " `Reversal:` in a code span.\n",
+                    " ```\n",
+                    " Choice: fenced.\n",
+                    " ```\n",
+                    " |Choice|Alternative|Reversal condition|\n",
+                    " |---|---|---|\n",
+                    " |Choice of cache|one|none|\n",
+                    " # Decisions\n"
+                )
+                .into(),
+                OuterDocumentation(true)
+            ),
             [
-                Maybe::Absent(super::row_check::Accepted::Row),
-                Maybe::Present(DecisionDefect::NotOneRow(vec![
-                    Part::Choice,
-                    Part::Alternatives,
-                    Part::Reversal,
-                    Part::Alternatives,
-                ])),
-                Maybe::Present(DecisionDefect::NotOneRow(vec![
-                    Part::Choice,
-                    Part::Reversal,
-                    Part::Alternatives,
-                ])),
-                Maybe::Present(DecisionDefect::Unlabelled),
-                Maybe::Present(DecisionDefect::EmptyValue(Part::Alternatives)),
-                Maybe::Present(DecisionDefect::Prose),
-                Maybe::Present(DecisionDefect::SubHeading),
+                (
+                    LineIndex(0),
+                    labelled(&[Part::Choice, Part::Alternatives, Part::Reversal])
+                ),
+                (
+                    LineIndex(3),
+                    labelled(&[Part::Alternatives, Part::Reversal])
+                ),
+                (LineIndex(5), labelled(&[Part::Reversal])),
+                (LineIndex(6), labelled(&[Part::Choice])),
+                (LineIndex(6), labelled(&[Part::Choice])),
+                (LineIndex(12), RecordKind::Table),
+                (LineIndex(15), RecordKind::Heading("# Decisions".to_owned())),
             ],
-            "each decision is judged once, a wrapped value stated and a two-line paragraph one"
+            "labels open sentences, a reversal closes its run, and a fence or a code span hides one"
         );
         assert_eq!(
-            reading.outside,
-            [21_usize],
-            "a label past the next level-one heading is outside the section"
+            records(" # Decisions\n".into(), OuterDocumentation(false)),
+            [],
+            "a module's decision heading is the heading rule's"
         );
     }
 
     #[test]
-    fn decisions_outside_the_section_are_counted()
+    fn issue_numbers_in_prose_are_references()
     {
-        let reading = read_decisions(&doc(concat!(
-            " **Choice.** one.\n",
-            " **Alternatives.** a.\n",
-            " **Reversal.** b.\n",
-            " **A bold lead.** prose.\n",
-            "\n",
-            " Reversal: without its choice.\n",
-            " - Choice: unclosed.\n",
-            " - Choice: also unclosed.\n",
-            " The Reversal: inside a sentence.\n",
-            " Reversals are not labels.\n"
+        let found: Vec<(usize, String)> = issue_references(&doc(concat!(
+            " Fixed by #577, see (#12).\n",
+            " Upstream gandr-lang/gandr#3 and #4.\n",
+            " `#5` in a span, &#160; an entity, x#6 glued, #7a a word, #b a letter.\n",
+            " ```\n",
+            " #8\n",
+            " ```\n",
+            " a/b/c#9 is a path."
         )
-        .into()));
+        .into()))
+        .into_iter()
+        .map(|reference| (reference.line, reference.text))
+        .collect();
         assert_eq!(
-            reading.outside,
-            [0_usize, 5, 6, 7],
-            "a reversal closes the open choice, an unclosed choice stands alone"
-        );
-        assert!(
-            reading.inside.is_empty(),
-            "no section, no decision inside it"
+            found,
+            [
+                (0_usize, "#577".to_owned()),
+                (0, "#12".to_owned()),
+                (1, "gandr-lang/gandr#3".to_owned()),
+                (1, "#4".to_owned()),
+            ],
+            "a number after a word, an entity, a span, a fence or a path is no reference"
         );
     }
 
@@ -1999,33 +2156,55 @@ mod tests
     }
 
     #[test]
-    fn the_budget_admits_its_cap_and_refuses_one_byte_more()
+    fn the_budgets_admit_their_caps_and_refuse_one_byte_more()
     {
         assert_eq!(
             doc_bytes(&doc(" é\n".into())).0,
             5_usize,
             "three bytes of text, an empty line, one break each"
         );
-        for (cap, root) in [
-            (MODULE_BUDGET, CrateRoot(false)),
-            (CRATE_ROOT_BUDGET, CrateRoot(true)),
+        for cap in [
+            LEAD_BUDGET,
+            SECTION_BUDGET,
+            MODULE_BUDGET,
+            CRATE_ROOT_BUDGET,
         ] {
             assert!(
-                matches!(budget_judgement(DocBytes(cap), root), Maybe::Absent(_)),
+                matches!(
+                    budget_judgement(DocBytes(cap), DocBytes(cap)),
+                    Maybe::Absent(_)
+                ),
                 "the cap itself is admitted"
             );
             assert_eq!(
-                budget_judgement(DocBytes(cap.saturating_add(1)), root),
+                budget_judgement(DocBytes(cap.saturating_add(1)), DocBytes(cap)),
                 Maybe::Present(DocBytes(cap.saturating_add(1))),
                 "and one byte more is refused"
             );
         }
-        assert!(
-            matches!(
-                budget_judgement(DocBytes(MODULE_BUDGET.saturating_add(1)), CrateRoot(true)),
-                Maybe::Absent(_)
+        let measured = structure(&doc(
+            " Lead.\n\n # Items\n\n ```\n # fenced\n ```\n # References\n Cited.".into(),
+        ));
+        assert_eq!(
+            (
+                measured.lead.0,
+                measured
+                    .sections
+                    .iter()
+                    .map(|section| (section.line, section.heading.as_str(), section.bytes.0))
+                    .collect::<Vec<_>>()
             ),
-            "a crate root carries the larger budget"
+            (8_usize, vec![
+                (2_usize, "# Items", 30_usize),
+                (7, "# References", 22),
+            ]),
+            "the lead ends at the first heading, and a fenced `#` line stays in its section"
+        );
+        let unheaded = structure(&doc(" Lead only.".into()));
+        assert_eq!(
+            (unheaded.lead.0, unheaded.sections.len()),
+            (12_usize, 0_usize),
+            "documentation without a heading is all lead"
         );
     }
 

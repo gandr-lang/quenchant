@@ -1,20 +1,36 @@
-error: this crate root's documentation is 8320 bytes, over its 8192-byte budget
-  --> $DIR/budget.rs:3:1
+error: this crate root's documentation is 16845 bytes, over its 16384-byte budget
+  --> $DIR/budget.rs:2:1
    |
-LL | //! A crate root over its budget.
-   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+LL | //! A crate root over its budget, every section under its own.
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: split the module, or move a section to the item it describes; never compress the prose to fit
    = note: `-D module-doc-budget` implied by `-D rustdoc-shape`
    = help: to override `-D rustdoc-shape` add `#[allow(module_doc_budget)]`
 
-error: this module's documentation is 4189 bytes, over its 4096-byte budget
-  --> $DIR/budget.rs:121:5
+error: this module's documentation is 9298 bytes, over its 8192-byte budget
+  --> $DIR/budget.rs:259:5
    |
-LL |     //! A module over its budget.
-   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+LL |     //! A module over its budget, its lead and one section over theirs.
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    |
    = help: split the module, or move a section to the item it describes; never compress the prose to fit
 
-error: aborting due to 2 previous errors
+error: this module's lead is 1621 bytes, over its 1536-byte budget
+  --> $DIR/budget.rs:259:5
+   |
+LL |     //! A module over its budget, its lead and one section over theirs.
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: keep the lead to what the module is; move the detail into a section or onto the item it describes
+
+error: the section `# Items` is 2082 bytes, over its 2048-byte budget
+  --> $DIR/budget.rs:367:5
+   |
+LL |     //! # Items
+   |     ^^^^^^^^^^^
+   |
+   = help: move the detail onto the items the section describes, or split the module
+
+error: aborting due to 4 previous errors
 

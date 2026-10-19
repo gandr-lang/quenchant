@@ -428,7 +428,7 @@ pub fn require_section(
     );
 }
 
-/// Exact section label used to discover an authored adequacy claim.
+/// Exact section label that discovers an authored adequacy claim.
 const HEADING: &str = "# Adequacy";
 
 /// Ordered interpretation preserves the first reportable grammar failure.

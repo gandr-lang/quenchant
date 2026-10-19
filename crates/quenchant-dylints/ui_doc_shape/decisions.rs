@@ -1,65 +1,39 @@
-// compile-flags: --test
 #![allow(dead_code)]
-//! A crate root whose decisions are not rows.
+//! A crate root recording its decisions.
 //!
-//! **Choice.** A decision labelled outside `# Decisions` is refused.
-//! **Reversal.** Its reversal closes it, so it is one decision.
+//! - Choice: one cache per process.
+//! - Alternatives: a shared cache, whose invalidation costs more.
+//! - Reversal: a rebuild slower than the invalidation.
 //!
-//! # Decisions
+//! **The reader owns its buffer.** A borrowed buffer ties the frame to the
+//! socket. Alternative: a pool. Reversal: a pool that never contends.
 //!
-//! - Choice: a row with a fourth bullet.
-//! - Alternatives: three bullets, which the row carries.
-//! - Reversal: never.
-//! - Alternatives: the fourth bullet, which no row carries.
-//! - Choice: a row out of order.
-//! - Reversal: written before the alternatives.
-//! - Alternatives: written last.
-//! - Choice: a row with an empty bullet.
-//! - Alternatives:
-//! - Reversal: an alternative stated.
-//! - **A bold lead.** The bullet opens with no label.
-//!
-//! A paragraph under `# Decisions` is not a row,
-//! however many lines it runs.
-//!
-//! ## Eviction
-//!
-//! # Items
-//!
-//! - [`Cache`]: the cache.
+//! |Choice|Alternative|Reversal condition|
+//! |---|---|---|
+//! |one cache|a shared cache|a slow rebuild|
 
-/// The cache the decisions describe.
+/// The cache, with a decision in its item documentation.
+///
+/// **Choice.** One per process (Reversal: a shared store).
 pub struct Cache;
 
-/// A module recording one decision more than the cap.
-pub mod crowded
+/// A function whose documentation opens a decision section.
+///
+/// # Decisions
+///
+/// - Alternatives: an inline copy.
+fn load()
 {
-    //! Eight rows, each well formed.
+}
+
+/// A module whose decision has no choice.
+pub mod reader
+{
+    //! Reads frames.
     //!
-    //! # Decisions
-    //!
-    //! - Choice: one.
-    //! - Alternatives: another.
-    //! - Reversal: a change.
-    //! - Choice: two.
-    //! - Alternatives: another.
-    //! - Reversal: a change.
-    //! - Choice: three.
-    //! - Alternatives: another.
-    //! - Reversal: a change.
-    //! - Choice: four.
-    //! - Alternatives: another.
-    //! - Reversal: a change.
-    //! - Choice: five.
-    //! - Alternatives: another.
-    //! - Reversal: a change.
-    //! - Choice: six.
-    //! - Alternatives: another.
-    //! - Reversal: a change.
-    //! - Choice: seven.
-    //! - Alternatives: another.
-    //! - Reversal: a change.
-    //! - Choice: eight.
-    //! - Alternatives: another.
-    //! - Reversal: a change.
+    //! Reversal: a reader that never blocks.
+}
+
+fn main()
+{
 }

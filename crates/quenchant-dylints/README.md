@@ -85,12 +85,13 @@ For normal work, prefer the repository's `mise run check:tests` task, which sele
 | `dishonest_answer` | A configured placeholder answer — a constructor or a literal spelling — is built only under an `expect` with its reason at the site; `answer_totality` group, configured |
 | `presenter_coverage` | Every variant of a configured enum is named by an arm of its configured presenter functions; `answer_totality` group, configured |
 | `mold_coverage` | The rules a printer's productions name through a configured marker equal the rules the grammar's builders define, less a justified exclusion table; `answer_totality` group, configured |
-| `module_doc_heading` | A module's own documentation opens only `# Decisions`, `# Items`, `# References` and the evidence headings, each module heading once; `rustdoc_shape` group, opt-in |
-| `module_doc_decision` | Each decision under `# Decisions` is one `Choice:`, `Alternatives:`, `Reversal:` row, none is labelled outside the section, and a module records at most seven; `rustdoc_shape` group, opt-in |
-| `doc_history_prose` | Module and item documentation carry none of the phrases that narrate a past; `rustdoc_shape` group, opt-in |
-| `module_doc_budget` | A crate root's documentation fits 8 KiB and any other module's 4 KiB; `rustdoc_shape` group, opt-in |
+| `module_doc_heading` | A module's own documentation is a lead, then sections from `# Examples`, `# Witnesses`, `# Boundaries`, `# Items`, `# Dependencies` and `# References` and the evidence headings, each once, one level deep; `rustdoc_shape` group, opt-in |
+| `doc_decision_record` | Module and item documentation carry no `Choice`, `Alternatives` or `Reversal` record and no decision table; `rustdoc_shape` group, opt-in |
+| `doc_issue_reference` | Module and item documentation cite no issue number; `rustdoc_shape` group, opt-in |
+| `module_doc_budget` | A crate root's documentation fits 16 KiB, any other module's 8 KiB, a lead 1.5 KiB and a section 2 KiB; `rustdoc_shape` group, opt-in |
 | `module_doc_duplication` | A paragraph of 25 words or more is written once, in the README or in one module; `rustdoc_shape` group, opt-in |
-| `module_doc_measure` | Prints each documented module's bytes, decisions and rows, the distribution the caps are chosen from; opt-in |
+| `doc_history_prose` | Reports the phrases that narrate a past in module and item documentation; a report selected with `--force-warn`, outside the group |
+| `module_doc_measure` | Prints each documented module's bytes, lead, largest section and decision records; opt-in |
 
 The plugin is a policy floor, not a proof of totality or complete semantics. Call edges erased by function-pointer coercion, compiler-generated drop behavior, and unresolved type relationships require the corresponding review or evidence boundary. The ownership and call analyses address different mechanisms; neither subsumes the other.
 
@@ -282,9 +283,9 @@ Consumers may use module-scoped lint levels during a rollout. After the backlog 
 
 ### Module documentation shape
 
-The README's budget sends detail into rustdoc; the `rustdoc_shape` group holds that rustdoc in turn. A module's `//!` documentation is a lead paragraph, then at most `# Decisions`, `# Items` and `# References`. Its decisions are rows of three labelled bullets, its prose states the present, its size fits a static budget, and a paragraph is never copied between the README and the crate's documentation. [`src/doc_shape.rs`](src/doc_shape.rs) states each rule, its caps and its decisions.
+The README's budget sends detail into rustdoc; the `rustdoc_shape` group holds that rustdoc in turn. A module's `//!` documentation is a lead paragraph, then sections from one vocabulary, each within a byte budget; documentation states what the code does, so it carries no decision record and cites no issue, and a paragraph is never copied between the README and the crate's documentation. [`src/doc_shape.rs`](src/doc_shape.rs) states each rule, its vocabulary and its caps. A test compilation is not read.
 
-Every rule is `allow` by default. Select the group in the consumer's `DYLINT_RUSTFLAGS` (`-W rustdoc_shape`) to read the findings, and `-W module_doc_measure` beside it to print the size and decision count of every documented module.
+Every rule is `allow` by default. A consumer denies the group in its `DYLINT_RUSTFLAGS` (`-D rustdoc_shape`), selects the history report beside it (`--force-warn doc_history_prose`, which denied warnings cannot turn into a refusal), and carries an `allow` per crate, under `cfg_attr(dylint_lib = "quenchant_dylints", …)`, where its documentation does not yet meet the shape. `-W module_doc_measure` prints the sizes of every documented module.
 
 ## Ownership exceptions
 

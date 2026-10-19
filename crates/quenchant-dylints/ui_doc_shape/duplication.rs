@@ -1,4 +1,3 @@
-// compile-flags: --test
 // rustc-env:CARGO_MANIFEST_DIR=ui_doc_shape/readme
 #![allow(dead_code)]
 //! The frame reader keeps one buffer per connection, drains each buffer in
@@ -28,4 +27,8 @@ pub mod second
     //!
     //! A short paragraph of twenty-four words repeats in a module, and stays
     //! one word short of the threshold, so no report ever names it.
+}
+
+fn main()
+{
 }

@@ -1,43 +1,37 @@
-// compile-flags: --test
 #![allow(dead_code)]
-//! A crate root in the sanctioned shape: a lead paragraph, then the module
-//! headings, each once, beside an evidence heading.
+//! A crate root in the vocabulary's shape: a lead paragraph, then each section
+//! once, beside the evidence sections.
 //!
-//! Fenced code holds code:
+//! Fenced code holds code, and a code span hides what it carries:
 //!
 //! ```text
 //! # A `#` line inside a fence.
-//! previously = formerly
+//! Choice: fenced, see #12.
 //! ```
 //!
-//! # Decisions
+//! The `Reversal:` label and the issue `#5` in code spans are code; the
+//! label inside a sentence, as in the Reversal: here, and the plural
+//! Reversals are no label, and &#35; is a character reference.
 //!
-//! - Choice: one, at the cap of seven.
-//! - Alternatives: another.
-//! - Reversal: a change.
-//! - Choice: two, its alternative singular.
-//! - Alternative: another.
-//! - Reversal: a change.
-//! - Choice: three, its reversal wrapped across two lines.
-//! - Alternatives: another.
-//! - Reversal: a change that continues.
-//! - Choice: four.
-//! - Alternatives: another.
-//! - Reversal: a change.
+//! # Examples
 //!
-//! - Choice: five, after a blank line.
-//! - Alternatives: another.
-//! - Reversal: a change.
-//! - Choice: six.
-//! - Alternatives: another.
-//! - Reversal: a change.
-//! - Choice: seven.
-//! - Alternatives: another.
-//! - Reversal: a change.
+//! - Route a frame by its kind.
+//!
+//! # Witnesses
+//!
+//! - The router's tests.
+//!
+//! # Boundaries
+//!
+//! - A frame over the wire's limit is refused before routing.
 //!
 //! # Items
 //!
-//! - [`Router`]: the router; it is used to dispatch every kind.
+//! - [`Router`]: the router.
+//!
+//! # Dependencies
+//!
+//! - None beyond the standard library.
 //!
 //! # References
 //!
@@ -45,17 +39,50 @@
 //!
 //! # Specification
 //!
-//! - ensures: an evidence section another reader owns.
+//! - ensures: an evidence section an item reader owns.
+//!
+//! # Adequacy
+//!
+//! # Errors
+//!
+//! # Panics
+//!
+//! # Safety
 
 /// The router.
 ///
 /// # Why an item heading passes
 ///
-/// Item documentation is read for history prose alone.
+/// Item documentation is read for decision records, issue references and
+/// history prose, never for its headings.
 pub struct Router;
+
+/// A module whose sections are fold-in spellings.
+pub mod folded
+{
+    //! A module whose headings fold into the vocabulary.
+    //!
+    //! # Example
+    //!
+    //! # Specification attributes
+    //!
+    //! # Exit codes
+}
+
+/// A module whose witnesses section is another fold-in.
+pub mod evidence
+{
+    //! # Specification and evidence
+    //!
+    //! # Boundary wrappers
+}
 
 /// A module whose documentation is its lead paragraph alone.
 pub mod handler
 {
     //! Handles one kind of frame.
+}
+
+fn main()
+{
 }

@@ -7,6 +7,8 @@
 //! `#[expect(answer_totality, reason = "…")]` with the reason the honest answer
 //! is unavailable, and a new source of the placeholder fails the build.
 //!
+//! # Examples
+//!
 //! The consumer names the placeholders in its Dylint configuration:
 //!
 //! ```toml
@@ -17,6 +19,8 @@
 //! ]
 //! dishonest_spellings = [{ text = "?", crates = ["printer", "hover"] }]
 //! ```
+//!
+//! # Boundaries
 //!
 //! A constructor entry names an enum variant, an enum (every variant) or a
 //! struct by its definition path, crate name first; it is resolved in every

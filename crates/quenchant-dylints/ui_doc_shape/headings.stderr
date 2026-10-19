@@ -1,36 +1,92 @@
-error: `# Status` is not a module documentation heading
-  --> $DIR/headings.rs:5:1
+error: `# Status` is refused in module documentation
+  --> $DIR/headings.rs:4:1
    |
 LL | //! # Status
    | ^^^^^^^^^^^^
    |
-   = help: a module's documentation is a lead paragraph, then at most `# Decisions`, `# Items` and `# References`, beside the evidence sections `# Specification`, `# Adequacy`, `# Termination`, `# Judgement` and `# Safety`; status belongs in the tracker, history in version control
+   = help: status lives in the tracker
    = note: `-D module-doc-heading` implied by `-D rustdoc-shape`
    = help: to override `-D rustdoc-shape` add `#[allow(module_doc_heading)]`
 
-error: `## Detail` is not a module documentation heading
-  --> $DIR/headings.rs:11:1
+error: `# Overview` is refused in module documentation
+  --> $DIR/headings.rs:8:1
+   |
+LL | //! # Overview
+   | ^^^^^^^^^^^^^^
+   |
+   = help: the lead paragraph is the overview
+
+error: `# Decisions` is refused in module documentation
+  --> $DIR/headings.rs:12:1
+   |
+LL | //! # Decisions
+   | ^^^^^^^^^^^^^^^
+   |
+   = help: a decision lives in the pull request and the issue, where Git dates it
+
+error: `## Detail` is a sub-section; module documentation has one level
+  --> $DIR/headings.rs:16:1
    |
 LL | //! ## Detail
    | ^^^^^^^^^^^^^
    |
-   = help: a module's documentation is a lead paragraph, then at most `# Decisions`, `# Items` and `# References`, beside the evidence sections `# Specification`, `# Adequacy`, `# Termination`, `# Judgement` and `# Safety`; status belongs in the tracker, history in version control
+   = help: a module's documentation is a lead paragraph, then sections from `# Examples`, `# Witnesses`, `# Boundaries`, `# Items`, `# Dependencies` and `# References`, beside the evidence sections `# Specification`, `# Adequacy`, `# Errors`, `# Panics` and `# Safety`; fold the section into one of them, into the lead, or onto the item it describes
 
-error: `# Items` opens twice in this module's documentation
-  --> $DIR/headings.rs:19:1
+error: `# The rule` is outside the module documentation vocabulary
+  --> $DIR/headings.rs:24:1
    |
-LL | //! # Items
-   | ^^^^^^^^^^^
+LL | //! # The rule
+   | ^^^^^^^^^^^^^^
    |
-   = help: a module's documentation is a lead paragraph, then at most `# Decisions`, `# Items` and `# References`, beside the evidence sections `# Specification`, `# Adequacy`, `# Termination`, `# Judgement` and `# Safety`; status belongs in the tracker, history in version control
+   = help: a module's documentation is a lead paragraph, then sections from `# Examples`, `# Witnesses`, `# Boundaries`, `# Items`, `# Dependencies` and `# References`, beside the evidence sections `# Specification`, `# Adequacy`, `# Errors`, `# Panics` and `# Safety`; fold the section into one of them, into the lead, or onto the item it describes
 
-error: `# History` is not a module documentation heading
-  --> $DIR/headings.rs:41:5
+error: `# Examples` opens twice in this module's documentation
+  --> $DIR/headings.rs:30:1
+   |
+LL | //! # Examples
+   | ^^^^^^^^^^^^^^
+   |
+   = help: a module's documentation is a lead paragraph, then sections from `# Examples`, `# Witnesses`, `# Boundaries`, `# Items`, `# Dependencies` and `# References`, beside the evidence sections `# Specification`, `# Adequacy`, `# Errors`, `# Panics` and `# Safety`; fold the section into one of them, into the lead, or onto the item it describes
+
+error: `# History` is refused in module documentation
+  --> $DIR/headings.rs:47:5
    |
 LL |     //! # History
    |     ^^^^^^^^^^^^^
    |
-   = help: a module's documentation is a lead paragraph, then at most `# Decisions`, `# Items` and `# References`, beside the evidence sections `# Specification`, `# Adequacy`, `# Termination`, `# Judgement` and `# Safety`; status belongs in the tracker, history in version control
+   = help: history lives in version control
 
-error: aborting due to 4 previous errors
+error: `# Changelog` is refused in module documentation
+  --> $DIR/headings.rs:49:5
+   |
+LL |     //! # Changelog
+   |     ^^^^^^^^^^^^^^^
+   |
+   = help: the changelog is written from the commits when a release is cut
+
+error: `# Notes` is refused in module documentation
+  --> $DIR/headings.rs:51:5
+   |
+LL |     //! # Notes
+   |     ^^^^^^^^^^^
+   |
+   = help: a note belongs in the section it qualifies, or in the lead
+
+error: `# Background` is refused in module documentation
+  --> $DIR/headings.rs:53:5
+   |
+LL |     //! # Background
+   |     ^^^^^^^^^^^^^^^^
+   |
+   = help: background belongs in the references the module cites
+
+error: `# Decision` is refused in module documentation
+  --> $DIR/headings.rs:55:5
+   |
+LL |     //! # Decision
+   |     ^^^^^^^^^^^^^^
+   |
+   = help: a decision lives in the pull request and the issue, where Git dates it
+
+error: aborting due to 11 previous errors
 

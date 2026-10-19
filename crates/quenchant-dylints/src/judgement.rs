@@ -421,7 +421,7 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowJudgement
     }
 }
 
-/// Exact section label used to discover authored judgment roles.
+/// Exact section label that discovers authored judgment roles.
 const HEADING: &str = "# Judgement";
 
 /// Role label assigning mode meaning to a type declaration.

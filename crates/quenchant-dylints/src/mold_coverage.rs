@@ -13,6 +13,8 @@
 //!   unless the consumer's `unproduced` table states why no presenter writes it
 //!   — a declaration form a type printer never meets, say.
 //!
+//! # Examples
+//!
 //! ```toml
 //! [quenchant-dylints.productions]
 //! marker = "printer::walk::spells"
@@ -24,6 +26,8 @@
 //! ]
 //! ```
 //!
+//! # Boundaries
+//!
 //! The check runs in the crate that defines the marker. The printer and the
 //! grammar are usually separate crates neither of which depends on the other,
 //! so the builders are read as source rather than compiled: each configured
@@ -34,13 +38,6 @@
 //! directory the compiler runs in, which Cargo makes the workspace root, so
 //! the table names the builders as the repository does and reads the same on
 //! every machine.
-//!
-//! - Alternatives: running the check in a crate that depends on both and
-//!   reading the builders' MIR from metadata, which loses the productions'
-//!   arms; a comment marker before each arm, which the runtime cannot read; the
-//!   grammar's built mold table, which exists only at run time.
-//! - Reversal: a grammar crate that exports its rule names as data a dependency
-//!   can read, or a printer that depends on the grammar.
 
 use alloc::collections::BTreeMap;
 use alloc::collections::BTreeSet;
