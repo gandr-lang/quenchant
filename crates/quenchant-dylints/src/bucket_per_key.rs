@@ -310,12 +310,12 @@ impl<'tcx> LateLintPass<'tcx> for BucketPerKey
         if !definition.is_struct() {
             return;
         }
+        let variant = definition.non_enum_variant();
         for field in fields {
-            let Some(declared) = definition
-                .non_enum_variant()
-                .fields
-                .iter()
-                .find(|declared| declared.name == field.ident.name)
+            let Some(declared) = cx
+                .typeck_results()
+                .opt_field_index(field.hir_id)
+                .and_then(|index| variant.fields.get(index))
             else {
                 continue;
             };

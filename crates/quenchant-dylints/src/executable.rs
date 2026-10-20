@@ -302,8 +302,11 @@ impl SpecificationSpelling
     )
     {
         let mut pending = vec![arguments];
+        // One argument list's trees, collected into one buffer every list reuses.
+        let mut trees: Vec<&TokenTree> = Vec::new();
         while let Some(arguments) = pending.pop() {
-            let trees: Vec<&TokenTree> = arguments.iter().collect();
+            trees.clear();
+            trees.extend(arguments.iter());
             for attribute in split_commas(&trees).into_iter().skip(1_usize) {
                 let path = match *attribute.as_slice() {
                     [

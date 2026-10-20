@@ -34,6 +34,7 @@ use clippy_utils::diagnostics::span_lint_hir;
 use clippy_utils::diagnostics::span_lint_hir_and_then;
 use clippy_utils::paths::PathNS;
 use clippy_utils::paths::lookup_path_str;
+use rustc_data_structures::fx::FxIndexSet;
 use rustc_hir::CRATE_HIR_ID;
 use rustc_hir::HirId;
 use rustc_hir::def_id::DefId;
@@ -288,13 +289,11 @@ pub fn resolve(
     path: TypePath<'_>,
 ) -> Vec<DefId>
 {
-    let mut found = lookup_path_str(tcx, PathNS::Type, path.0);
-    for id in lookup_path_str(tcx, PathNS::Value, path.0) {
-        if !found.contains(&id) {
-            found.push(id);
-        }
-    }
-    found
+    let mut found: FxIndexSet<DefId> = lookup_path_str(tcx, PathNS::Type, path.0)
+        .into_iter()
+        .collect();
+    found.extend(lookup_path_str(tcx, PathNS::Value, path.0));
+    found.into_iter().collect()
 }
 
 /// Whether a configured path's first segment names the crate being checked.

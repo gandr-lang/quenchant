@@ -49,20 +49,6 @@
     unstable_features,
     reason = "rustc_private is the lint driver's substrate"
 )]
-// Cost-shape sites, classified in #59's and #65's censuses and listed in
-// #62: four `linear_search_in_loop` deduplications of a path's resolutions
-// or a signature's opaque types, each a handful of entries, ten
-// `allocation_in_repeated_body` buffers made per item, line or variant, and
-// one `clone_in_loop` label copied per edge of a rendered cycle.
-#![cfg_attr(
-    dylint_lib = "quenchant_dylints",
-    expect(
-        allocation_in_repeated_body,
-        clone_in_loop,
-        linear_search_in_loop,
-        reason = "15 cost-shape sites (10 allocation_in_repeated_body, 1 clone_in_loop, 4 bounded linear_search_in_loop); #62 lists them"
-    )
-)]
 
 extern crate alloc;
 extern crate rustc_ast;

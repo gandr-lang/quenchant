@@ -797,6 +797,9 @@ impl DocShape
         seen: &mut BTreeMap<Vec<String>, FirstSeen>,
     )
     {
+        // A paragraph's first eight words, written into one buffer every
+        // paragraph reuses.
+        let mut opening = String::new();
         for paragraph in paragraphs(&text.lines) {
             if paragraph.words.len() < DUPLICATE_WORDS {
                 continue;
@@ -805,13 +808,13 @@ impl DocShape
             else {
                 continue;
             };
-            let opening = paragraph
-                .words
-                .iter()
-                .take(8)
-                .cloned()
-                .collect::<Vec<String>>()
-                .join(" ");
+            opening.clear();
+            for (index, word) in paragraph.words.iter().take(8).enumerate() {
+                if index != 0 {
+                    opening.push(' ');
+                }
+                opening.push_str(word);
+            }
             if let Maybe::Present(ref readme) = self.readme
                 && let Some(original) = readme
                     .iter()
@@ -1467,10 +1470,13 @@ fn issue_references(lines: &[DocLine]) -> Vec<IssueReference>
                 continue;
             }
             let after = masked.get(offset.saturating_add(1) ..).unwrap_or("");
-            let digits: String = after.chars().take_while(char::is_ascii_digit).collect();
+            // ASCII digits are one byte each, so the run's length in bytes is
+            // where the text after it starts.
+            let length = after.bytes().take_while(u8::is_ascii_digit).count();
+            let digits = after.get(.. length).unwrap_or("");
             let closed = after
-                .chars()
-                .nth(digits.chars().count())
+                .get(length ..)
+                .and_then(|rest| rest.chars().next())
                 .is_none_or(|next| !next.is_alphanumeric() && next != '_');
             if digits.is_empty() || !closed {
                 continue;

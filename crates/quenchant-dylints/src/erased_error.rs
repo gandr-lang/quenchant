@@ -16,6 +16,8 @@ use core::cell::OnceCell;
 
 use anodized::spec;
 use clippy_utils::diagnostics::span_lint_and_help;
+use rustc_data_structures::fx::FxHashSet;
+use rustc_data_structures::fx::FxIndexSet;
 use rustc_hir::Body;
 use rustc_hir::FnDecl;
 use rustc_hir::TraitFn;
@@ -221,17 +223,15 @@ impl ErasedErrorSignature
     !output.iter().take(index).any(|earlier| earlier == item)))]
 fn erased_error_types(cx: &LateContext<'_>) -> Vec<DefId>
 {
-    let mut types = Vec::new();
+    let mut types: FxIndexSet<DefId> = FxIndexSet::default();
     for path in ERASED_ERROR_TYPES {
-        for def_id in
-            clippy_utils::paths::lookup_path_str(cx.tcx, clippy_utils::paths::PathNS::Type, path)
-        {
-            if !types.contains(&def_id) {
-                types.push(def_id);
-            }
-        }
+        types.extend(clippy_utils::paths::lookup_path_str(
+            cx.tcx,
+            clippy_utils::paths::PathNS::Type,
+            path,
+        ));
     }
-    types
+    types.into_iter().collect()
 }
 
 /// A `Result` anywhere in the output, or in what an opaque output declares,
@@ -261,7 +261,7 @@ fn returns_erased_error<'tcx>(
 ) -> ErasedError
 {
     let mut pending = vec![output];
-    let mut opened: Vec<DefId> = Vec::new();
+    let mut opened: FxHashSet<DefId> = FxHashSet::default();
     while let Some(next) = pending.pop() {
         for argument in next.walk() {
             let Some(inner) = argument.as_type()
@@ -288,7 +288,7 @@ fn returns_erased_error<'tcx>(
                     args,
                     ..
                 }) if !opened.contains(&def_id) => {
-                    opened.push(def_id);
+                    opened.insert(def_id);
                     for (clause, _) in cx
                         .tcx
                         .explicit_item_bounds(def_id)

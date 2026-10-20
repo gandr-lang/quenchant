@@ -18,6 +18,7 @@
 use core::cell::OnceCell;
 
 use anodized::spec;
+use rustc_data_structures::fx::FxIndexSet;
 use rustc_hir::Item;
 use rustc_hir::ItemKind;
 use rustc_hir::def_id::DefId;
@@ -142,17 +143,15 @@ impl<'tcx> LateLintPass<'tcx> for OptionField
     !output.iter().take(index).any(|earlier| earlier == item)))]
 fn wire_form_traits(cx: &LateContext<'_>) -> Vec<DefId>
 {
-    let mut traits = Vec::new();
+    let mut traits: FxIndexSet<DefId> = FxIndexSet::default();
     for path in WIRE_FORM_TRAITS {
-        for def_id in
-            clippy_utils::paths::lookup_path_str(cx.tcx, clippy_utils::paths::PathNS::Type, path)
-        {
-            if !traits.contains(&def_id) {
-                traits.push(def_id);
-            }
-        }
+        traits.extend(clippy_utils::paths::lookup_path_str(
+            cx.tcx,
+            clippy_utils::paths::PathNS::Type,
+            path,
+        ));
     }
-    traits
+    traits.into_iter().collect()
 }
 
 /// The compiler's implementation index decides whether an item is wire form.

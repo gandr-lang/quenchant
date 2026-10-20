@@ -685,7 +685,8 @@ impl<'tcx> LateLintPass<'tcx> for SpecificationEdges
     ///   and clause key with the sorted, deduplicated paths of the items noted
     ///   for it; replaces any earlier record of the same unit.
     /// - fails: reports a compilation error naming the file when the directory
-    ///   cannot be created or the file cannot be written.
+    ///   cannot be created or the file cannot be written, and one when a record
+    ///   cannot be rendered, writing nothing.
     /// - panics: none.
     /// - executable: none — the outcome is a file the gate binary reads; the
     ///   compilation's own result cannot observe it.
@@ -699,9 +700,15 @@ impl<'tcx> LateLintPass<'tcx> for SpecificationEdges
         cx: &LateContext<'tcx>,
     )
     {
+        use core::fmt::Write as _;
+
         let tcx = cx.tcx;
         let mut revisions: FxHashMap<LocalDefId, String> = FxHashMap::default();
         let mut contents = String::new();
+        // Rendering a JSON value into a `String` fails only if its `Display`
+        // does, which `serde_json` never reports for a `Value`; the first
+        // failure is still kept and reported instead of a partial record.
+        let mut rendered = Ok(());
         for def_id in indexed_definitions(tcx) {
             let Maybe::Present(record) =
                 item_record(tcx, &self.attributes, &self.qualifier, def_id)
@@ -711,16 +718,19 @@ impl<'tcx> LateLintPass<'tcx> for SpecificationEdges
             if let Some(revision) = record.get("revision").and_then(serde_json::Value::as_str) {
                 revisions.insert(def_id, revision.to_owned());
             }
-            contents.push_str(&record.to_string());
-            contents.push('\n');
+            rendered = rendered.and_then(|()| writeln!(contents, "{record}"));
         }
+        // One clause's names, collected into one set every clause reuses.
+        let mut names: BTreeSet<String> = BTreeSet::new();
         for (&owner, clauses) in &self.named {
-            let revision = revisions.get(&owner).cloned().unwrap_or_default();
+            let revision = revisions.get(&owner).map_or("", String::as_str);
             for (clause, targets) in clauses {
-                let names: BTreeSet<String> = targets
-                    .iter()
-                    .map(|&target| canonical_path(tcx, &self.qualifier, target))
-                    .collect();
+                names.clear();
+                names.extend(
+                    targets
+                        .iter()
+                        .map(|&target| canonical_path(tcx, &self.qualifier, target)),
+                );
                 let record = serde_json::json!({
                     "record": "clause",
                     "item": canonical_path(tcx, &self.qualifier, owner.to_def_id()),
@@ -728,9 +738,13 @@ impl<'tcx> LateLintPass<'tcx> for SpecificationEdges
                     "clause": clause.as_str(),
                     "names": names,
                 });
-                contents.push_str(&record.to_string());
-                contents.push('\n');
+                rendered = rendered.and_then(|()| writeln!(contents, "{record}"));
             }
+        }
+        if rendered.is_err() {
+            tcx.dcx()
+                .err("quenchant evidence records could not be rendered as JSON");
+            return;
         }
         let path = self.directory.join(record_name(tcx));
         let written = std::fs::create_dir_all(&self.directory)

@@ -226,21 +226,28 @@ pub fn check_fn_decl<'tcx>(
                         // inputs.
                         if let Maybe::Present(generic_args) = last_segment_args(qpath) {
                             let semantic_args = semantic_type_args(cx, semantic_ty);
-                            let mut pairs: Vec<_> = generic_args
-                                .args
-                                .iter()
-                                .filter_map(|arg| match arg {
-                                    &GenericArg::Type(generic_ty) => {
-                                        Some(generic_ty.as_unambig_ty())
-                                    },
-                                    &GenericArg::Lifetime(_)
-                                    | &GenericArg::Const(_)
-                                    | &GenericArg::Infer(_) => None,
-                                })
-                                .zip(semantic_args)
-                                .collect();
-                            while let Some((hir_ty, semantic_arg)) = pairs.pop() {
-                                work.push(PrimitiveWork::SemanticTy(hir_ty, semantic_arg));
+                            // Pushed in argument order, then reversed in place,
+                            // so the stack pops the first argument first.
+                            let start = work.len();
+                            work.extend(
+                                generic_args
+                                    .args
+                                    .iter()
+                                    .filter_map(|arg| match arg {
+                                        &GenericArg::Type(generic_ty) => {
+                                            Some(generic_ty.as_unambig_ty())
+                                        },
+                                        &GenericArg::Lifetime(_)
+                                        | &GenericArg::Const(_)
+                                        | &GenericArg::Infer(_) => None,
+                                    })
+                                    .zip(semantic_args)
+                                    .map(|(hir_ty, semantic_arg)| {
+                                        PrimitiveWork::SemanticTy(hir_ty, semantic_arg)
+                                    }),
+                            );
+                            if let Some(pushed) = work.get_mut(start ..) {
+                                pushed.reverse();
                             }
                         }
                     },
