@@ -26,7 +26,7 @@
 //! other half.
 //!
 //! The `rustdoc_shape` group holds module documentation to a shape
-//! ([`doc_shape`]). Seven `deny` lints refuse a standard-library operation
+//! ([`doc_shape`]). Eight `deny` lints refuse a standard-library operation
 //! whose cost is wrong for its receiver's type ([`cost_shape`]).
 //!
 //! # Boundaries
@@ -48,14 +48,16 @@
 )]
 // Cost-shape sites, classified in #59's and #65's censuses and listed in
 // #62: four `linear_search_in_loop` deduplications of a path's resolutions
-// or a signature's opaque types, each a handful of entries, and ten
-// `allocation_in_repeated_body` buffers made per item, line or variant.
+// or a signature's opaque types, each a handful of entries, ten
+// `allocation_in_repeated_body` buffers made per item, line or variant, and
+// one `clone_in_loop` label copied per edge of a rendered cycle.
 #![cfg_attr(
     dylint_lib = "quenchant_dylints",
     expect(
         allocation_in_repeated_body,
+        clone_in_loop,
         linear_search_in_loop,
-        reason = "14 cost-shape sites (10 allocation_in_repeated_body, 4 bounded linear_search_in_loop); #62 lists them"
+        reason = "15 cost-shape sites (10 allocation_in_repeated_body, 1 clone_in_loop, 4 bounded linear_search_in_loop); #62 lists them"
     )
 )]
 
@@ -79,6 +81,7 @@ mod arithmetic;
 mod bucket_per_key;
 mod callgraph;
 mod clause_cost;
+mod clone_in_loop;
 mod collect_read_once;
 mod cost_shape;
 mod count_comparison;
@@ -428,6 +431,7 @@ pub fn register_lints(
         doc_shape::MODULE_DOC_MEASURE,
         allocation_in_repeated_body::ALLOCATION_IN_REPEATED_BODY,
         bucket_per_key::BUCKET_PER_KEY,
+        clone_in_loop::CLONE_IN_LOOP,
         collect_read_once::COLLECT_READ_ONCE,
         count_comparison::COUNT_AGAINST_CONSTANT,
         front_shift::FRONT_SHIFT_IN_LOOP,
@@ -497,6 +501,10 @@ pub fn register_lints(
         Box::new(allocation_in_repeated_body::AllocationInRepeatedBody::new(
             allocated.clone(),
         ))
+    }));
+    let cloned = cost_regions.clone();
+    lint_store.register_late_pass(Box::new(move |_| {
+        Box::new(clone_in_loop::CloneInLoop::new(cloned.clone()))
     }));
     let bucketed = cost_regions.clone();
     lint_store.register_late_pass(Box::new(move |_| {
@@ -1430,6 +1438,7 @@ unproduced = [
                 "-Dunknown-lints",
                 "-Dallocation_in_repeated_body",
                 "-Dbucket_per_key",
+                "-Dclone_in_loop",
                 "-Dcollect_read_once",
                 "-Dcount_against_constant",
                 "-Dfront_shift_in_loop",

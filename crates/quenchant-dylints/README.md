@@ -99,10 +99,11 @@ For normal work, prefer the repository's `mise run check:tests` task, which sele
 | `collect_read_once` | A vector is not collected only to be read once by a move or copy, where `needless_collect` does not reach |
 | `bucket_per_key` | A map whose buckets are only searched for one entry does not allocate a growable bucket per key through `entry(..).or_default().push(..)`; grouped and bulk-filled maps and inline-first buckets are accepted |
 | `allocation_in_repeated_body` | A loop or per-element closure does not allocate a buffer, box, string or collection on every pass only to drop it before the next; a value moved out of the pass, a buffer never grown and a panic's message are accepted |
+| `clone_in_loop` | A loop or per-element closure does not deep-copy, through `clone`, `cloned`, `to_vec` or `to_owned`, a value owning a heap allocation only to drop the copy before the next pass; a copy that leaves the pass, a diverging path, and `Copy`, plain-data, `Rc` and `Arc` values are accepted |
 
 The plugin is a policy floor, not a proof of totality or complete semantics. Call edges erased by function-pointer coercion, compiler-generated drop behavior, and unresolved type relationships require the corresponding review or evidence boundary. The ownership and call analyses address different mechanisms; neither subsumes the other.
 
-The seven cost-shape rules are `Deny` by default and type-directed: the receiver's type decides, and a form cheap on its receiver is never refused. `src/cost_shape.rs` states the shared repetition and placement analysis; each lint's module states its cost claim, its accepted shapes and the Clippy lint it complements. A `#[spec]` clause is left to `spec_clause_traversal`.
+The eight cost-shape rules are `Deny` by default and type-directed: the receiver's type decides, and a form cheap on its receiver is never refused. `src/cost_shape.rs` states the shared repetition and placement analysis; each lint's module states its cost claim, its accepted shapes and the Clippy lint it complements. A `#[spec]` clause is left to `spec_clause_traversal`.
 
 The primitive-signature rule does not establish a wrapper's meaning, visibility, conversions, or absence policy. `option_signature` checks absence exposure separately; neither rule proves that a chosen wrapper or reason enum models the domain correctly.
 

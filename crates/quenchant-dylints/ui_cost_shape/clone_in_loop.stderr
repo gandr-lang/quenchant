@@ -1,0 +1,91 @@
+error: this copies a heap-owning value on every pass of a loop, and the copy is dropped before the next pass
+  --> $DIR/clone_in_loop.rs:21:33
+   |
+LL |         let names = index.names.clone();
+   |                                 ^^^^^^^
+   |
+note: the loop that repeats it
+  --> $DIR/clone_in_loop.rs:20:5
+   |
+LL | /     for query in queries {
+LL | |         let names = index.names.clone();
+LL | |         if names.contains(query) {
+LL | |             hits += 1;
+LL | |         }
+LL | |     }
+   | |_____^
+   = help: borrow the original, or make the copy once before the loop and reuse it
+   = note: requested on the command line with `-D clone-in-loop`
+
+error: this copies a heap-owning value on every pass of a loop, and the copy is dropped before the next pass
+  --> $DIR/clone_in_loop.rs:37:25
+   |
+LL |         let copy = text.to_owned();
+   |                         ^^^^^^^^^^
+   |
+note: the loop that repeats it
+  --> $DIR/clone_in_loop.rs:36:5
+   |
+LL | /     while count > 0 {
+LL | |         let copy = text.to_owned();
+LL | |         total += copy.len();
+LL | |         count -= 1;
+LL | |     }
+   | |_____^
+   = help: borrow the original, or make the copy once before the loop and reuse it
+
+error: this copies a heap-owning value on every pass of a loop, and the copy is dropped before the next pass
+  --> $DIR/clone_in_loop.rs:53:31
+   |
+LL |         let mut copy = values.to_vec();
+   |                               ^^^^^^^^
+   |
+note: the loop that repeats it
+  --> $DIR/clone_in_loop.rs:52:28
+   |
+LL |       rounds.iter().for_each(|round| {
+   |  ____________________________^
+LL | |         let mut copy = values.to_vec();
+LL | |         copy.sort_unstable();
+LL | |         total += copy.first().copied().unwrap_or(*round);
+LL | |     });
+   | |_____^
+   = help: borrow the original, or make the copy once before the loop and reuse it
+
+error: this copies a heap-owning value on every pass of a loop, and the copy is dropped before the next pass
+  --> $DIR/clone_in_loop.rs:74:21
+   |
+LL |         if snapshot.clone().table.contains_key(key) {
+   |                     ^^^^^^^
+   |
+note: the loop that repeats it
+  --> $DIR/clone_in_loop.rs:73:5
+   |
+LL | /     for key in keys {
+LL | |         if snapshot.clone().table.contains_key(key) {
+LL | |             found += 1;
+LL | |         }
+LL | |     }
+   | |_____^
+   = help: borrow the original, or make the copy once before the loop and reuse it
+
+error: this copies a heap-owning value on every pass of a loop, and the copy is dropped before the next pass
+  --> $DIR/clone_in_loop.rs:89:34
+   |
+LL |         let first = held.first().cloned();
+   |                                  ^^^^^^^^
+   |
+note: the loop that repeats it
+  --> $DIR/clone_in_loop.rs:88:5
+   |
+LL | /     for _ in 0 .. rounds {
+LL | |         let first = held.first().cloned();
+LL | |         if let Some(Some(value)) = &first {
+LL | |             total += **value;
+LL | |         }
+LL | |     }
+   | |_____^
+   = help: borrow the original, or make the copy once before the loop and reuse it
+
+error: aborting due to 5 previous errors
+
