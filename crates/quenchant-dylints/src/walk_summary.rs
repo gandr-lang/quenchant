@@ -24,6 +24,7 @@ use std::collections::HashSet;
 use anodized::spec;
 use quenchant_shape::shape::Maybe;
 use rustc_hir::Attribute;
+use rustc_hir::LangItem;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::AggregateKind;
@@ -70,6 +71,51 @@ quenchant_shape::reason_enum! {
             NotAContainer,
         }
     }
+}
+
+quenchant_shape::reason_enum! {
+    /// A definition can carry no name the standard library gives it.
+    pub mod name_reading {
+        /// Why the definition has no standard name.
+        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        pub enum Unnamed {
+            /// The definition is neither a diagnostic item nor the `String`
+            /// language item.
+            NoItem,
+        }
+    }
+}
+
+/// The name the standard library gives a definition.
+///
+/// # Specification
+/// - ensures: `Present` with the definition's diagnostic item name, or with
+///   `String` when it is the `String` language item, which carries no
+///   diagnostic item; `Absent` otherwise.
+/// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the cost-shape fixtures shift a `String`'s front in a
+///   loop and the clause-cost fixture walks a `String` in a clause, beside the
+///   same operations on a `Vec`.
+/// - witness: `tests::ui_cost_shape`
+/// - witness: `tests::ui_spec_cost`
+#[spec(ensures: |output| match output {
+    Maybe::Present(name) => tcx.get_diagnostic_name(def_id) == Some(name) || tcx.is_lang_item(def_id, LangItem::String),
+    Maybe::Absent(_) => tcx.get_diagnostic_name(def_id).is_none(),
+})]
+pub fn standard_name(
+    tcx: TyCtxt<'_>,
+    def_id: DefId,
+) -> Maybe<Symbol, name_reading::Unnamed>
+{
+    if let Some(name) = tcx.get_diagnostic_name(def_id) {
+        return Maybe::Present(name);
+    }
+    if tcx.is_lang_item(def_id, LangItem::String) {
+        return Maybe::Present(sym::String);
+    }
+    Maybe::Absent(name_reading::Unnamed::NoItem)
 }
 
 quenchant_shape::reason_enum! {
@@ -420,10 +466,13 @@ pub fn container<'tcx>(
     else {
         return Maybe::Absent(container_reading::Bounded::NotAContainer);
     };
-    let name = tcx.get_diagnostic_name(definition.did());
-    match name.as_ref().map(Symbol::as_str) {
-        Some("Vec" | "VecDeque" | "String") => Maybe::Present(Container::Sequence),
-        Some("BTreeMap" | "BTreeSet" | "HashMap" | "HashSet" | "BinaryHeap" | "LinkedList") => {
+    let Maybe::Present(name) = standard_name(tcx, definition.did())
+    else {
+        return Maybe::Absent(container_reading::Bounded::NotAContainer);
+    };
+    match name.as_str() {
+        "Vec" | "VecDeque" | "String" => Maybe::Present(Container::Sequence),
+        "BTreeMap" | "BTreeSet" | "HashMap" | "HashSet" | "BinaryHeap" | "LinkedList" => {
             Maybe::Present(Container::Collection)
         },
         _ => Maybe::Absent(container_reading::Bounded::NotAContainer),
