@@ -716,8 +716,10 @@ pub fn render_text(report: &Report) -> String
 ///
 /// # Adequacy
 /// - hypothesis: L3 — a comment rendered from a report and ticked reads back as
-///   the acknowledgement it records.
+///   the acknowledgement it records, and it opens collapsed under one summary
+///   carrying the three counts, its sections collapsed in order.
 /// - witness: `gates::obligations::an_acknowledgement_holds_only_at_its_revisions`
+/// - witness: `gates::obligations::the_comment_collapses_to_one_line_carrying_its_counts`
 #[inline]
 #[must_use]
 #[spec(ensures: |ref output| output.starts_with(COMMENT_MARKER))]
