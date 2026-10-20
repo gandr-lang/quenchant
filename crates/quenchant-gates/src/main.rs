@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! quenchant-gates <anodized | witnesses> --manifest-path <Cargo.toml>
-//! quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--comment <file>] [--selection <file>]
+//! quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--body <file>] [--comment <file>] [--selection <file>] [--require-acknowledged]
 //! quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]
 //! quenchant-gates toolchain-bump --version <stable> [--root <repository>]
 //! ```
@@ -38,7 +38,7 @@ use quenchant_gates::semantic::DocText;
 use quenchant_gates::semantic::GitRevision;
 
 /// Invalid argument shapes receive the complete supported command syntax.
-const USAGE: &str = "usage: quenchant-gates <anodized | witnesses> --manifest-path <Cargo.toml> [--require-enforcing]\n       quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--comment <file>] [--selection <file>]\n       quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]\n       quenchant-gates toolchain-bump --version <stable> [--root <repository>]";
+const USAGE: &str = "usage: quenchant-gates <anodized | witnesses> --manifest-path <Cargo.toml> [--require-enforcing]\n       quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--body <file>] [--comment <file>] [--selection <file>] [--require-acknowledged]\n       quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]\n       quenchant-gates toolchain-bump --version <stable> [--root <repository>]";
 
 /// Argument interpretation selects one consumer or repository operation.
 ///
@@ -248,15 +248,19 @@ fn inventory_gate(manifest_path: &Path) -> Result<Vec<Finding>, GateError>
 }
 
 /// The options of the `obligations` subcommand that take a value.
-const OBLIGATION_OPTIONS: [&str; 7] = [
+const OBLIGATION_OPTIONS: [&str; 8] = [
     "--manifest-path",
     "--base",
     "--records",
     "--rustdoc",
     "--previous",
+    "--body",
     "--comment",
     "--selection",
 ];
+
+/// The `obligations` flag that fails the run while a prose obligation is open.
+const REQUIRE_ACKNOWLEDGED: &str = "--require-acknowledged";
 
 /// Report a change's re-verification obligations and write their discharge
 /// inputs.
@@ -264,22 +268,29 @@ const OBLIGATION_OPTIONS: [&str; 7] = [
 /// # Specification
 /// - requires: arguments are `--option value` pairs among
 ///   [`OBLIGATION_OPTIONS`], each at most once, with `--manifest-path`,
-///   `--base`, `--records` and `--rustdoc` present.
-/// - ensures: prints [`obligations::render_text`] of the report; writes
-///   [`obligations::render_comment`] to `--comment` and the lines of
-///   [`obligations::selection`] to `--selection` when given; succeeds, whatever
-///   the obligations, once all of that is done.
+///   `--base`, `--records` and `--rustdoc` present, and at most one
+///   [`REQUIRE_ACKNOWLEDGED`] among them.
+/// - ensures: reads the acknowledgements from `--previous`, or from `--body`
+///   when no `--previous` is given; prints [`obligations::render_text`] of the
+///   report; writes [`obligations::render_comment`] to `--comment`, the lines
+///   of [`obligations::selection`] to `--selection`, and `--body` back with its
+///   section replaced by [`obligations::render_section`] when given. Once all
+///   of that is done it succeeds, unless [`REQUIRE_ACKNOWLEDGED`] is given and
+///   a prose obligation is open: then it lists each open obligation with its
+///   key and exits with status 2.
 /// - fails: prints the usage on a malformed invocation and the error on an
-///   operational failure, and exits unsuccessfully either way.
+///   operational failure, and exits with status 1 either way.
 /// - panics: none.
 /// - executable: none — the outcome is printed and written output, consumed
 ///   into an exit code.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — the fixture repository's invocations print the
-///   obligations and write the comment and selection the tests read back.
+///   obligations, write the comment, the selection and the body the tests read
+///   back, and refuse an open obligation only when asked to.
 /// - witness: `gates::obligations::changing_a_named_item_obligates_the_specification`
 /// - witness: `gates::obligations::the_tag_table_replay_lists_both_preconditions`
+/// - witness: `gates::obligations::an_open_obligation_fails_only_when_acknowledgement_is_required`
 #[expect(
     clippy::print_stderr,
     clippy::print_stdout,
@@ -288,7 +299,16 @@ const OBLIGATION_OPTIONS: [&str; 7] = [
 fn run_obligations(mut arguments: core::iter::Skip<std::env::Args>) -> ExitCode
 {
     let mut options = alloc::collections::BTreeMap::new();
+    let mut required = false;
     while let Some(flag) = arguments.next() {
+        if flag == REQUIRE_ACKNOWLEDGED {
+            if required {
+                eprintln!("obligations: repeated option `{flag}`\n{USAGE}");
+                return ExitCode::FAILURE;
+            }
+            required = true;
+            continue;
+        }
         let Some(value) = arguments.next()
         else {
             eprintln!("obligations: `{flag}` takes a value\n{USAGE}");
@@ -313,22 +333,30 @@ fn run_obligations(mut arguments: core::iter::Skip<std::env::Args>) -> ExitCode
         );
         return ExitCode::FAILURE;
     };
-    let previous = match options.get("--previous") {
-        Some(path) => match std::fs::read_to_string(path) {
-            Ok(text) => text,
-            Err(error) => {
-                eprintln!("obligations could not read the previous comment {path}: {error}");
-                return ExitCode::FAILURE;
-            },
-        },
-        None => String::new(),
-    };
+    let mut texts = alloc::collections::BTreeMap::new();
+    for option in ["--previous", "--body"] {
+        if let Some(path) = options.get(option) {
+            match std::fs::read_to_string(path) {
+                Ok(text) => {
+                    let _first = texts.insert(option, text);
+                },
+                Err(error) => {
+                    eprintln!("obligations could not read {path}: {error}");
+                    return ExitCode::FAILURE;
+                },
+            }
+        }
+    }
+    let previous = texts
+        .get("--previous")
+        .or_else(|| texts.get("--body"))
+        .map_or("", String::as_str);
     let inputs = obligations::Inputs {
         manifest_path: Path::new(manifest_path),
         base: GitRevision::from(base),
         records: Path::new(records),
         rustdoc: Path::new(rustdoc),
-        previous: DocText::from(&previous),
+        previous: DocText(previous),
     };
     let report = match obligations::run(&inputs) {
         Ok(report) => report,
@@ -349,11 +377,33 @@ fn run_obligations(mut arguments: core::iter::Skip<std::env::Args>) -> ExitCode
         }
         outputs.push((path, lines));
     }
+    if let (Some(path), Some(body)) = (options.get("--body"), texts.get("--body")) {
+        let section = obligations::render_section(&report);
+        outputs.push((
+            path,
+            obligations::splice_section(DocText(body), DocText(&section)),
+        ));
+    }
     for (path, contents) in outputs {
         if let Err(error) = std::fs::write(path, contents) {
             eprintln!("obligations could not write {path}: {error}");
             return ExitCode::FAILURE;
         }
+    }
+    let open = usize::from(obligations::open_count(&report));
+    if required && open > 0 {
+        eprintln!("obligations: {open} prose obligations are not acknowledged:");
+        for obligation in report
+            .obligations
+            .iter()
+            .filter(|obligation| obligation.discharge == obligations::Discharge::Open)
+        {
+            eprintln!(
+                "  {} {} ({})",
+                obligation.specification, obligation.clause, obligation.key
+            );
+        }
+        return ExitCode::from(2_u8);
     }
     ExitCode::SUCCESS
 }
