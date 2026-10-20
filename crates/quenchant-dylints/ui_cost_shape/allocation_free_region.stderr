@@ -1,0 +1,66 @@
+error: this call can allocate inside a function marked allocation-free in steady state
+  --> $DIR/allocation_free_region.rs:15:13
+   |
+LL |     entries.push(entry);
+   |             ^^^^^^^^^^^
+   |
+   = note: the path reaches a call into the allocator, in `std::alloc::Global::alloc_impl_runtime`
+   = help: reserve or build what the region needs before it is entered, or mark the callee with the same clause
+   = note: requested on the command line with `-D allocation-free-region`
+
+error: this call can allocate inside a function marked allocation-free in steady state
+  --> $DIR/allocation_free_region.rs:30:5
+   |
+LL |     grow(entries);
+   |     ^^^^^^^^^^^^^
+   |
+   = note: the path reaches a call into the allocator, in `std::alloc::Global::alloc_impl_runtime`
+   = help: reserve or build what the region needs before it is entered, or mark the callee with the same clause
+
+error: this call can allocate inside a function marked allocation-free in steady state
+  --> $DIR/allocation_free_region.rs:39:5
+   |
+LL |     render(value)
+   |     ^^^^^^^^^^^^^
+   |
+   = note: the path reaches a call whose body is unavailable and whose signature hands back or writes a value that owns heap memory, in `std::fmt::format::{closure#0}`
+   = help: reserve or build what the region needs before it is entered, or mark the callee with the same clause
+
+error: this call can allocate inside a function marked allocation-free in steady state
+  --> $DIR/allocation_free_region.rs:50:5
+   |
+LL |     step(value)
+   |     ^^^^^^^^^^^
+   |
+   = note: this is a call that can reach any implementation, none of them held to the clause
+   = help: reserve or build what the region needs before it is entered, or mark the callee with the same clause
+
+error: this call can allocate inside a function marked allocation-free in steady state
+  --> $DIR/allocation_free_region.rs:71:10
+   |
+LL |     step.advance(value)
+   |          ^^^^^^^^^^^^^^
+   |
+   = note: this is a call that can reach any implementation, none of them held to the clause
+   = help: reserve or build what the region needs before it is entered, or mark the callee with the same clause
+
+error: this call can allocate inside a function marked allocation-free in steady state
+  --> $DIR/allocation_free_region.rs:98:27
+   |
+LL |         let copy = self.0.clone();
+   |                           ^^^^^^^
+   |
+   = note: the path reaches a call into the allocator, in `std::alloc::Global::alloc_impl_runtime`
+   = help: reserve or build what the region needs before it is entered, or mark the callee with the same clause
+
+error: this call can allocate inside a function marked allocation-free in steady state
+  --> $DIR/allocation_free_region.rs:111:11
+   |
+LL |     table.insert(key, key);
+   |           ^^^^^^^^^^^^^^^^
+   |
+   = note: the path reaches a call that can reach any implementation, none of them held to the clause, in `hashbrown::raw::RawTableInner::rehash_in_place`
+   = help: reserve or build what the region needs before it is entered, or mark the callee with the same clause
+
+error: aborting due to 7 previous errors
+

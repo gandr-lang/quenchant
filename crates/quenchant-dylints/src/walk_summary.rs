@@ -277,6 +277,41 @@ pub enum Section
     Absent,
 }
 
+/// The lines of an item's rustdoc, each trimmed, in order.
+///
+/// # Specification
+/// - ensures: one entry per line of every doc attribute of `def_id`, in
+///   attribute order, with surrounding whitespace removed.
+/// - panics: none.
+/// - executable: none — the outcome is the item's attributes, which a predicate
+///   could only read again.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures read `# Clause cost` and `# Cost` sections
+///   from local, foreign and trait items.
+/// - witness: `tests::ui_spec_cost`
+pub fn doc_lines(
+    tcx: TyCtxt<'_>,
+    def_id: DefId,
+) -> Vec<String>
+{
+    #[expect(
+        deprecated,
+        reason = "a section is read from every doc line in order; `find_attr!` selects one parsed attribute"
+    )]
+    let attrs = tcx.get_all_attrs(def_id);
+    attrs
+        .iter()
+        .filter_map(Attribute::doc_str)
+        .flat_map(|doc| {
+            doc.as_str()
+                .lines()
+                .map(|line| line.trim().to_owned())
+                .collect::<Vec<_>>()
+        })
+        .collect()
+}
+
 /// Read a function's `# Clause cost` section.
 ///
 /// # Specification
@@ -298,21 +333,7 @@ pub fn section(
     def_id: DefId,
 ) -> Section
 {
-    #[expect(
-        deprecated,
-        reason = "the section is read from every doc line in order; `find_attr!` selects one parsed attribute"
-    )]
-    let attrs = tcx.get_all_attrs(def_id);
-    let lines: Vec<String> = attrs
-        .iter()
-        .filter_map(Attribute::doc_str)
-        .flat_map(|doc| {
-            doc.as_str()
-                .lines()
-                .map(|line| line.trim().to_owned())
-                .collect::<Vec<_>>()
-        })
-        .collect();
+    let lines = doc_lines(tcx, def_id);
     let Some(start) = lines.iter().position(|line| line == HEADING)
     else {
         return Section::Absent;

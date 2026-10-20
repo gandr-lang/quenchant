@@ -27,7 +27,10 @@
 //!
 //! The `rustdoc_shape` group holds module documentation to a shape
 //! ([`doc_shape`]). Eight `deny` lints refuse a standard-library operation
-//! whose cost is wrong for its receiver's type ([`cost_shape`]).
+//! whose cost is wrong for its receiver's type ([`cost_shape`]), and
+//! `allocation_free_region` refuses an allocation reachable from a function
+//! whose `# Cost` section marks it allocation-free in steady state
+//! ([`allocation_free_region`]).
 //!
 //! # Boundaries
 //!
@@ -75,6 +78,7 @@ extern crate rustc_session;
 extern crate rustc_span;
 
 mod adequacy;
+mod allocation_free_region;
 mod allocation_in_repeated_body;
 mod answer_totality;
 mod arithmetic;
@@ -429,6 +433,7 @@ pub fn register_lints(
         doc_shape::MODULE_DOC_DUPLICATION,
         doc_shape::DOC_HISTORY_PROSE,
         doc_shape::MODULE_DOC_MEASURE,
+        allocation_free_region::ALLOCATION_FREE_REGION,
         allocation_in_repeated_body::ALLOCATION_IN_REPEATED_BODY,
         bucket_per_key::BUCKET_PER_KEY,
         clone_in_loop::CLONE_IN_LOOP,
@@ -501,6 +506,9 @@ pub fn register_lints(
         Box::new(allocation_in_repeated_body::AllocationInRepeatedBody::new(
             allocated.clone(),
         ))
+    }));
+    lint_store.register_late_pass(Box::new(|_| {
+        Box::<allocation_free_region::AllocationFreeRegion<'_>>::default()
     }));
     let cloned = cost_regions.clone();
     lint_store.register_late_pass(Box::new(move |_| {
@@ -1436,6 +1444,7 @@ unproduced = [
         flags.extend(
             [
                 "-Dunknown-lints",
+                "-Dallocation_free_region",
                 "-Dallocation_in_repeated_body",
                 "-Dbucket_per_key",
                 "-Dclone_in_loop",
