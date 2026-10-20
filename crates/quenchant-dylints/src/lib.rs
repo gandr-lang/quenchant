@@ -26,7 +26,7 @@
 //! other half.
 //!
 //! The `rustdoc_shape` group holds module documentation to a shape
-//! ([`doc_shape`]). Six `deny` lints refuse a standard-library operation
+//! ([`doc_shape`]). Seven `deny` lints refuse a standard-library operation
 //! whose cost is wrong for its receiver's type ([`cost_shape`]).
 //!
 //! # Boundaries
@@ -46,12 +46,17 @@
     unstable_features,
     reason = "rustc_private is the lint driver's substrate"
 )]
-// Cost-shape sites, classified in #59's census and listed in #62: four
-// `linear_search_in_loop` deduplications of a path's resolutions or a
-// signature's opaque types, each a handful of entries.
+// Cost-shape sites, classified in #59's and #65's censuses and listed in
+// #62: four `linear_search_in_loop` deduplications of a path's resolutions
+// or a signature's opaque types, each a handful of entries, and ten
+// `allocation_in_repeated_body` buffers made per item, line or variant.
 #![cfg_attr(
     dylint_lib = "quenchant_dylints",
-    expect(linear_search_in_loop, reason = "4 bounded sites; #62 lists them")
+    expect(
+        allocation_in_repeated_body,
+        linear_search_in_loop,
+        reason = "14 cost-shape sites (10 allocation_in_repeated_body, 4 bounded linear_search_in_loop); #62 lists them"
+    )
 )]
 
 extern crate alloc;
@@ -60,6 +65,7 @@ extern crate rustc_data_structures;
 
 extern crate rustc_errors;
 extern crate rustc_hir;
+extern crate rustc_hir_typeck;
 extern crate rustc_lexer;
 extern crate rustc_lint;
 extern crate rustc_middle;
@@ -67,6 +73,7 @@ extern crate rustc_session;
 extern crate rustc_span;
 
 mod adequacy;
+mod allocation_in_repeated_body;
 mod answer_totality;
 mod arithmetic;
 mod bucket_per_key;
@@ -419,6 +426,7 @@ pub fn register_lints(
         doc_shape::MODULE_DOC_DUPLICATION,
         doc_shape::DOC_HISTORY_PROSE,
         doc_shape::MODULE_DOC_MEASURE,
+        allocation_in_repeated_body::ALLOCATION_IN_REPEATED_BODY,
         bucket_per_key::BUCKET_PER_KEY,
         collect_read_once::COLLECT_READ_ONCE,
         count_comparison::COUNT_AGAINST_CONSTANT,
@@ -483,6 +491,12 @@ pub fn register_lints(
     }));
     lint_store.register_late_pass(Box::new(|tcx| {
         Box::new(doc_shape::DocShape::configured(tcx))
+    }));
+    let allocated = cost_regions.clone();
+    lint_store.register_late_pass(Box::new(move |_| {
+        Box::new(allocation_in_repeated_body::AllocationInRepeatedBody::new(
+            allocated.clone(),
+        ))
     }));
     let bucketed = cost_regions.clone();
     lint_store.register_late_pass(Box::new(move |_| {
@@ -1414,6 +1428,7 @@ unproduced = [
         flags.extend(
             [
                 "-Dunknown-lints",
+                "-Dallocation_in_repeated_body",
                 "-Dbucket_per_key",
                 "-Dcollect_read_once",
                 "-Dcount_against_constant",

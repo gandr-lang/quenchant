@@ -3,6 +3,14 @@
     not(doc),
     doc = "Conditional specification attributes and token-preserving erasure."
 )]
+// A cost-shape site, classified in #65's census and listed in #62.
+#![cfg_attr(
+    dylint_lib = "quenchant_dylints",
+    expect(
+        allocation_in_repeated_body,
+        reason = "1 cost-shape site (1 allocation_in_repeated_body); #62 lists it"
+    )
+)]
 
 /// Erase a specification-only item or local binding in feature-off builds.
 ///

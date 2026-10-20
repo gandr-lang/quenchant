@@ -10,7 +10,7 @@
 //!
 //! # Items
 //!
-//! Six lints refuse a shape whose cost is wrong for its receiver:
+//! Seven lints refuse a shape whose cost is wrong for its receiver:
 //!
 //! - [`linear_search_in_loop`]: a slice, `Vec` or `VecDeque` searched linearly
 //!   once per pass of a loop over a collection that outlives it;
@@ -23,7 +23,9 @@
 //! - [`collect_read_once`]: a vector collected from an iterator only to be read
 //!   once;
 //! - [`bucket_per_key`]: a map that allocates a growable bucket for each key
-//!   and only ever searches a bucket for one entry.
+//!   and only ever searches a bucket for one entry;
+//! - [`allocation_in_repeated_body`]: an allocation made on every pass of a
+//!   loop or a per-element closure and dropped before the next pass.
 //!
 //! Each lint is type-directed: the receiver's type decides whether the shape
 //! is a hazard, and the cheap receivers — arrays, sets and maps, exact-size
@@ -72,6 +74,7 @@
 //! [`count_against_constant`]: crate::count_comparison::COUNT_AGAINST_CONSTANT
 //! [`collect_read_once`]: crate::collect_read_once::COLLECT_READ_ONCE
 //! [`bucket_per_key`]: crate::bucket_per_key::BUCKET_PER_KEY
+//! [`allocation_in_repeated_body`]: crate::allocation_in_repeated_body::ALLOCATION_IN_REPEATED_BODY
 
 use core::ops::ControlFlow;
 
@@ -84,14 +87,21 @@ use rustc_hir::Block;
 use rustc_hir::Expr;
 use rustc_hir::ExprKind;
 use rustc_hir::HirId;
+use rustc_hir::HirIdSet;
 use rustc_hir::LoopSource;
 use rustc_hir::MatchSource;
 use rustc_hir::Node;
+use rustc_hir::PatKind;
 use rustc_hir::StmtKind;
 use rustc_hir::UnOp;
 use rustc_hir::def::DefKind;
 use rustc_hir::def::Res;
+use rustc_hir_typeck::expr_use_visitor::Delegate;
+use rustc_hir_typeck::expr_use_visitor::ExprUseVisitor;
+use rustc_hir_typeck::expr_use_visitor::PlaceBase;
+use rustc_hir_typeck::expr_use_visitor::PlaceWithHirId;
 use rustc_lint::LateContext;
+use rustc_middle::mir::FakeReadCause;
 use rustc_middle::ty;
 use rustc_middle::ty::Ty;
 use rustc_span::Symbol;
@@ -472,6 +482,9 @@ pub fn repetition<'tcx>(
                         match per_element_trip(cx, parent) {
                             Maybe::Present(trip) => trip,
                             Maybe::Absent(closure_reading::NotPerElement::CalledOnce) => {
+                                if error_path(cx, parent) == Path::Leaves {
+                                    leaving = Leaving::Returns;
+                                }
                                 child = parent_id;
                                 continue;
                             },
@@ -666,6 +679,81 @@ fn per_element_trip<'tcx>(
     }
     else {
         Maybe::Absent(closure_reading::NotPerElement::CalledOnce)
+    }
+}
+
+/// Whether a closure runs only on a path that leaves the enclosing body.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Path
+{
+    /// The closure builds the error a `?` returns at once.
+    Leaves,
+    /// It may run on a path that stays.
+    Stays,
+}
+
+/// Decide whether a closure only builds the error a `?` returns.
+///
+/// # Specification
+/// - ensures: `Leaves` exactly when `closure` is the argument of
+///   `Result::map_err` or `Option::ok_or_else` and that call is the operand of
+///   a `?`; `Stays` otherwise.
+/// - panics: none.
+/// - executable: none — the outcome is a walk up the HIR parents and the
+///   compiler's method resolution.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures accept a string made inside `map_err` before
+///   a `?` in a loop, and refuse one made inside `map_err` whose result is
+///   matched.
+/// - witness: `tests::ui_cost_shape`
+fn error_path<'tcx>(
+    cx: &LateContext<'tcx>,
+    closure: &Expr<'tcx>,
+) -> Path
+{
+    let Node::Expr(call) = cx.tcx.parent_hir_node(closure.hir_id)
+    else {
+        return Path::Stays;
+    };
+    let ExprKind::MethodCall(..) = call.kind
+    else {
+        return Path::Stays;
+    };
+    let builds_error = cx
+        .typeck_results()
+        .type_dependent_def_id(call.hir_id)
+        .and_then(|method| {
+            let owner = cx.tcx.inherent_impl_of_assoc(method)?;
+            let held = cx.tcx.type_of(owner).instantiate_identity().skip_norm_wip();
+            let name = cx.tcx.get_diagnostic_name(held.ty_adt_def()?.did())?;
+            Some((name, cx.tcx.item_name(method)))
+        })
+        .is_some_and(|(owner, method)| {
+            matches!(
+                (owner.as_str(), method.as_str()),
+                ("Result", "map_err") | ("Option", "ok_or_else")
+            )
+        });
+    if !builds_error {
+        return Path::Stays;
+    }
+    let Node::Expr(branch) = cx.tcx.parent_hir_node(call.hir_id)
+    else {
+        return Path::Stays;
+    };
+    let Node::Expr(question) = cx.tcx.parent_hir_node(branch.hir_id)
+    else {
+        return Path::Stays;
+    };
+    if matches!(
+        question.kind,
+        ExprKind::Match(_, _, MatchSource::TryDesugar(_))
+    ) {
+        Path::Leaves
+    }
+    else {
+        Path::Stays
     }
 }
 
@@ -903,4 +991,586 @@ pub fn enclosing_statement<'tcx>(
         child = parent_id;
     }
     Maybe::Absent(statement_reading::NotAStatement::Unplaced)
+}
+
+quenchant_shape::reason_enum! {
+    /// A value made in a repeated body can stay within the pass that made it.
+    pub mod escape_reading {
+        /// Why the value is not kept past its pass.
+        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        pub enum Stays {
+            /// The value, or the local bound to it, is only borrowed, mutated
+            /// in place or explicitly dropped before the pass ends.
+            Dropped,
+        }
+    }
+}
+
+/// A value's fate once a repeated body has made it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Escape
+{
+    /// The value is moved out of its place: pushed into an outer collection,
+    /// returned, stored, handed on by value or captured by a moving closure.
+    Escapes,
+    /// The value is dropped at the end of the pass, its only uses borrows.
+    Stays,
+}
+
+/// The moves and mutations a walk of a repeated body observes.
+#[derive(Default)]
+struct Moves
+{
+    /// The locals moved, each with the expression that moves it.
+    locals: Vec<(HirId, HirId)>,
+    /// The temporaries moved, by the expression that computes each.
+    temporaries: HirIdSet,
+    /// The locals borrowed mutably or assigned after their binding.
+    mutated: HirIdSet,
+}
+
+impl Moves
+{
+    /// Record a mutation of the local a place is rooted in.
+    ///
+    /// # Specification
+    /// - ensures: a place rooted in a local or a captured local records that
+    ///   local in `mutated`; any other place records nothing.
+    /// - panics: none.
+    /// - executable: none — the record is the delegate's state.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — the fixtures push into a fresh buffer and leave
+    ///   another untouched.
+    /// - witness: `tests::ui_cost_shape`
+    fn record_mutation(
+        &mut self,
+        place_with_id: &PlaceWithHirId<'_>,
+    )
+    {
+        match place_with_id.place.base {
+            PlaceBase::Local(local) => {
+                self.mutated.insert(local);
+            },
+            PlaceBase::Upvar(upvar) => {
+                self.mutated.insert(upvar.var_path.hir_id);
+            },
+            PlaceBase::Rvalue | PlaceBase::StaticItem => {},
+        }
+    }
+}
+
+impl<'tcx> Delegate<'tcx> for Moves
+{
+    /// Record a move of a local or a temporary.
+    ///
+    /// # Specification
+    /// - ensures: a moved local is recorded with `diag_expr_id`, and a moved
+    ///   temporary by its own expression's id; a move out of a captured value
+    ///   records the captured local.
+    /// - panics: none.
+    /// - executable: none — the record is the delegate's state.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — the fixtures move a repeated body's value into an
+    ///   outer vector, return it and capture it in a moving closure.
+    /// - witness: `tests::ui_cost_shape`
+    fn consume(
+        &mut self,
+        place_with_id: &PlaceWithHirId<'tcx>,
+        diag_expr_id: HirId,
+    )
+    {
+        match place_with_id.place.base {
+            PlaceBase::Local(local) => self.locals.push((local, diag_expr_id)),
+            PlaceBase::Upvar(upvar) => self.locals.push((upvar.var_path.hir_id, diag_expr_id)),
+            PlaceBase::Rvalue => {
+                self.temporaries.insert(place_with_id.hir_id);
+            },
+            PlaceBase::StaticItem => {},
+        }
+    }
+
+    /// An ergonomic clone keeps the source in place.
+    ///
+    /// # Specification
+    /// trivial.
+    fn use_cloned(
+        &mut self,
+        _: &PlaceWithHirId<'tcx>,
+        _: HirId,
+    )
+    {
+    }
+
+    /// A borrow keeps the value in place; a mutable one may change it.
+    ///
+    /// # Specification
+    /// - ensures: a mutable or unique borrow records its place's local in
+    ///   `mutated`; a shared borrow records nothing.
+    /// - panics: none.
+    /// - executable: none — the record is the delegate's state.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — the fixtures push into a fresh buffer and only read
+    ///   another.
+    /// - witness: `tests::ui_cost_shape`
+    fn borrow(
+        &mut self,
+        place_with_id: &PlaceWithHirId<'tcx>,
+        _: HirId,
+        bk: ty::BorrowKind,
+    )
+    {
+        match bk {
+            ty::BorrowKind::Mutable | ty::BorrowKind::UniqueImmutable => {
+                self.record_mutation(place_with_id);
+            },
+            ty::BorrowKind::Immutable => {},
+        }
+    }
+
+    /// An assignment changes the value in place.
+    ///
+    /// # Specification
+    /// - ensures: the assigned place's local is recorded in `mutated`.
+    /// - panics: none.
+    /// - executable: none — the record is the delegate's state.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — the fixtures push into a fresh buffer and leave
+    ///   another untouched.
+    /// - witness: `tests::ui_cost_shape`
+    fn mutate(
+        &mut self,
+        assignee_place: &PlaceWithHirId<'tcx>,
+        _: HirId,
+    )
+    {
+        self.record_mutation(assignee_place);
+    }
+
+    /// A binding's initialization is neither a move nor a mutation.
+    ///
+    /// # Specification
+    /// trivial.
+    fn bind(
+        &mut self,
+        _: &PlaceWithHirId<'tcx>,
+        _: HirId,
+    )
+    {
+    }
+
+    /// A fake read moves nothing.
+    ///
+    /// # Specification
+    /// trivial.
+    fn fake_read(
+        &mut self,
+        _: &PlaceWithHirId<'tcx>,
+        _: FakeReadCause,
+        _: HirId,
+    )
+    {
+    }
+}
+
+/// Walk a repetition's body with [`Moves`].
+///
+/// # Specification
+/// - ensures: the moves and mutations of the body of `scope`, the body of a
+///   closure when `scope` is one and `scope` itself otherwise, with the body
+///   that was walked.
+/// - panics: none.
+/// - executable: none — the outcome is the compiler's use walk.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures repeat bodies in loops and in per-element
+///   closures.
+/// - witness: `tests::ui_cost_shape`
+fn walk_pass<'tcx>(
+    cx: &LateContext<'tcx>,
+    scope: &'tcx Expr<'tcx>,
+) -> (Moves, &'tcx Expr<'tcx>)
+{
+    let walked = if let ExprKind::Closure(closure) = scope.kind {
+        cx.tcx.hir_body(closure.body).value
+    }
+    else {
+        scope
+    };
+    let mut moves = Moves::default();
+    let Ok(()) =
+        ExprUseVisitor::for_clippy(cx, walked.hir_id.owner.def_id, &mut moves).walk_expr(walked);
+    (moves, walked)
+}
+
+/// The expression whose body a value's moves are read in: the innermost
+/// closure between the value and its repetition, or the repetition itself.
+///
+/// # Specification
+/// - requires: `scope` encloses `inner`.
+/// - ensures: the first closure met walking up from `inner` before `scope`, or
+///   `scope` when none is.
+/// - panics: none.
+/// - executable: none — the outcome is a walk up the HIR parents.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures move a value made inside a closure called
+///   once within a loop.
+/// - witness: `tests::ui_cost_shape`
+fn pass_root<'tcx>(
+    cx: &LateContext<'tcx>,
+    inner: HirId,
+    scope: &'tcx Expr<'tcx>,
+) -> &'tcx Expr<'tcx>
+{
+    for (parent_id, node) in cx.tcx.hir_parent_iter(inner) {
+        if parent_id == scope.hir_id {
+            break;
+        }
+        if let Node::Expr(closure) = node
+            && matches!(closure.kind, ExprKind::Closure(_))
+        {
+            return closure;
+        }
+    }
+    scope
+}
+
+/// Whether a local bound inside a repetition is changed after its binding.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Mutation
+{
+    /// The pass borrows it mutably or assigns to it.
+    Mutated,
+    /// The pass only reads or moves it.
+    Untouched,
+}
+
+/// Whether the pass of `scope` changes `local` after binding it.
+///
+/// # Specification
+/// - ensures: `Mutated` exactly when the walk of `scope`'s body borrows `local`
+///   mutably or assigns to it; its binding's initialization does not count.
+/// - panics: none.
+/// - executable: none — the outcome is the compiler's use walk, which a
+///   predicate could only repeat.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures refuse an empty buffer pushed into and
+///   accept one only read.
+/// - witness: `tests::ui_cost_shape`
+pub fn pass_mutation<'tcx>(
+    cx: &LateContext<'tcx>,
+    local: HirId,
+    scope: &'tcx Expr<'tcx>,
+) -> Mutation
+{
+    let (moves, _) = walk_pass(cx, pass_root(cx, local, scope));
+    if moves.mutated.contains(&local) {
+        Mutation::Mutated
+    }
+    else {
+        Mutation::Untouched
+    }
+}
+
+/// Whether a value made inside a repetition is moved out of the pass.
+///
+/// # Specification
+/// - requires: `scope` is the loop or per-element closure that repeats `value`.
+/// - ensures: when `value` initializes a plain `let` binding, `Escapes` exactly
+///   when the walk of `scope`'s body moves that local other than into `drop`,
+///   or swaps it out ([`swapped_out`]); when it initializes any other pattern,
+///   `Escapes`. A value a closure returns ([`returned_by`]) escapes when that
+///   closure is `scope`, is not an argument of a call, or is handed to a call
+///   whose result is a reference; handed to any other call, the call's result
+///   is judged in its place. Otherwise `Escapes` exactly when the walk moves
+///   `value` itself.
+/// - panics: none.
+/// - executable: none — the outcome is the compiler's use walk, which a
+///   predicate could only repeat.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures refuse a buffer only borrowed and mutated in
+///   place, a temporary borrowed, and a value dropped by `drop`, and accept a
+///   value pushed into an outer vector, returned from a per-element closure,
+///   stored in a field, handed on by value and captured by a moving closure.
+/// - witness: `tests::ui_cost_shape`
+pub fn pass_escape<'tcx>(
+    cx: &LateContext<'tcx>,
+    value: &'tcx Expr<'tcx>,
+    scope: &'tcx Expr<'tcx>,
+) -> Escape
+{
+    let mut value = value;
+    while let Maybe::Present(closure) = returned_by(cx, value) {
+        if closure.hir_id == scope.hir_id {
+            return Escape::Escapes;
+        }
+        let Node::Expr(call) = cx.tcx.parent_hir_node(closure.hir_id)
+        else {
+            return Escape::Escapes;
+        };
+        let handed = if let ExprKind::MethodCall(_, _, arguments, _)
+        | ExprKind::Call(_, arguments) = call.kind
+        {
+            arguments
+                .iter()
+                .any(|argument| argument.hir_id == closure.hir_id)
+        }
+        else {
+            false
+        };
+        if !handed || cx.typeck_results().expr_ty(call).is_ref() {
+            return Escape::Escapes;
+        }
+        value = call;
+    }
+    let (moves, walked) = walk_pass(cx, pass_root(cx, value.hir_id, scope));
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "`Node` is rustc's, its variants moving with the pinned nightly; only a `let` \
+                  binds the value to a local"
+    )]
+    let bound = match cx.tcx.parent_hir_node(value.hir_id) {
+        Node::LetStmt(binding) if binding.init.is_some_and(|init| init.hir_id == value.hir_id) => {
+            match binding.pat.kind {
+                PatKind::Binding(_, local, _, None) => Some(local),
+                _ => return Escape::Escapes,
+            }
+        },
+        _ => None,
+    };
+    let dropped = |mover: HirId| {
+        let Node::Expr(call) = cx.tcx.parent_hir_node(mover)
+        else {
+            return false;
+        };
+        let ExprKind::Call(callee, &[_]) = call.kind
+        else {
+            return false;
+        };
+        let ExprKind::Path(ref path) = callee.kind
+        else {
+            return false;
+        };
+        cx.qpath_res(path, callee.hir_id)
+            .opt_def_id()
+            .is_some_and(|function| cx.tcx.is_diagnostic_item(sym::mem_drop, function))
+    };
+    let escapes = match bound {
+        Some(local) => {
+            moves
+                .locals
+                .iter()
+                .any(|&(moved, mover)| moved == local && !dropped(mover))
+                || swapped_out(cx, walked, local) == Swap::Swapped
+        },
+        None => moves.temporaries.contains(&value.hir_id),
+    };
+    if escapes {
+        Escape::Escapes
+    }
+    else {
+        Escape::Stays
+    }
+}
+
+/// Whether a pass hands a local's value on by swapping it out.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Swap
+{
+    /// `mem::take`, `mem::replace` or `mem::swap` borrows the local.
+    Swapped,
+    /// Nothing does.
+    Kept,
+}
+
+/// Decide whether `walked` swaps the value of `local` out.
+///
+/// # Specification
+/// - ensures: `Swapped` exactly when `walked`, closures aside, calls
+///   `mem::take`, `mem::replace` or `mem::swap` with `&mut local` among its
+///   arguments; `Kept` otherwise.
+/// - panics: none.
+/// - executable: none — the outcome is a walk of the body and the compiler's
+///   name resolution.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures accept a word buffer whose contents
+///   `mem::take` moves into an outer vector each pass.
+/// - witness: `tests::ui_cost_shape`
+fn swapped_out<'tcx>(
+    cx: &LateContext<'tcx>,
+    walked: &'tcx Expr<'tcx>,
+    local: HirId,
+) -> Swap
+{
+    let found = for_each_expr_without_closures(walked, |expr| {
+        let ExprKind::Call(callee, arguments) = expr.kind
+        else {
+            return ControlFlow::Continue(());
+        };
+        let ExprKind::Path(ref path) = callee.kind
+        else {
+            return ControlFlow::Continue(());
+        };
+        let swapping = cx
+            .qpath_res(path, callee.hir_id)
+            .opt_def_id()
+            .is_some_and(|function| {
+                cx.tcx
+                    .get_diagnostic_name(function)
+                    .is_some_and(|name| matches!(name.as_str(), "mem_replace" | "mem_swap"))
+                    || rustc_middle::ty::print::with_no_visible_paths!(
+                        rustc_middle::ty::print::with_resolve_crate_name!(
+                            cx.tcx.def_path_str(function)
+                        )
+                    ) == "core::mem::take"
+            });
+        let borrows_local = arguments.iter().any(|argument| {
+            if let ExprKind::AddrOf(_, _, place) = argument.kind
+                && let ExprKind::Path(ref place_path) = place.kind
+            {
+                cx.qpath_res(place_path, place.hir_id) == Res::Local(local)
+            }
+            else {
+                false
+            }
+        });
+        if swapping && borrows_local {
+            ControlFlow::Break(())
+        }
+        else {
+            ControlFlow::Continue(())
+        }
+    });
+    if found.is_some() {
+        Swap::Swapped
+    }
+    else {
+        Swap::Kept
+    }
+}
+
+quenchant_shape::reason_enum! {
+    /// An expression can be something other than a closure's returned value.
+    mod return_reading {
+        /// Why the expression is not what a closure returns.
+        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        pub enum Unreturned {
+            /// Something other than block tails stands between it and a
+            /// closure's body.
+            Inner,
+        }
+    }
+}
+
+/// The closure whose returned value an expression is.
+///
+/// # Specification
+/// - ensures: `Present(closure)` when `value` is the body of `closure`, or the
+///   tail of a chain of blocks that is; `Absent` otherwise.
+/// - panics: none.
+/// - executable: none — the outcome is a walk up the HIR parents.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures return a copy from a per-element closure,
+///   from a block-bodied one, and from a closure handed to `Option::map`.
+/// - witness: `tests::ui_cost_shape`
+fn returned_by<'tcx>(
+    cx: &LateContext<'tcx>,
+    value: &'tcx Expr<'tcx>,
+) -> Maybe<&'tcx Expr<'tcx>, return_reading::Unreturned>
+{
+    let mut current = value.hir_id;
+    loop {
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`Node` is rustc's, its variants moving with the pinned nightly; only a block \
+                      tail or a closure body carries a returned value"
+        )]
+        match cx.tcx.parent_hir_node(current) {
+            Node::Block(block) if block.expr.is_some_and(|tail| tail.hir_id == current) => {
+                let Node::Expr(enclosing) = cx.tcx.parent_hir_node(block.hir_id)
+                else {
+                    return Maybe::Absent(return_reading::Unreturned::Inner);
+                };
+                if !matches!(enclosing.kind, ExprKind::Block(..)) {
+                    return Maybe::Absent(return_reading::Unreturned::Inner);
+                }
+                current = enclosing.hir_id;
+            },
+            Node::Expr(closure) if matches!(closure.kind, ExprKind::Closure(_)) => {
+                return Maybe::Present(closure);
+            },
+            _ => return Maybe::Absent(return_reading::Unreturned::Inner),
+        }
+    }
+}
+
+/// Whether an expression sits in code that diverges before its repetition
+/// repeats.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Divergence
+{
+    /// An expression between it and the repetition never completes: a panic
+    /// or another call returning `!`, or a block that ends in one.
+    Diverges,
+    /// Every enclosing expression up to the repetition can complete.
+    Completes,
+}
+
+/// Decide whether `expr` is evaluated only on the way out of the program.
+///
+/// # Specification
+/// - ensures: `Diverges` exactly when some expression enclosing `expr`,
+///   strictly inside `scope`, has the never type; `Completes` otherwise.
+/// - panics: none.
+/// - executable: none — the outcome is a walk over the parents with their
+///   types; a predicate could only repeat it.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures accept an allocation in a `panic!` message
+///   and in an `assert!` message inside a loop.
+/// - witness: `tests::ui_cost_shape`
+pub fn divergence(
+    cx: &LateContext<'_>,
+    expr: &Expr<'_>,
+    scope: &Expr<'_>,
+) -> Divergence
+{
+    let typeck = cx.typeck_results();
+    for (parent_id, node) in cx.tcx.hir_parent_iter(expr.hir_id) {
+        if parent_id == scope.hir_id {
+            break;
+        }
+        if let Node::Expr(parent) = node
+            && typeck.expr_ty_opt(parent).is_some_and(Ty::is_never)
+        {
+            return Divergence::Diverges;
+        }
+        if let Node::Block(block) = node
+            && block.expr.is_none()
+            && block
+                .stmts
+                .last()
+                .is_some_and(|statement| match statement.kind {
+                    StmtKind::Semi(last) | StmtKind::Expr(last) => {
+                        typeck.expr_ty_opt(last).is_some_and(Ty::is_never)
+                    },
+                    StmtKind::Let(_) | StmtKind::Item(_) => false,
+                })
+            && block
+                .stmts
+                .iter()
+                .all(|statement| statement.hir_id != parent_id)
+        {
+            return Divergence::Diverges;
+        }
+    }
+    Divergence::Completes
 }

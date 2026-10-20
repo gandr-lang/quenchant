@@ -1,6 +1,6 @@
 // Refused: a buffer's front removed or inserted on every pass of a loop over
 // a buffer bound outside it, one function per operation and repetition.
-#![allow(dead_code, unused_variables)]
+#![allow(dead_code, unused_variables, allocation_in_repeated_body)]
 
 // Refused: `Vec::remove(0)` draining a queue in a `while` body.
 fn remove_front_in_while(mut queue: Vec<u32>)
