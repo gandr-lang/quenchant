@@ -24,6 +24,15 @@
 //! remain distinct. None alone establishes general correspondence to every
 //! production configuration or automatic transfer to another proof backend.
 
+// A cost-shape site, classified in #65's census and listed in #62.
+#![cfg_attr(
+    dylint_lib = "quenchant_dylints",
+    expect(
+        allocation_in_repeated_body,
+        reason = "1 cost-shape site (1 allocation_in_repeated_body); #62 lists it"
+    )
+)]
+
 use std::io::Write as _;
 use std::path::Path;
 use std::path::PathBuf;

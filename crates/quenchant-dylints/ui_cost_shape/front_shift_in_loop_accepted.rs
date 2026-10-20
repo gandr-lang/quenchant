@@ -1,6 +1,6 @@
 // Accepted: front operations whose cost does not grow with a loop, and
 // operations that shift nothing or belong to a type whose front is cheap.
-#![allow(dead_code, unused_variables)]
+#![allow(dead_code, unused_variables, allocation_in_repeated_body)]
 
 use std::collections::VecDeque;
 

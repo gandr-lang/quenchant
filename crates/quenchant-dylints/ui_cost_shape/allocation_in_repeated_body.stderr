@@ -1,0 +1,138 @@
+error: this allocates on every pass of a loop, and the value is dropped before the next pass
+  --> $DIR/allocation_in_repeated_body.rs:12:25
+   |
+LL |         let mut words = Vec::new();
+   |                         ^^^^^^^^^^
+   |
+note: the loop that repeats it
+  --> $DIR/allocation_in_repeated_body.rs:11:5
+   |
+LL | /     for line in lines {
+LL | |         let mut words = Vec::new();
+LL | |         words.extend(line.split(' '));
+LL | |         total += words.len();
+LL | |     }
+   | |_____^
+   = help: make the buffer once before the loop and `clear()` it each pass, write into one reused buffer, or borrow what the pass reads
+   = note: requested on the command line with `-D allocation-in-repeated-body`
+
+error: this allocates on every pass of a loop, and the value is dropped before the next pass
+  --> $DIR/allocation_in_repeated_body.rs:24:36
+   |
+LL |         let mut digits: Vec<u32> = Vec::with_capacity(8);
+   |                                    ^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the loop that repeats it
+  --> $DIR/allocation_in_repeated_body.rs:23:5
+   |
+LL | /     while count > 0 {
+LL | |         let mut digits: Vec<u32> = Vec::with_capacity(8);
+LL | |         digits.push(count % 10);
+LL | |         total += digits.len();
+LL | |         count /= 10;
+LL | |     }
+   | |_____^
+   = help: make the buffer once before the loop and `clear()` it each pass, write into one reused buffer, or borrow what the pass reads
+
+error: this allocates on every pass of a loop, and the value is dropped before the next pass
+  --> $DIR/allocation_in_repeated_body.rs:37:20
+   |
+LL |         let pair = vec![*value, value + 1];
+   |                    ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the loop that repeats it
+  --> $DIR/allocation_in_repeated_body.rs:36:5
+   |
+LL | /     for value in values {
+LL | |         let pair = vec![*value, value + 1];
+LL | |         total += pair.iter().sum::<u32>();
+LL | |     }
+   | |_____^
+   = help: make the buffer once before the loop and `clear()` it each pass, write into one reused buffer, or borrow what the pass reads
+
+error: this allocates on every pass of a loop, and the value is dropped before the next pass
+  --> $DIR/allocation_in_repeated_body.rs:48:21
+   |
+LL |         let label = format!("v{value}");
+   |                     ^^^^^^^^^^^^^^^^^^^
+   |
+note: the loop that repeats it
+  --> $DIR/allocation_in_repeated_body.rs:47:5
+   |
+LL | /     for value in values {
+LL | |         let label = format!("v{value}");
+LL | |         total += label.len();
+LL | |         total += value.to_string().len();
+LL | |     }
+   | |_____^
+   = help: make the buffer once before the loop and `clear()` it each pass, write into one reused buffer, or borrow what the pass reads
+
+error: this allocates on every pass of a loop, and the value is dropped before the next pass
+  --> $DIR/allocation_in_repeated_body.rs:50:18
+   |
+LL |         total += value.to_string().len();
+   |                  ^^^^^^^^^^^^^^^^^
+   |
+note: the loop that repeats it
+  --> $DIR/allocation_in_repeated_body.rs:47:5
+   |
+LL | /     for value in values {
+LL | |         let label = format!("v{value}");
+LL | |         total += label.len();
+LL | |         total += value.to_string().len();
+LL | |     }
+   | |_____^
+   = help: make the buffer once before the loop and `clear()` it each pass, write into one reused buffer, or borrow what the pass reads
+
+error: this allocates on every pass of a loop, and the value is dropped before the next pass
+  --> $DIR/allocation_in_repeated_body.rs:60:20
+   |
+LL |         let held = Box::new(seen);
+   |                    ^^^^^^^^^^^^^^
+   |
+note: the loop that repeats it
+  --> $DIR/allocation_in_repeated_body.rs:59:5
+   |
+LL | /     loop {
+LL | |         let held = Box::new(seen);
+LL | |         if *held > limit {
+LL | |             break;
+LL | |         }
+LL | |         seen += 1;
+LL | |     }
+   | |_____^
+   = help: make the buffer once before the loop and `clear()` it each pass, write into one reused buffer, or borrow what the pass reads
+
+error: this allocates on every pass of a loop, and the value is dropped before the next pass
+  --> $DIR/allocation_in_repeated_body.rs:76:41
+   |
+LL |             let unique: BTreeSet<u32> = group.iter().copied().collect();
+   |                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the loop that repeats it
+  --> $DIR/allocation_in_repeated_body.rs:75:17
+   |
+LL |           .filter(|group| {
+   |  _________________^
+LL | |             let unique: BTreeSet<u32> = group.iter().copied().collect();
+LL | |             unique.contains(&0)
+LL | |         })
+   | |_________^
+   = help: make the buffer once before the loop and `clear()` it each pass, write into one reused buffer, or borrow what the pass reads
+
+error: this collects a vector that is read once and dropped
+  --> $DIR/allocation_in_repeated_body.rs:87:69
+   |
+LL |         let doubled: Vec<u32> = group.iter().map(|value| value * 2).collect();
+   |                                                                     ^^^^^^^^^
+   |
+note: its only read
+  --> $DIR/allocation_in_repeated_body.rs:88:22
+   |
+LL |         for value in doubled {
+   |                      ^^^^^^^
+   = help: iterate the source iterator itself
+   = note: requested on the command line with `-D collect-read-once`
+
+error: aborting due to 8 previous errors
+
