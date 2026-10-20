@@ -56,6 +56,11 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: ${{ env.CI_FETCH_DEPTH || '1' }}
+      # A job container runs as root over a workspace the runner user owns,
+      # and git refuses such a repository until it is trusted.
+      - &trust-workspace
+        name: trust the workspace for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - &setup-rust
         name: setup rust
         uses: ./.github/actions/setup-rust # zizmor: ignore[self-repository]
@@ -187,6 +192,7 @@ jobs:
       CI_REPORT_PATH: target/nextest/ci/junit.xml
     steps:
       - *git-checkout
+      - *trust-workspace
       - *setup-rust
       - *install-tools
       - *install-policy-tools
@@ -240,6 +246,7 @@ jobs:
       CI_REPORT_PATH: target/nextest/ci/junit.xml
     steps:
       - *git-checkout
+      - *trust-workspace
       - *setup-rust
       - *restore-dylint-drivers
       - *restore-dylint-library
@@ -288,6 +295,7 @@ jobs:
     container: *ci-image # zizmor: ignore[unpinned-images]
     steps:
       - *git-checkout
+      - *trust-workspace
       - *setup-rust
       - name: install the gate binary
         run: cargo install --path crates/quenchant-gates --locked --root "$RUNNER_TEMP/quenchant-gates"
@@ -306,6 +314,7 @@ jobs:
     container: *ci-image # zizmor: ignore[unpinned-images]
     steps:
       - *git-checkout
+      - *trust-workspace
       - *setup-rust
       - name: lint every workspace target outside the Dylint package
         run: cargo clippy --workspace --all-targets --exclude quenchant-dylints -- --deny warnings
@@ -328,6 +337,7 @@ jobs:
       CI_FETCH_DEPTH: "0"
     steps:
       - *git-checkout
+      - *trust-workspace
       - *setup-rust
       - *install-policy-tools
       - name: check formatting and static policy
