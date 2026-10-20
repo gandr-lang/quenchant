@@ -203,7 +203,8 @@ fn main() {
     assert_eq!(retained_const(9), 9);
     assert_eq!(retained(11), 11);
     parameter_only(13);
-    assert_eq!(CAPTURES.load(Ordering::Relaxed), 1);
+    // A capture feeds only conditions: without a checking cfg neither is evaluated (#55).
+    assert_eq!(CAPTURES.load(Ordering::Relaxed), if cfg!(anodized_panic) { 1 } else { 0 });
     assert_eq!(PREDICATES.load(Ordering::Relaxed), if cfg!(anodized_panic) { 2 } else { 0 });
 }
 "#,
