@@ -24,16 +24,7 @@
 //! remain distinct. None alone establishes general correspondence to every
 //! production configuration or automatic transfer to another proof backend.
 
-// Cost-shape sites, classified in #65's census and listed in #62.
-#![cfg_attr(
-    dylint_lib = "quenchant_dylints",
-    expect(
-        allocation_in_repeated_body,
-        clone_in_loop,
-        reason = "3 cost-shape sites (1 allocation_in_repeated_body, 2 clone_in_loop); #62 lists them"
-    )
-)]
-
+use core::fmt::Write as _;
 use std::io::Write as _;
 use std::path::Path;
 use std::path::PathBuf;
@@ -41,7 +32,6 @@ use std::process::Command;
 
 use anodized::spec;
 use proc_macro2::TokenStream;
-use quote::ToTokens as _;
 use quote::quote;
 use syn::parse::Parse;
 use syn::parse::ParseStream;
@@ -380,14 +370,48 @@ fn declarations(file: &syn::File) -> Result<TokenStream, DerivationError>
         )]
         match *item {
             syn::Item::Enum(ref declaration) => {
-                let mut declaration = declaration.clone();
-                declaration.attrs.retain(|attribute| is_doc(attribute).0);
-                emitted.extend(declaration.to_token_stream());
+                let docs = declaration
+                    .attrs
+                    .iter()
+                    .filter(|attribute| is_doc(attribute).0);
+                let syn::ItemEnum {
+                    ref vis,
+                    ref enum_token,
+                    ref ident,
+                    ref generics,
+                    ref variants,
+                    ..
+                } = *declaration;
+                let bounds = &generics.where_clause;
+                emitted.extend(
+                    quote!(#(#docs)* #vis #enum_token #ident #generics #bounds { #variants }),
+                );
             },
             syn::Item::Struct(ref declaration) => {
-                let mut declaration = declaration.clone();
-                declaration.attrs.retain(|attribute| is_doc(attribute).0);
-                emitted.extend(declaration.to_token_stream());
+                let docs = declaration
+                    .attrs
+                    .iter()
+                    .filter(|attribute| is_doc(attribute).0);
+                let syn::ItemStruct {
+                    ref vis,
+                    ref struct_token,
+                    ref ident,
+                    ref generics,
+                    ref fields,
+                    ..
+                } = *declaration;
+                let bounds = &generics.where_clause;
+                emitted.extend(match *fields {
+                    syn::Fields::Named(ref named) => {
+                        quote!(#(#docs)* #vis #struct_token #ident #generics #bounds #named)
+                    },
+                    syn::Fields::Unnamed(ref unnamed) => {
+                        quote!(#(#docs)* #vis #struct_token #ident #generics #unnamed #bounds ;)
+                    },
+                    syn::Fields::Unit => {
+                        quote!(#(#docs)* #vis #struct_token #ident #generics #bounds ;)
+                    },
+                });
             },
             syn::Item::Macro(ref invocation)
                 if invocation.mac.path.is_ident("reason_enum") && invocation.ident.is_none() =>
@@ -645,6 +669,8 @@ fn derive(
         targets: Vec::new(),
         unreached: Vec::new(),
     };
+    // A macro body's tokens, rendered into one buffer every item reuses.
+    let mut rendered = String::new();
     for item in &file.items {
         #[expect(
             clippy::wildcard_enum_match_arm,
@@ -682,11 +708,9 @@ fn derive(
                 else {
                     continue;
                 };
-                if definition
-                    .mac
-                    .tokens
-                    .to_string()
-                    .contains("# Specification")
+                rendered.clear();
+                if write!(rendered, "{}", definition.mac.tokens).is_ok()
+                    && rendered.contains("# Specification")
                 {
                     derivation.unreached.push(Unreached {
                         name: name.clone(),
