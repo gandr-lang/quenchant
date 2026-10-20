@@ -153,6 +153,8 @@ pub fn resolve(
 ) -> Vec<Finding>
 {
     let mut findings = Vec::new();
+    // An ambiguous claim's detail, written into one buffer every claim reuses.
+    let mut detail = String::new();
     for claim in claims {
         let witness = WitnessPath::from(&claim.witness);
         let Maybe::Present(targets) = catalog.targets(package, witness)
@@ -169,11 +171,15 @@ pub fn resolve(
             continue;
         };
         if targets.len() > 1_usize {
-            let labels = targets.iter().cloned().collect::<Vec<_>>().join(", ");
-            let detail = format!(
-                "the path is exposed by more than one target of this crate ({labels}); name the \
-                 one a reviewer should watch fail"
-            );
+            detail.clear();
+            detail.push_str("the path is exposed by more than one target of this crate (");
+            for (index, label) in targets.iter().enumerate() {
+                if index != 0 {
+                    detail.push_str(", ");
+                }
+                detail.push_str(label);
+            }
+            detail.push_str("); name the one a reviewer should watch fail");
             findings.push(Finding::new(
                 "ambiguous-witness".into(),
                 package,

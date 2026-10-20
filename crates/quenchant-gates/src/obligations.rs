@@ -578,10 +578,11 @@ pub fn reruns(
             .get(item.position.file.as_str())
             .map_or("", String::as_str);
         for witness in crate::evidence::witnesses_in(&file, SourceText::from(source), docs)? {
-            let integration =
-                IntegrationTarget(witness.split_once("::").is_some_and(|(target, _)| {
-                    member.integration_targets.iter().any(|name| name == target)
-                }));
+            let integration = IntegrationTarget(
+                witness
+                    .split_once("::")
+                    .is_some_and(|(target, _)| member.integration_targets.contains(target)),
+            );
             found.insert(Rerun {
                 package: member.name.clone(),
                 witness,
@@ -674,17 +675,20 @@ pub fn render_text(report: &Report) -> String
             Discharge::StillHolds => "still holds",
             Discharge::Updated => "updated",
         };
-        format!(
-            "{naming}: {} `{}` names {} [{discharge}]",
-            obligation.specification,
-            obligation.clause,
-            obligation
-                .changed
-                .iter()
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(", "),
-        )
+        let mut line = format!(
+            "{naming}: {} `{}` names ",
+            obligation.specification, obligation.clause,
+        );
+        for (index, name) in obligation.changed.iter().enumerate() {
+            if index != 0 {
+                line.push_str(", ");
+            }
+            line.push_str(name);
+        }
+        line.push_str(" [");
+        line.push_str(discharge);
+        line.push(']');
+        line
     }));
     lines.extend(report.reruns.iter().map(|rerun| {
         format!(

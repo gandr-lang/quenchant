@@ -15,6 +15,7 @@
 //! resolution are distinct states. Failed or malformed tool output cannot
 //! become an empty successful catalog.
 
+use alloc::collections::BTreeSet;
 use std::ffi::OsStr;
 use std::path::Path;
 use std::path::PathBuf;
@@ -55,9 +56,9 @@ pub struct Member
     pub source_roots: Vec<PathBuf>,
     /// A member-local compiler pin requires its own listing invocation.
     pub pins_toolchain: PinsToolchain,
-    /// The integration test targets, sorted: a witness they own spells the
-    /// target name as its first segment.
-    pub integration_targets: Vec<String>,
+    /// The integration test targets: a witness they own spells the target name
+    /// as its first segment.
+    pub integration_targets: BTreeSet<String>,
 }
 
 /// Discovered workspace scope, including deterministic member order.
@@ -173,7 +174,7 @@ pub fn discover(manifest_path: &Path) -> Result<Workspace, GateError>
             .unwrap_or_default();
         source_roots.sort();
         source_roots.dedup();
-        let mut integration_targets: Vec<String> = package
+        let integration_targets: BTreeSet<String> = package
             .get("targets")
             .and_then(serde_json::Value::as_array)
             .map(|targets| {
@@ -192,7 +193,6 @@ pub fn discover(manifest_path: &Path) -> Result<Workspace, GateError>
                     .collect()
             })
             .unwrap_or_default();
-        integration_targets.sort();
         members.push(Member {
             name: name.to_owned(),
             directory,
@@ -514,7 +514,7 @@ fn listing_runner(scope: &Path) -> Result<ListingRunner, GateError>
     })?;
     let selected = selected.trim();
     let executable = PathBuf::from(selected);
-    if !executable.is_absolute() || selected.lines().count() != 1_usize {
+    if !executable.is_absolute() || selected.contains('\n') {
         return Err(GateError::tool(
             "mise which cargo-nextest".into(),
             "selection must be exactly one absolute executable path".into(),
@@ -727,6 +727,9 @@ fn merge_cargo_test_listing(
     runner: &ListingRunner,
 ) -> Result<(), GateError>
 {
+    // The label of the target being listed, written into one buffer every
+    // record reuses.
+    let mut label_text = String::new();
     for line in stdout.0.lines() {
         let Ok(record) = serde_json::from_str::<serde_json::Value>(line)
         else {
@@ -771,7 +774,10 @@ fn merge_cargo_test_listing(
         command.current_dir(scope);
         command.args(["--list", "--format", "terse"]);
         let listing = capture(&mut command, label)?;
-        let label_text = format!("{package}::{name}");
+        label_text.clear();
+        label_text.push_str(&package);
+        label_text.push_str("::");
+        label_text.push_str(name);
         for entry in listing.lines() {
             let Some(test) = entry.strip_suffix(": test")
             else {
@@ -917,7 +923,7 @@ mod tests
             directory: root.clone(),
             source_roots: vec![root.clone(), root.join("nested"), root.join("absent")],
             pins_toolchain: PinsToolchain(false),
-            integration_targets: Vec::new(),
+            integration_targets: BTreeSet::new(),
         };
         assert_eq!(member_sources(&member).unwrap(), expected);
         let missing = root.join("absent");

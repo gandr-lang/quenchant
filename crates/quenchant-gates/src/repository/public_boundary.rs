@@ -226,7 +226,7 @@ pub fn check(root: &Path) -> Result<Maybe<Passed, refusal::Refused>, GateError>
         let text = String::from_utf8_lossy(&bytes);
         if let Maybe::Absent(reason) = scan(
             SourceText(&text),
-            SourceText(&path.display().to_string()),
+            SourceText(&path.to_string_lossy()),
             Surface::Tree,
             &patterns,
         ) {

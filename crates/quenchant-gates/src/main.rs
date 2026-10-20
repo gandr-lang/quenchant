@@ -18,15 +18,6 @@
 //! with distinct diagnostics. Failure to obtain an inventory remains an
 //! operational failure rather than evidence that its obligations passed.
 
-// A cost-shape site, classified in #65's census and listed in #62.
-#![cfg_attr(
-    dylint_lib = "quenchant_dylints",
-    expect(
-        allocation_in_repeated_body,
-        reason = "1 cost-shape site (1 allocation_in_repeated_body); #62 lists it"
-    )
-)]
-
 extern crate alloc;
 
 mod repository;
