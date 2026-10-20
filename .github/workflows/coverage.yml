@@ -53,6 +53,11 @@ jobs:
         with:
           persist-credentials: false
           fetch-depth: 1
+      # A job container runs as root over a workspace the runner user owns,
+      # and git refuses such a repository until it is trusted.
+      - &trust-workspace
+        name: trust the workspace for git
+        run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
       - &resolve-image
         id: resolve
         name: resolve the image reference
@@ -168,6 +173,7 @@ jobs:
       CI_TOOLS: CI_TOOLS_NEXTEST
     steps:
       - *git-checkout
+      - *trust-workspace
       - *setup-rust
       - *install-tools
       - *install-policy-tools
