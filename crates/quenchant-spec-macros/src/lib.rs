@@ -3,14 +3,6 @@
     not(doc),
     doc = "Conditional specification attributes and token-preserving erasure."
 )]
-// A cost-shape site, classified in #65's census and listed in #62.
-#![cfg_attr(
-    dylint_lib = "quenchant_dylints",
-    expect(
-        allocation_in_repeated_body,
-        reason = "1 cost-shape site (1 allocation_in_repeated_body); #62 lists it"
-    )
-)]
 
 /// Erase a specification-only item or local binding in feature-off builds.
 ///
@@ -398,8 +390,13 @@ fn marker(group: &proc_macro::Group) -> Marker
 /// - witness: `expansion::tests::nested_trait_obligations_follow_the_selected_mode`
 fn strip_markers(item: proc_macro::TokenStream) -> proc_macro::TokenStream
 {
+    use core::fmt::Write as _;
+
     let mut frame = Frame::new(item);
     let mut parents: Vec<(proc_macro::Group, Frame)> = Vec::new();
+    // The spelling of the identifier before a possible `macro` body, rendered
+    // into one buffer the whole walk reuses.
+    let mut spelled = String::new();
     loop {
         let next = frame.input.next();
         let Some(token) = next
@@ -443,11 +440,12 @@ fn strip_markers(item: proc_macro::TokenStream) -> proc_macro::TokenStream
                     proc_macro::TokenTree::Punct(ref punct) if punct.as_char() == '!' => {
                         Some(MacroBoundary::Group)
                     },
-                    proc_macro::TokenTree::Ident(_) if name.to_string() == "macro" => {
-                        Some(MacroBoundary::Body)
+                    proc_macro::TokenTree::Ident(_) => {
+                        spelled.clear();
+                        (write!(spelled, "{name}").is_ok() && spelled == "macro")
+                            .then_some(MacroBoundary::Body)
                     },
                     proc_macro::TokenTree::Group(_)
-                    | proc_macro::TokenTree::Ident(_)
                     | proc_macro::TokenTree::Punct(_)
                     | proc_macro::TokenTree::Literal(_) => None,
                 });
