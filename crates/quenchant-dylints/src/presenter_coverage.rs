@@ -340,23 +340,34 @@ impl<'tcx> LateLintPass<'tcx> for PresenterCoverage
     )
     {
         report_defects(cx, PRESENTER_COVERAGE, &self.defects);
+        // One entry's named variants, and the rendered list of its presenters
+        // once a variant goes unnamed, each in one buffer every entry reuses.
+        let mut named: HashSet<DefId> = HashSet::new();
+        let mut presenters = String::new();
         for entry in &self.entries {
-            let named: HashSet<DefId> = entry
-                .functions
-                .iter()
-                .filter_map(|function| self.named.get(function))
-                .flatten()
-                .copied()
-                .collect();
-            let presenters = entry
-                .functions
-                .iter()
-                .map(|&function| format!("`{}`", cx.tcx.def_path_str(function)))
-                .collect::<Vec<_>>()
-                .join(", ");
+            named.clear();
+            named.extend(
+                entry
+                    .functions
+                    .iter()
+                    .filter_map(|function| self.named.get(function))
+                    .flatten()
+                    .copied(),
+            );
+            presenters.clear();
             for variant in cx.tcx.adt_def(entry.enumeration).variants() {
                 if named.contains(&variant.def_id) {
                     continue;
+                }
+                if presenters.is_empty() {
+                    for (index, &function) in entry.functions.iter().enumerate() {
+                        if index != 0 {
+                            presenters.push_str(", ");
+                        }
+                        presenters.push('`');
+                        presenters.push_str(&cx.tcx.def_path_str(function));
+                        presenters.push('`');
+                    }
                 }
                 let site = variant
                     .def_id

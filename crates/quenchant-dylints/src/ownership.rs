@@ -261,8 +261,10 @@ pub fn owning_cycles(
     }
 
     let mut denials: Vec<OwningCycle> = Vec::new();
+    // One cyclic component's members, collected into one set every component
+    // reuses.
+    let mut members: HashSet<Vertex> = HashSet::new();
     for component in tarjan_components(&adjacency) {
-        let members: HashSet<Vertex> = component.iter().copied().collect();
         let is_cyclic = component.len() > 1_usize
             || component.first().is_some_and(|vertex| {
                 adjacency
@@ -272,6 +274,8 @@ pub fn owning_cycles(
         if !is_cyclic {
             continue;
         }
+        members.clear();
+        members.extend(component.iter().copied());
         for vertex in component {
             let Some(def_id) = nodes.get(vertex.0).copied()
             else {
@@ -685,14 +689,11 @@ fn render_cycle(
     for (position, vertex) in chain.iter().enumerate() {
         let next = chain.get(position.saturating_add(1_usize)).copied();
         let target = next.unwrap_or(start);
-        let label = labels
-            .get(&(*vertex, target))
-            .cloned()
-            .unwrap_or_else(|| "?".to_owned());
+        let label = labels.get(&(*vertex, target)).map_or("?", String::as_str);
         rendered.push('`');
         rendered.push_str(&name(*vertex));
         rendered.push_str("::");
-        rendered.push_str(&label);
+        rendered.push_str(label);
         rendered.push_str("` → ");
     }
     rendered.push('`');
