@@ -136,6 +136,10 @@ jobs:
   # check, whereas a skipped job succeeds. Formatting sees docs-only changes.
   changes:
     name: detect changed-file categories
+    # Dependency updates land through a maintainer's pull request, so a
+    # dependabot pull request runs nothing: the entry jobs skip, every job
+    # that needs them skips with them, and a skipped required check passes.
+    if: &not-dependabot ${{ github.actor != 'dependabot[bot]' }}
     runs-on: *linux
     outputs:
       # Missing bases and failed fetches/diffs force Rust checks, never skip
@@ -166,6 +170,7 @@ jobs:
   # container cannot read env directly; needs carries the workflow switch.
   ci-image-ref:
     name: resolve the CI image reference
+    if: *not-dependabot
     runs-on: *linux
     outputs:
       ref: ${{ steps.resolve.outputs.ref }}
@@ -368,6 +373,7 @@ jobs:
 
   workflow-lint:
     name: check workflow lints (zizmor)
+    if: *not-dependabot
     runs-on: *linux
     env:
       CI_TOOLS: CI_TOOLS_ZIZMOR
