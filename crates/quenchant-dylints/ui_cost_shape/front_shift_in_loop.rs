@@ -34,8 +34,8 @@ fn drain_prefix_in_loop(
     }
 }
 
-// Refused: `String::insert_str(0, _)` and `String::insert(0, _)` in a `for`
-// body.
+// Refused (#66): `String::insert_str(0, _)` and `String::insert(0, _)` in a
+// `for` body.
 fn prepend_text(parts: &[&str]) -> String
 {
     let mut text = String::new();
@@ -46,7 +46,7 @@ fn prepend_text(parts: &[&str]) -> String
     text
 }
 
-// Refused: `String::remove(0)` in a `while` body.
+// Refused (#66): `String::remove(0)` in a `while` body.
 fn strip_leading(mut text: String)
 {
     while text.starts_with(' ') {

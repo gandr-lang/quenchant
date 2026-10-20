@@ -53,6 +53,59 @@ LL | |     }
    = help: use a `VecDeque` and its `pop_front` or `push_front`, build the sequence in reverse and use its back, or remove the whole prefix once with `drain(..k)`
 
 error: this call moves every element after the front, once per pass of a loop over a buffer that outlives it
+  --> $DIR/front_shift_in_loop.rs:43:9
+   |
+LL |         text.insert_str(0, part);
+   |         ----^^^^^^^^^^^^^^^^^^^^
+   |         |
+   |         shifted again on every pass
+   |
+note: the loop that repeats it
+  --> $DIR/front_shift_in_loop.rs:42:5
+   |
+LL | /     for part in parts {
+LL | |         text.insert_str(0, part);
+LL | |         text.insert(0, '/');
+LL | |     }
+   | |_____^
+   = help: use a `VecDeque` and its `pop_front` or `push_front`, build the sequence in reverse and use its back, or remove the whole prefix once with `drain(..k)`
+
+error: this call moves every element after the front, once per pass of a loop over a buffer that outlives it
+  --> $DIR/front_shift_in_loop.rs:44:9
+   |
+LL |         text.insert(0, '/');
+   |         ----^^^^^^^^^^^^^^^
+   |         |
+   |         shifted again on every pass
+   |
+note: the loop that repeats it
+  --> $DIR/front_shift_in_loop.rs:42:5
+   |
+LL | /     for part in parts {
+LL | |         text.insert_str(0, part);
+LL | |         text.insert(0, '/');
+LL | |     }
+   | |_____^
+   = help: use a `VecDeque` and its `pop_front` or `push_front`, build the sequence in reverse and use its back, or remove the whole prefix once with `drain(..k)`
+
+error: this call moves every element after the front, once per pass of a loop over a buffer that outlives it
+  --> $DIR/front_shift_in_loop.rs:53:9
+   |
+LL |         text.remove(0);
+   |         ----^^^^^^^^^^
+   |         |
+   |         shifted again on every pass
+   |
+note: the loop that repeats it
+  --> $DIR/front_shift_in_loop.rs:52:5
+   |
+LL | /     while text.starts_with(' ') {
+LL | |         text.remove(0);
+LL | |     }
+   | |_____^
+   = help: use a `VecDeque` and its `pop_front` or `push_front`, build the sequence in reverse and use its back, or remove the whole prefix once with `drain(..k)`
+
+error: this call moves every element after the front, once per pass of a loop over a buffer that outlives it
   --> $DIR/front_shift_in_loop.rs:61:36
    |
 LL |     values.iter().for_each(|value| reversed.insert(0, *value));
@@ -67,5 +120,5 @@ LL |     values.iter().for_each(|value| reversed.insert(0, *value));
    |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
    = help: use a `VecDeque` and its `pop_front` or `push_front`, build the sequence in reverse and use its back, or remove the whole prefix once with `drain(..k)`
 
-error: aborting due to 4 previous errors
+error: aborting due to 7 previous errors
 

@@ -98,6 +98,7 @@ use crate::clause_cost::ClauseRegions;
 use crate::clause_cost::Enclosure;
 use crate::walk_summary::container;
 use crate::walk_summary::iterator;
+use crate::walk_summary::standard_name;
 
 /// Whether a cost-shape pass inspects an expression.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -293,18 +294,14 @@ pub fn std_method(
     )]
     let owner = match *owner.kind() {
         ty::Slice(_) => Owner::Slice,
-        ty::Adt(definition, _) => {
-            match cx
-                .tcx
-                .get_diagnostic_name(definition.did())
-                .as_ref()
-                .map(Symbol::as_str)
-            {
-                Some("Vec") => Owner::Vec,
-                Some("VecDeque") => Owner::VecDeque,
-                Some("String") => Owner::String,
+        ty::Adt(definition, _) => match standard_name(cx.tcx, definition.did()) {
+            Maybe::Present(owner) => match owner.as_str() {
+                "Vec" => Owner::Vec,
+                "VecDeque" => Owner::VecDeque,
+                "String" => Owner::String,
                 _ => return Maybe::Absent(method_reading::Unpriced::OtherOwner),
-            }
+            },
+            Maybe::Absent(_) => return Maybe::Absent(method_reading::Unpriced::OtherOwner),
         },
         _ => return Maybe::Absent(method_reading::Unpriced::OtherOwner),
     };
