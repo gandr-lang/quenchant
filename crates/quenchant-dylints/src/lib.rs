@@ -26,7 +26,7 @@
 //! other half.
 //!
 //! The `rustdoc_shape` group holds module documentation to a shape
-//! ([`doc_shape`]). Five `deny` lints refuse a standard-library operation
+//! ([`doc_shape`]). Six `deny` lints refuse a standard-library operation
 //! whose cost is wrong for its receiver's type ([`cost_shape`]).
 //!
 //! # Boundaries
@@ -69,6 +69,7 @@ extern crate rustc_span;
 mod adequacy;
 mod answer_totality;
 mod arithmetic;
+mod bucket_per_key;
 mod callgraph;
 mod clause_cost;
 mod collect_read_once;
@@ -418,6 +419,7 @@ pub fn register_lints(
         doc_shape::MODULE_DOC_DUPLICATION,
         doc_shape::DOC_HISTORY_PROSE,
         doc_shape::MODULE_DOC_MEASURE,
+        bucket_per_key::BUCKET_PER_KEY,
         collect_read_once::COLLECT_READ_ONCE,
         count_comparison::COUNT_AGAINST_CONSTANT,
         front_shift::FRONT_SHIFT_IN_LOOP,
@@ -481,6 +483,10 @@ pub fn register_lints(
     }));
     lint_store.register_late_pass(Box::new(|tcx| {
         Box::new(doc_shape::DocShape::configured(tcx))
+    }));
+    let bucketed = cost_regions.clone();
+    lint_store.register_late_pass(Box::new(move |_| {
+        Box::new(bucket_per_key::BucketPerKey::new(bucketed.clone()))
     }));
     let read_once = cost_regions.clone();
     lint_store.register_late_pass(Box::new(move |_| {
@@ -1408,6 +1414,7 @@ unproduced = [
         flags.extend(
             [
                 "-Dunknown-lints",
+                "-Dbucket_per_key",
                 "-Dcollect_read_once",
                 "-Dcount_against_constant",
                 "-Dfront_shift_in_loop",

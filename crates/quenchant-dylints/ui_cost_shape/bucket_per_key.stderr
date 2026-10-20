@@ -1,0 +1,45 @@
+error: this allocates a bucket for each key of a map whose buckets are only searched for one entry
+  --> $DIR/bucket_per_key.rs:47:49
+   |
+LL |         self.buckets.entry(digest).or_default().push((key, value));
+   |         ------------                            ^^^^^^^^^^^^^^^^^^
+   |         |
+   |         every read of this map searches one bucket
+   |
+   = help: keep a bucket's first entry inline and spill only collisions (`SmallVec<[_; 1]>`, or an enum of one entry and a vector), or hold the entries in one vector and map each key to its chain's head
+   = note: requested on the command line with `-D bucket-per-key`
+
+error: this allocates a bucket for each key of a map whose buckets are only searched for one entry
+  --> $DIR/bucket_per_key.rs:57:56
+   |
+LL |         seen.entry(digest).or_insert_with(String::new).push(letter);
+   |         ----                                           ^^^^^^^^^^^^
+   |         |
+   |         every read of this map searches one bucket
+   |
+   = help: keep a bucket's first entry inline and spill only collisions (`SmallVec<[_; 1]>`, or an enum of one entry and a vector), or hold the entries in one vector and map each key to its chain's head
+
+error: this allocates a bucket for each key of a map whose buckets are only searched for one entry
+  --> $DIR/bucket_per_key.rs:75:14
+   |
+LL |         queues
+   |         ------ every read of this map searches one bucket
+...
+LL |             .push_back(value);
+   |              ^^^^^^^^^^^^^^^^
+   |
+   = help: keep a bucket's first entry inline and spill only collisions (`SmallVec<[_; 1]>`, or an enum of one entry and a vector), or hold the entries in one vector and map each key to its chain's head
+
+error: this allocates a bucket for each key of a map whose buckets are only searched for one entry
+  --> $DIR/bucket_per_key.rs:79:14
+   |
+LL |         lists
+   |         ----- every read of this map searches one bucket
+...
+LL |             .push(value);
+   |              ^^^^^^^^^^^
+   |
+   = help: keep a bucket's first entry inline and spill only collisions (`SmallVec<[_; 1]>`, or an enum of one entry and a vector), or hold the entries in one vector and map each key to its chain's head
+
+error: aborting due to 4 previous errors
+

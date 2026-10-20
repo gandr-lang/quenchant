@@ -10,7 +10,7 @@
 //!
 //! # Items
 //!
-//! Five lints refuse a shape whose cost is wrong for its receiver:
+//! Six lints refuse a shape whose cost is wrong for its receiver:
 //!
 //! - [`linear_search_in_loop`]: a slice, `Vec` or `VecDeque` searched linearly
 //!   once per pass of a loop over a collection that outlives it;
@@ -21,7 +21,9 @@
 //! - [`count_against_constant`]: an iterator counted to its end only to compare
 //!   the count with a constant;
 //! - [`collect_read_once`]: a vector collected from an iterator only to be read
-//!   once.
+//!   once;
+//! - [`bucket_per_key`]: a map that allocates a growable bucket for each key
+//!   and only ever searches a bucket for one entry.
 //!
 //! Each lint is type-directed: the receiver's type decides whether the shape
 //! is a hazard, and the cheap receivers — arrays, sets and maps, exact-size
@@ -69,6 +71,7 @@
 //! [`reverse_after_build`]: crate::reverse_after_build::REVERSE_AFTER_BUILD
 //! [`count_against_constant`]: crate::count_comparison::COUNT_AGAINST_CONSTANT
 //! [`collect_read_once`]: crate::collect_read_once::COLLECT_READ_ONCE
+//! [`bucket_per_key`]: crate::bucket_per_key::BUCKET_PER_KEY
 
 use core::ops::ControlFlow;
 
