@@ -10,7 +10,7 @@
 //!
 //! # Items
 //!
-//! Seven lints refuse a shape whose cost is wrong for its receiver:
+//! Eight lints refuse a shape whose cost is wrong for its receiver:
 //!
 //! - [`linear_search_in_loop`]: a slice, `Vec` or `VecDeque` searched linearly
 //!   once per pass of a loop over a collection that outlives it;
@@ -25,7 +25,9 @@
 //! - [`bucket_per_key`]: a map that allocates a growable bucket for each key
 //!   and only ever searches a bucket for one entry;
 //! - [`allocation_in_repeated_body`]: an allocation made on every pass of a
-//!   loop or a per-element closure and dropped before the next pass.
+//!   loop or a per-element closure and dropped before the next pass;
+//! - [`clone_in_loop`]: a deep copy of an owned value, made on every pass of
+//!   such a repetition, of a value the pass only reads.
 //!
 //! Each lint is type-directed: the receiver's type decides whether the shape
 //! is a hazard, and the cheap receivers — arrays, sets and maps, exact-size
@@ -75,8 +77,10 @@
 //! [`collect_read_once`]: crate::collect_read_once::COLLECT_READ_ONCE
 //! [`bucket_per_key`]: crate::bucket_per_key::BUCKET_PER_KEY
 //! [`allocation_in_repeated_body`]: crate::allocation_in_repeated_body::ALLOCATION_IN_REPEATED_BODY
+//! [`clone_in_loop`]: crate::clone_in_loop::CLONE_IN_LOOP
 
 use core::ops::ControlFlow;
+use std::collections::HashSet;
 
 use anodized::spec;
 use clippy_utils::consts::ConstEvalCtxt;
@@ -104,6 +108,9 @@ use rustc_lint::LateContext;
 use rustc_middle::mir::FakeReadCause;
 use rustc_middle::ty;
 use rustc_middle::ty::Ty;
+use rustc_middle::ty::TyCtxt;
+use rustc_middle::ty::TypingEnv;
+use rustc_middle::ty::Unnormalized;
 use rustc_span::Symbol;
 use rustc_span::sym;
 
@@ -1573,4 +1580,129 @@ pub fn divergence(
         }
     }
     Divergence::Completes
+}
+
+/// Whether a type owns a heap allocation, by its structure.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Ownership
+{
+    /// Some component is a `Box`, `Vec`, `VecDeque`, `String`, standard map,
+    /// set, heap or list.
+    Owning,
+    /// Some component's ownership cannot be read: a type parameter, an
+    /// opaque or unnormalized type, a trait object, or a foreign type with a
+    /// destructor whose fields show no owning component.
+    Unknown,
+    /// No component owns, and some is an `Rc`, an `Arc` or a weak reference
+    /// to one: a copy bumps a count.
+    Refcounted,
+    /// No component owns or counts: a copy is a copy of the value's bytes.
+    Plain,
+}
+
+/// Classify a type by the heap allocations its value owns.
+///
+/// # Specification
+/// - ensures: walks `held` through ADT fields instantiated with their
+///   arguments, every variant included, tuple and array elements and closure
+///   captures, stopping at references, raw and function pointers and
+///   `PhantomData`; answers `Owning` when a component is a `Box` or a standard
+///   owning collection, else `Unknown` when one is unreadable or a foreign type
+///   with a destructor was walked, else `Refcounted` when one is an `Rc`, `Arc`
+///   or weak reference, else `Plain`.
+/// - panics: none.
+///
+/// # Termination
+/// - reason: no recursion; the walk is a worklist over component types.
+/// - measure: the number of distinct component types not yet visited.
+/// - boundedness: a type's components are finitely many distinct types, and
+///   each is visited once.
+/// - input recursion: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures refuse a copied `String`, a struct holding a
+///   vector and an enum with a boxed variant, and accept a `Copy` struct, a
+///   struct of plain fields, an `Rc` and a type parameter.
+/// - witness: `tests::ui_cost_shape`
+#[spec(ensures: |output| !held.is_ref() || output == Ownership::Plain)]
+pub fn heap_ownership<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    typing_env: TypingEnv<'tcx>,
+    held: Ty<'tcx>,
+) -> Ownership
+{
+    let mut pending = vec![held];
+    let mut seen = HashSet::new();
+    let mut unknown = false;
+    let mut counted = false;
+    while let Some(next) = pending.pop() {
+        let next = tcx
+            .try_normalize_erasing_regions(typing_env, Unnormalized::new_wip(next))
+            .unwrap_or(next);
+        if !seen.insert(next) {
+            continue;
+        }
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`TyKind` is rustc's type kind, whose variants move with the pinned nightly; \
+                      only ADTs, tuples, arrays, slices and closures hold components, and only \
+                      parameters and opaque types hide them"
+        )]
+        match *next.kind() {
+            ty::Adt(definition, args) => {
+                if definition.is_box() {
+                    return Ownership::Owning;
+                }
+                if let Maybe::Present(name) = standard_name(tcx, definition.did()) {
+                    match name.as_str() {
+                        "Vec" | "VecDeque" | "String" | "HashMap" | "HashSet" | "BTreeMap"
+                        | "BTreeSet" | "BinaryHeap" | "LinkedList" => return Ownership::Owning,
+                        "Rc" | "Arc" | "RcWeak" | "ArcWeak" => {
+                            counted = true;
+                            continue;
+                        },
+                        _ => {},
+                    }
+                }
+                if definition.is_phantom_data() {
+                    continue;
+                }
+                if !definition.did().is_local() && definition.has_dtor(tcx) {
+                    unknown = true;
+                }
+                pending.extend(
+                    definition
+                        .all_fields()
+                        .map(|field| field.ty(tcx, args).skip_norm_wip()),
+                );
+            },
+            ty::Tuple(elements) => pending.extend(elements.iter()),
+            ty::Array(element, _) | ty::Slice(element) | ty::Pat(element, _) => {
+                pending.push(element);
+            },
+            ty::Closure(_, args) => pending.extend(args.as_closure().upvar_tys()),
+            ty::Bool
+            | ty::Char
+            | ty::Int(_)
+            | ty::Uint(_)
+            | ty::Float(_)
+            | ty::Str
+            | ty::Ref(..)
+            | ty::RawPtr(..)
+            | ty::FnPtr(..)
+            | ty::FnDef(..)
+            | ty::Never
+            | ty::Foreign(_) => {},
+            _ => unknown = true,
+        }
+    }
+    if unknown {
+        Ownership::Unknown
+    }
+    else if counted {
+        Ownership::Refcounted
+    }
+    else {
+        Ownership::Plain
+    }
 }
