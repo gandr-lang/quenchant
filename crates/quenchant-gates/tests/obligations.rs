@@ -27,6 +27,8 @@ use quenchant_gates::obligations::acknowledgements;
 use quenchant_gates::obligations::changed_items;
 use quenchant_gates::obligations::obligations;
 use quenchant_gates::obligations::render_comment;
+use quenchant_gates::obligations::render_section;
+use quenchant_gates::obligations::splice_section;
 use quenchant_gates::semantic::ColumnNumber;
 use quenchant_gates::semantic::DocText;
 use quenchant_gates::semantic::LineNumber;
@@ -194,19 +196,18 @@ impl Fixture
         std::fs::write(&path, source.replacen(from.0, to.0, 1)).expect("edit the fixture");
     }
 
-    /// Run the subcommand against the committed base and return its console
-    /// report, comment and selection.
+    /// The subcommand against the committed base, writing the comment, the
+    /// selection and the body beside the fixture.
     ///
     /// # Specification
     /// trivial.
-    fn obligations(
+    fn command(
         &self,
         rustdoc: &Path,
-    ) -> (String, String, String)
+    ) -> Command
     {
-        let comment = self.scratch.join("comment.md");
-        let selection = self.scratch.join("selection.args");
-        let output = Command::new(env!("CARGO_BIN_EXE_quenchant-gates"))
+        let mut command = Command::new(env!("CARGO_BIN_EXE_quenchant-gates"));
+        command
             .arg("obligations")
             .arg("--manifest-path")
             .arg(self.repository.join("Cargo.toml"))
@@ -215,11 +216,36 @@ impl Fixture
             .arg("--rustdoc")
             .arg(rustdoc)
             .arg("--comment")
-            .arg(&comment)
+            .arg(self.scratch.join("comment.md"))
             .arg("--selection")
-            .arg(&selection)
-            .output()
-            .expect("run the subcommand");
+            .arg(self.scratch.join("selection.args"))
+            .arg("--body")
+            .arg(self.scratch.join("body.md"));
+        command
+    }
+
+    /// The pull-request body the subcommand reads and rewrites.
+    ///
+    /// # Specification
+    /// trivial.
+    fn body(&self) -> String
+    {
+        std::fs::read_to_string(self.scratch.join("body.md")).expect("the body was written")
+    }
+
+    /// Run the subcommand against the committed base over a fresh body and
+    /// return its console report, comment and selection.
+    ///
+    /// # Specification
+    /// trivial.
+    fn obligations(
+        &self,
+        rustdoc: &Path,
+    ) -> (String, String, String)
+    {
+        std::fs::write(self.scratch.join("body.md"), "## What\n\nA change.\n")
+            .expect("write the body");
+        let output = self.command(rustdoc).output().expect("run the subcommand");
         assert!(
             output.status.success(),
             "obligations: {}",
@@ -227,8 +253,10 @@ impl Fixture
         );
         (
             String::from_utf8(output.stdout).expect("the report is text"),
-            std::fs::read_to_string(comment).expect("the comment was written"),
-            std::fs::read_to_string(selection).expect("the selection was written"),
+            std::fs::read_to_string(self.scratch.join("comment.md"))
+                .expect("the comment was written"),
+            std::fs::read_to_string(self.scratch.join("selection.args"))
+                .expect("the selection was written"),
         )
     }
 }
@@ -473,13 +501,65 @@ fn changing_a_named_item_obligates_the_specification()
             "the selection runs that witness and nothing else"
         );
         let prose = expected.starts_with("prose: ");
+        let body = fixture.body();
         assert_eq!(
-            comment.contains("  - [ ] still holds <!-- ack still-holds edges::read#requires@"),
+            body.contains("  - [ ] still holds <!-- ack still-holds edges::read#requires@"),
             prose,
-            "the comment asks for an acknowledgement exactly for the prose obligation: {comment}"
+            "the body asks for an acknowledgement exactly for the prose obligation: {body}"
+        );
+        assert!(
+            body.starts_with("## What\n\nA change.\n\n<!-- quenchant-obligations:start -->"),
+            "the section follows the body's own prose: {body}"
+        );
+        assert!(
+            !comment.contains("- [ ]"),
+            "the comment carries no task box: {comment}"
         );
         fixture.git(DocText("checkout --quiet -- ."));
     }
+}
+
+#[test]
+fn an_open_obligation_fails_only_when_acknowledgement_is_required()
+{
+    let fixture = Fixture::new(DocText("edges"), DocText("required"));
+    let rustdoc = fixture.rustdoc();
+    fixture.edit(DocText("MARGIN: u32 = 3;"), DocText("MARGIN: u32 = 4;"));
+    let _optional = fixture.obligations(&rustdoc);
+    let refused = fixture
+        .command(&rustdoc)
+        .arg("--require-acknowledged")
+        .output()
+        .expect("run the subcommand");
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert_eq!(
+        refused.status.code(),
+        Some(2_i32),
+        "an open prose obligation refuses the run: {stderr}"
+    );
+    assert!(
+        stderr.contains("edges::read requires (edges::read#requires@"),
+        "the refusal names the obligation and its key: {stderr}"
+    );
+    let ticked = fixture
+        .body()
+        .replacen("- [ ] still holds", "- [x] still holds", 1);
+    std::fs::write(fixture.scratch.join("body.md"), &ticked).expect("tick the box");
+    let accepted = fixture
+        .command(&rustdoc)
+        .arg("--require-acknowledged")
+        .output()
+        .expect("run the subcommand");
+    assert!(
+        accepted.status.success(),
+        "the ticked body settles it: {}",
+        String::from_utf8_lossy(&accepted.stderr)
+    );
+    assert_eq!(
+        fixture.body(),
+        ticked.replace(", 0 settled.", ", 1 settled."),
+        "rewriting the section keeps the tick and the prose around it, and counts it settled"
+    );
 }
 
 #[test]
@@ -536,7 +616,7 @@ fn the_tag_table_replay_lists_both_preconditions()
         ),
     );
     let rustdoc = fixture.rustdoc();
-    let (report, comment, _) = fixture.obligations(&rustdoc);
+    let (report, ..) = fixture.obligations(&rustdoc);
     assert_eq!(
         obligation_lines(DocText(&report)),
         vec![
@@ -546,10 +626,11 @@ fn the_tag_table_replay_lists_both_preconditions()
         "adding a row to the table obligates both preconditions that link it, and nothing \
          else: {report}"
     );
+    let body = fixture.body();
     assert_eq!(
-        comment.matches("<!-- ack still-holds tags::").count(),
+        body.matches("<!-- ack still-holds tags::").count(),
         2,
-        "the comment asks for both acknowledgements: {comment}"
+        "the body asks for both acknowledgements: {body}"
     );
 }
 
@@ -606,7 +687,7 @@ fn an_acknowledgement_holds_only_at_its_revisions()
         obligations: obligations(&graph, &changed, &edit, &BTreeMap::new()),
         reruns: BTreeSet::new(),
     };
-    let ticked = render_comment(&report).replace("- [ ] still holds", "- [x] still holds");
+    let ticked = render_section(&report).replace("- [ ] still holds", "- [x] still holds");
     let acknowledged = acknowledgements(DocText(&ticked));
     let standing: Vec<Discharge> = obligations(&graph, &changed, &edit, &acknowledged)
         .into_iter()
@@ -632,7 +713,7 @@ fn an_acknowledgement_holds_only_at_its_revisions()
 }
 
 #[test]
-fn the_comment_collapses_to_one_line_carrying_its_counts()
+fn the_comment_lists_only_the_witnesses()
 {
     let graph = chain();
     let edit = changes(&[lines(LineNumber(3), LineNumber(3))]);
@@ -644,39 +725,60 @@ fn the_comment_collapses_to_one_line_carrying_its_counts()
         reruns: BTreeSet::new(),
     };
     let comment = render_comment(&report);
-    let mut lines = comment.lines();
-    assert_eq!(lines.next(), Some(COMMENT_MARKER));
     assert_eq!(
-        lines.next(),
-        Some("<details>"),
+        comment.lines().take(3).collect::<Vec<_>>(),
+        [
+            COMMENT_MARKER,
+            "<details>",
+            "<summary>Witnesses rerun with specifications enforced: 0</summary>",
+        ],
         "the thread shows one line until expanded"
     );
-    assert_eq!(
-        lines.next(),
-        Some(
-            "<summary>Re-verification obligations: prose 0 settled of 1, executable 0, reruns \
-             0</summary>"
-        ),
-        "the summary carries the three counts"
-    );
-    let sections: Vec<&str> = comment
-        .lines()
-        .skip(3)
-        .filter(|line| line.starts_with("<summary>"))
-        .collect();
-    assert_eq!(
-        sections,
-        [
-            "<summary>Prose clauses to re-check (0 of 1 settled)</summary>",
-            "<summary>Executable obligations (0)</summary>",
-            "<summary>Witnesses rerun (0)</summary>",
-        ],
-        "each section collapses under its own summary, in order"
+    assert!(
+        !comment.contains("<!-- ack "),
+        "the prose obligation is the body's, never the comment's: {comment}"
     );
     assert_eq!(
         comment.matches("<details>").count(),
         comment.matches("</details>").count(),
         "every block closes"
+    );
+}
+
+#[test]
+fn the_section_replaces_its_own_markers_only()
+{
+    let graph = chain();
+    let edit = changes(&[lines(LineNumber(3), LineNumber(3))]);
+    let changed = changed_items(&graph, &edit);
+    let report = Report {
+        base: "base".to_owned(),
+        changed: changed.clone(),
+        obligations: obligations(&graph, &changed, &edit, &BTreeMap::new()),
+        reruns: BTreeSet::new(),
+    };
+    let section = render_section(&report);
+    let gained = splice_section(DocText("## What\n\nA change.\n"), DocText(&section));
+    assert_eq!(
+        gained,
+        format!("## What\n\nA change.\n\n{section}"),
+        "a body without a section gains it at its end"
+    );
+    let written = format!(
+        "{}\nCloses #1\n",
+        gained.replace("- [ ] still holds", "- [x] still holds")
+    );
+    let acknowledged = acknowledgements(DocText(&written));
+    let reread = Report {
+        obligations: obligations(&graph, &changed, &edit, &acknowledged),
+        ..report
+    };
+    let fresh = render_section(&reread);
+    assert_eq!(
+        splice_section(DocText(&written), DocText(&fresh)),
+        written.replace(", 0 settled.", ", 1 settled."),
+        "a fresh section over a ticked one keeps the tick and the prose on either side, and \
+         counts it settled"
     );
 }
 
