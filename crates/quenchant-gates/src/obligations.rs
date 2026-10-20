@@ -704,17 +704,22 @@ pub fn render_text(report: &Report) -> String
 /// The report as the pull-request comment.
 ///
 /// # Specification
-/// - ensures: opens with [`COMMENT_MARKER`]; states the base and counts; lists
-///   each prose obligation with a "still holds" and an "updated" task box,
-///   ticked as the obligation stands, each carrying its `ack` marker and key so
-///   [`acknowledgements`] reads it back; then the executable obligations, and
-///   the witnesses rerun up to [`LISTED_WITNESSES`] with the count of the rest.
+/// - ensures: opens with [`COMMENT_MARKER`]; collapses the rest under one
+///   summary line stating the prose obligations settled of their count, the
+///   executable count and the witnesses rerun; within it states the base and
+///   counts, then three collapsed sections: each prose obligation with a "still
+///   holds" and an "updated" task box, ticked as the obligation stands, each
+///   carrying its `ack` marker and key so [`acknowledgements`] reads it back;
+///   the executable obligations; and the witnesses rerun up to
+///   [`LISTED_WITNESSES`] with the count of the rest.
 /// - panics: none.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — a comment rendered from a report and ticked reads back as
-///   the acknowledgement it records.
+///   the acknowledgement it records, and it opens collapsed under one summary
+///   carrying the three counts, its sections collapsed in order.
 /// - witness: `gates::obligations::an_acknowledgement_holds_only_at_its_revisions`
+/// - witness: `gates::obligations::the_comment_collapses_to_one_line_carrying_its_counts`
 #[inline]
 #[must_use]
 #[spec(ensures: |ref output| output.starts_with(COMMENT_MARKER))]
@@ -736,7 +741,14 @@ pub fn render_comment(report: &Report) -> String
         .count();
     let mut lines = vec![
         COMMENT_MARKER.to_owned(),
-        "## Re-verification obligations".to_owned(),
+        "<details>".to_owned(),
+        format!(
+            "<summary>Re-verification obligations: prose {settled} settled of {}, executable \
+             {}, reruns {}</summary>",
+            prose.len(),
+            executable.len(),
+            report.reruns.len()
+        ),
         String::new(),
         format!(
             "Against `{}`: {} changed items; {} executable and {} prose obligations; {} \
@@ -748,8 +760,9 @@ pub fn render_comment(report: &Report) -> String
             report.reruns.len()
         ),
         String::new(),
+        "<details>".to_owned(),
         format!(
-            "### Prose clauses to re-check ({settled} of {} settled)",
+            "<summary>Prose clauses to re-check ({settled} of {} settled)</summary>",
             prose.len()
         ),
         String::new(),
@@ -791,9 +804,16 @@ pub fn render_comment(report: &Report) -> String
             ));
         }
     }
-    lines.push(String::new());
-    lines.push(format!("### Executable obligations ({})", executable.len()));
-    lines.push(String::new());
+    lines.extend([
+        String::new(),
+        "</details>".to_owned(),
+        "<details>".to_owned(),
+        format!(
+            "<summary>Executable obligations ({})</summary>",
+            executable.len()
+        ),
+        String::new(),
+    ]);
     if executable.is_empty() {
         lines.push("None.".to_owned());
     }
@@ -805,9 +825,16 @@ pub fn render_comment(report: &Report) -> String
             code_list(&obligation.changed)
         )
     }));
-    lines.push(String::new());
-    lines.push(format!("### Witnesses rerun ({})", report.reruns.len()));
-    lines.push(String::new());
+    lines.extend([
+        String::new(),
+        "</details>".to_owned(),
+        "<details>".to_owned(),
+        format!(
+            "<summary>Witnesses rerun ({})</summary>",
+            report.reruns.len()
+        ),
+        String::new(),
+    ]);
     if report.reruns.is_empty() {
         lines.push("None.".to_owned());
     }
@@ -822,6 +849,12 @@ pub fn render_comment(report: &Report) -> String
     {
         lines.push(format!("- and {rest} more"));
     }
+    lines.extend([
+        String::new(),
+        "</details>".to_owned(),
+        String::new(),
+        "</details>".to_owned(),
+    ]);
     let mut text = lines.join("\n");
     text.push('\n');
     text

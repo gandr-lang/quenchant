@@ -18,6 +18,7 @@ use quenchant_gates::evidence::Position;
 use quenchant_gates::evidence::documentation;
 use quenchant_gates::evidence::read_prose;
 use quenchant_gates::evidence::read_records;
+use quenchant_gates::obligations::COMMENT_MARKER;
 use quenchant_gates::obligations::Change;
 use quenchant_gates::obligations::ChangedLines;
 use quenchant_gates::obligations::Discharge;
@@ -627,6 +628,55 @@ fn an_acknowledgement_holds_only_at_its_revisions()
         standing,
         vec![Discharge::Open],
         "a later change to the named item reopens it"
+    );
+}
+
+#[test]
+fn the_comment_collapses_to_one_line_carrying_its_counts()
+{
+    let graph = chain();
+    let edit = changes(&[lines(LineNumber(3), LineNumber(3))]);
+    let changed = changed_items(&graph, &edit);
+    let report = Report {
+        base: "base".to_owned(),
+        changed: changed.clone(),
+        obligations: obligations(&graph, &changed, &edit, &BTreeMap::new()),
+        reruns: BTreeSet::new(),
+    };
+    let comment = render_comment(&report);
+    let mut lines = comment.lines();
+    assert_eq!(lines.next(), Some(COMMENT_MARKER));
+    assert_eq!(
+        lines.next(),
+        Some("<details>"),
+        "the thread shows one line until expanded"
+    );
+    assert_eq!(
+        lines.next(),
+        Some(
+            "<summary>Re-verification obligations: prose 0 settled of 1, executable 0, reruns \
+             0</summary>"
+        ),
+        "the summary carries the three counts"
+    );
+    let sections: Vec<&str> = comment
+        .lines()
+        .skip(3)
+        .filter(|line| line.starts_with("<summary>"))
+        .collect();
+    assert_eq!(
+        sections,
+        [
+            "<summary>Prose clauses to re-check (0 of 1 settled)</summary>",
+            "<summary>Executable obligations (0)</summary>",
+            "<summary>Witnesses rerun (0)</summary>",
+        ],
+        "each section collapses under its own summary, in order"
+    );
+    assert_eq!(
+        comment.matches("<details>").count(),
+        comment.matches("</details>").count(),
+        "every block closes"
     );
 }
 
