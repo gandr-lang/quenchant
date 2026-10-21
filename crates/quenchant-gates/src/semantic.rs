@@ -184,6 +184,10 @@ semantic_borrowed_str!(
     struct DocText;
 );
 semantic_borrowed_str!(
+    /// The crate segment that opens every item path a rendered table shares.
+    struct CrateSegment;
+);
+semantic_borrowed_str!(
     /// The extension a directory scan selects files by.
     struct FileExtension;
 );

@@ -29,14 +29,26 @@
 //! **Discharge.** An executable obligation is discharged by rerunning the
 //! specification's witnesses with specifications enforced; the report lists
 //! them and the nextest selection that runs them. A prose obligation is
-//! discharged in the pull request: the comment the CI posts carries a
-//! "still holds" and an "updated" box per obligation, and a ticked box is
-//! read back from the previous comment on the next run. An acknowledgement
-//! holds for the revisions it was given against: the obligation's key
-//! carries the specification's revision and each changed dependency's, so a
-//! later change to either reopens it. A clause whose own lines the change
-//! edits is recorded as updated. A judge with a rubric replaces the boxes
-//! later; the key is what its verdict will be recorded against.
+//! discharged in the pull request: the body's re-verification section carries
+//! a "still holds" and an "updated" box per obligation, and a ticked box is
+//! read back from the body, or from the previous comment, on the next run. An
+//! acknowledgement holds for the revisions it was given against: the
+//! obligation's key carries the specification's revision and each changed
+//! dependency's, so a later change to either reopens it. A clause whose own
+//! lines the change edits is recorded as updated. A judge with a rubric
+//! replaces the boxes later; the key is what its verdict will be recorded
+//! against.
+//!
+//! **One shape in two places.** The body section and the comment open with
+//! the same verdict heading: `Re-verification · ✅ 9 of 9 settled`,
+//! `⚠️ 2 of 9 unticked` while a box is open, or `✅ nothing owed`. The base and
+//! the counts follow on the next line, then a table with one row per prose
+//! obligation: item, clause, names, verdict. The detail is collapsed under
+//! `<details>`. In the body the detail is the task boxes, whose lines and
+//! `ack` markers [`acknowledgements`] reads, so a body any earlier version
+//! wrote still reads back. In the comment the detail is the witnesses rerun,
+//! and the comment carries no task box. The shape follows the benchmark
+//! report's comment: the verdict on one line, the detail one click away.
 
 use alloc::collections::BTreeMap;
 use alloc::collections::BTreeSet;
@@ -55,6 +67,7 @@ use crate::inventory::Workspace;
 use crate::semantic::CommandLine;
 use crate::semantic::Contains;
 use crate::semantic::Count;
+use crate::semantic::CrateSegment;
 use crate::semantic::DocText;
 use crate::semantic::ErrorMessage;
 use crate::semantic::GitRevision;
@@ -711,91 +724,227 @@ pub fn render_text(report: &Report) -> String
 /// section.
 ///
 /// # Specification
-/// - ensures: opens with [`SECTION_START`] and closes with [`SECTION_END`];
-///   between them a `## Re-verification` heading, the base and the counts, then
+/// - ensures: opens with [`SECTION_START`] and closes with [`SECTION_END`].
+///   Between them come [`verdict`]'s heading at level two, the base and the
+///   counts, and [`table`]'s rows. Then, collapsed under one `<details>` block,
 ///   each prose obligation with a "still holds" and an "updated" task box,
-///   ticked as the obligation stands, each carrying its `ack` marker and key so
-///   [`acknowledgements`] reads it back; a report without prose obligations
-///   says so.
+///   ticked as the obligation stands. Each box carries its `ack` marker and
+///   key, so [`acknowledgements`] reads it back. A report without prose
+///   obligations says so, and has neither table nor boxes.
 /// - panics: none.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — a section rendered from a report and ticked reads back as
-///   the acknowledgement it records.
+///   the acknowledgement it records, and its heading and rows state the verdict
+///   the boxes record.
 /// - witness: `gates::obligations::an_acknowledgement_holds_only_at_its_revisions`
+/// - witness: `gates::obligations::the_heading_and_the_table_carry_the_verdict`
 #[inline]
 #[must_use]
 #[spec(ensures: |ref output| output.starts_with(SECTION_START) && output.trim_end().ends_with(SECTION_END))]
 pub fn render_section(report: &Report) -> String
 {
-    let prose: Vec<&Obligation> = report
-        .obligations
-        .iter()
-        .filter(|obligation| obligation.naming == Naming::Prose)
-        .collect();
-    let executable = report
-        .obligations
-        .iter()
-        .filter(|obligation| obligation.naming == Naming::Executable)
-        .count();
-    let settled = prose
-        .iter()
-        .filter(|obligation| obligation.discharge != Discharge::Open)
-        .count();
+    let prose = prose(report);
     let mut lines = vec![
         SECTION_START.to_owned(),
-        "## Re-verification".to_owned(),
+        format!("## {}", verdict(&prose)),
         String::new(),
-        format!(
-            "Against `{}`: {} changed items; {executable} executable obligations, discharged by \
-             the witnesses CI reruns; {} prose obligations, {settled} settled.",
-            report.base,
-            report.changed.len(),
-            prose.len()
-        ),
+        facts(report, &prose),
         String::new(),
     ];
     if prose.is_empty() {
         lines.push("No prose clause names a changed item.".to_owned());
     }
     else {
-        lines.push(
+        lines.extend(table(&prose));
+        lines.extend([
+            String::new(),
+            "<details><summary>Acknowledgements</summary>".to_owned(),
+            String::new(),
             "Re-read each clause against the changed items it names, then tick one box. A tick \
              holds until the clause's item or a named item changes again."
                 .to_owned(),
-        );
-        lines.push(String::new());
-    }
-    for obligation in prose {
-        lines.push(format!(
-            "- `{}` `{}` names {}",
-            obligation.specification,
-            obligation.clause,
-            code_list(&obligation.changed)
-        ));
-        for (label, kind, ticked) in [
-            (
-                "still holds",
-                "still-holds",
-                obligation.discharge == Discharge::StillHolds,
-            ),
-            (
-                "updated",
-                "updated",
-                obligation.discharge == Discharge::Updated,
-            ),
-        ] {
+            String::new(),
+        ]);
+        for obligation in &prose {
             lines.push(format!(
-                "  - [{}] {label} <!-- ack {kind} {} -->",
-                if ticked { 'x' } else { ' ' },
-                obligation.key
+                "- `{}` `{}` names {}",
+                obligation.specification,
+                obligation.clause,
+                code_list(&obligation.changed)
             ));
+            for (label, kind, ticked) in [
+                (
+                    "still holds",
+                    "still-holds",
+                    obligation.discharge == Discharge::StillHolds,
+                ),
+                (
+                    "updated",
+                    "updated",
+                    obligation.discharge == Discharge::Updated,
+                ),
+            ] {
+                lines.push(format!(
+                    "  - [{}] {label} <!-- ack {kind} {} -->",
+                    if ticked { 'x' } else { ' ' },
+                    obligation.key
+                ));
+            }
         }
+        lines.extend([String::new(), "</details>".to_owned()]);
     }
     lines.push(SECTION_END.to_owned());
     let mut text = lines.join("\n");
     text.push('\n');
     text
+}
+
+/// The report's prose obligations, in report order.
+///
+/// # Specification
+/// trivial.
+fn prose(report: &Report) -> Vec<&Obligation>
+{
+    report
+        .obligations
+        .iter()
+        .filter(|obligation| obligation.naming == Naming::Prose)
+        .collect()
+}
+
+/// The heading text that carries the verdict on `prose`.
+///
+/// # Specification
+/// - ensures: `Re-verification · ✅ nothing owed` when `prose` is empty;
+///   `Re-verification · ⚠️ n of m unticked` while `n > 0` of the `m`
+///   obligations stand open; `Re-verification · ✅ m of m settled` otherwise.
+/// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the three states each produce their own heading.
+/// - witness: `gates::obligations::the_heading_and_the_table_carry_the_verdict`
+#[spec(ensures: |ref output| output.starts_with("Re-verification · "))]
+fn verdict(prose: &[&Obligation]) -> String
+{
+    let open = prose
+        .iter()
+        .filter(|obligation| obligation.discharge == Discharge::Open)
+        .count();
+    let owed = prose.len();
+    if owed == 0 {
+        "Re-verification · ✅ nothing owed".to_owned()
+    }
+    else if open > 0 {
+        format!("Re-verification · ⚠️ {open} of {owed} unticked")
+    }
+    else {
+        format!("Re-verification · ✅ {owed} of {owed} settled")
+    }
+}
+
+/// The line under the heading: the base, the changed items, the executable
+/// obligations, and the crate every prose row shares.
+///
+/// # Specification
+/// trivial.
+fn facts(
+    report: &Report,
+    prose: &[&Obligation],
+) -> String
+{
+    let executable = report
+        .obligations
+        .iter()
+        .filter(|obligation| obligation.naming == Naming::Executable)
+        .count();
+    let shared = shared_crate(prose).map_or_else(String::new, |segment| {
+        format!(" · items in `{}`", segment.0)
+    });
+    format!(
+        "Against `{}` · {} changed items · {executable} executable obligations, discharged by the \
+         witnesses CI reruns{shared}.",
+        report.base,
+        report.changed.len(),
+    )
+}
+
+/// One markdown table row per prose obligation: the item, the clause, what it
+/// names, and its verdict.
+///
+/// # Specification
+/// - ensures: a header row, a delimiter row, then one row per obligation in
+///   order. Each path drops the crate every row shares, which [`facts`] names
+///   once. The verdict reads `✅ still holds`, `🔁 updated` or `☐ unticked`.
+/// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — an open and a ticked obligation render the row shape with
+///   their verdicts.
+/// - witness: `gates::obligations::the_heading_and_the_table_carry_the_verdict`
+#[spec(ensures: |ref output| output.len() == prose.len().saturating_add(2_usize))]
+fn table(prose: &[&Obligation]) -> Vec<String>
+{
+    let shared = shared_crate(prose);
+    // Write `path` as inline code, without the shared crate segment, a pipe
+    // escaped so it cannot end the cell.
+    let code = |row: &mut String, path: &str| {
+        let path = shared
+            .and_then(|segment| path.strip_prefix(segment.0))
+            .and_then(|rest| rest.strip_prefix("::"))
+            .unwrap_or(path);
+        row.push('`');
+        for character in path.chars() {
+            if character == '|' {
+                row.push('\\');
+            }
+            row.push(character);
+        }
+        row.push('`');
+    };
+    let mut rows = vec![
+        "| item | clause | names | verdict |".to_owned(),
+        "| --- | --- | --- | --- |".to_owned(),
+    ];
+    rows.extend(prose.iter().map(|obligation| {
+        let mut row = String::from("| ");
+        code(&mut row, &obligation.specification);
+        row.push_str(" | ");
+        code(&mut row, &obligation.clause);
+        row.push_str(" | ");
+        for (index, name) in obligation.changed.iter().enumerate() {
+            if index != 0 {
+                row.push_str(", ");
+            }
+            code(&mut row, name);
+        }
+        row.push_str(match obligation.discharge {
+            Discharge::StillHolds => " | ✅ still holds |",
+            Discharge::Updated => " | 🔁 updated |",
+            Discharge::Open => " | ☐ unticked |",
+            Discharge::Witnesses => " | ✅ witnesses rerun |",
+        });
+        row
+    }));
+    rows
+}
+
+/// The crate every obligation's item lies in, when they share one.
+///
+/// # Specification
+/// trivial.
+fn shared_crate<'report>(prose: &[&'report Obligation]) -> Option<CrateSegment<'report>>
+{
+    let mut crates = prose.iter().map(|obligation| {
+        obligation
+            .specification
+            .split_once("::")
+            .map(|(name, _)| name)
+    });
+    let first = crates.next()??;
+    crates
+        .all(|name| name == Some(first))
+        .then_some(CrateSegment(first))
 }
 
 /// A pull-request body with its re-verification section replaced by
@@ -838,33 +987,47 @@ pub fn splice_section(
     })
 }
 
-/// The report's witnesses as the pull-request comment.
+/// The report as the pull-request comment: the body section's verdict and
+/// table, then the witnesses collapsed.
 ///
 /// # Specification
-/// - ensures: opens with [`COMMENT_MARKER`]; collapses the rest under one
-///   summary line stating the witnesses rerun with specifications enforced;
-///   within it lists them up to [`LISTED_WITNESSES`] with the count of the
-///   rest. The prose obligations are the body's, never the comment's.
+/// - ensures: opens with [`COMMENT_MARKER`]. Then come [`verdict`]'s heading at
+///   level three, the base and the counts, and [`table`]'s rows when prose is
+///   owed. Then one `<details>` block whose summary states the witnesses rerun
+///   with specifications enforced, listing them up to [`LISTED_WITNESSES`] with
+///   the count of the rest. The task boxes are the body's, never the comment's.
 /// - panics: none.
 ///
 /// # Adequacy
-/// - hypothesis: L3 — the comment opens collapsed under one summary carrying
-///   the witness count, lists the witnesses and carries no task box.
+/// - hypothesis: L3 — the comment carries the body's verdict and rows, lists
+///   the witnesses collapsed, and carries no task box.
 /// - witness: `gates::obligations::the_comment_lists_only_the_witnesses`
+/// - witness: `gates::obligations::the_heading_and_the_table_carry_the_verdict`
 #[inline]
 #[must_use]
 #[spec(ensures: |ref output| output.starts_with(COMMENT_MARKER) && !output.contains("- [ ]"))]
 pub fn render_comment(report: &Report) -> String
 {
+    let prose = prose(report);
     let mut lines = vec![
         COMMENT_MARKER.to_owned(),
+        format!("### {}", verdict(&prose)),
+        String::new(),
+        facts(report, &prose),
+        String::new(),
+    ];
+    if !prose.is_empty() {
+        lines.extend(table(&prose));
+        lines.push(String::new());
+    }
+    lines.extend([
         "<details>".to_owned(),
         format!(
             "<summary>Witnesses rerun with specifications enforced: {}</summary>",
             report.reruns.len()
         ),
         String::new(),
-    ];
+    ]);
     if report.reruns.is_empty() {
         lines.push("None.".to_owned());
     }
