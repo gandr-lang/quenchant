@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Run a command in a transient systemd user scope of its own, marked first to
+# go under memory pressure.
+#
+# systemd-oomd ends a whole cgroup, choosing the one that holds the most swap
+# or feels the most pressure. A build run from a long-lived service (an editor,
+# an agent host, a terminal multiplexer) shares that service's cgroup, so the
+# service grows into the heaviest cgroup and is ended with everything it hosts.
+# In a scope of its own the build is the heaviest cgroup instead, and the only
+# thing lost is the build, which a rerun restores. The kernel's own OOM killer
+# reads `oom_score_adj`, so the command also runs at 900: chosen before
+# anything at the default.
+#
+# On a host without a reachable user manager (macOS, a CI container, a session
+# without `XDG_RUNTIME_DIR`), the command runs as it is.
+set -euo pipefail
+
+if [[ $(uname -s) == Linux && -n ${XDG_RUNTIME_DIR:-} ]] \
+  && command -v systemd-run > /dev/null \
+  && systemctl --user show-environment > /dev/null 2>&1; then
+  exec systemd-run --user --scope --quiet --collect --description="scoped: $*" -- \
+    bash -c 'echo 900 > /proc/self/oom_score_adj; exec "$@"' scope "$@"
+fi
+exec "$@"
