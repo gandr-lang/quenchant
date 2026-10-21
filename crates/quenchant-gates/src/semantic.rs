@@ -126,6 +126,14 @@ semantic_copy!(
     /// Counts of tests, items or obligations a report states.
     struct Count(usize);
 );
+semantic_copy!(
+    /// Whether an owed obligation still stands open.
+    struct Unsettled(bool);
+);
+semantic_copy!(
+    /// Whether a written verdict is in one of its shapes.
+    struct InShape(bool);
+);
 
 semantic_borrowed_str!(
     /// One file's complete text supplied to Rust parsing.
@@ -194,4 +202,9 @@ semantic_borrowed_str!(
 semantic_borrowed_str!(
     /// A Git revision as the user names it: a commit, branch or expression.
     struct GitRevision;
+);
+semantic_borrowed_str!(
+    /// A label of an issue a pull request closes or advances, or of the pull
+    /// request itself, such as `kind:performance`.
+    struct IssueLabel;
 );
