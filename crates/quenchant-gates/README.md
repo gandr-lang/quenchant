@@ -60,7 +60,19 @@ It reads two inputs the consumer builds first, both from the working tree:
 
 An item changed when `git diff --relative --no-renames -U0 <base>` touches its extent; untracked files are not seen. A specification owes one obligation per clause that names a changed item, and its witnesses rerun when it is obligated or changed itself. Only named dependencies count, never the call graph, and obligations stop one hop from the changed items: a specification that re-verifies unchanged flags nothing that names it. A rename has no identity across it today: the item reads as new under its new path, and every specification naming it had to change to compile, so it reads as changed too.
 
-The console report lists changed items, obligations and witnesses. `--selection` receives `cargo nextest run` arguments, one per line, that run exactly the obligated witnesses. `--body` names a pull-request body: the command reads its acknowledgements and writes it back with a `## Re-verification` section between two markers, holding a "still holds" box and an "updated" box per prose obligation. A ticked box carries forward while the specification and the changed items keep the revisions it was ticked at. `--previous` reads acknowledgements from another file instead, for a reader that must not rewrite the body. `--comment` receives a pull-request comment that lists only the witnesses rerun, collapsed to one line. `--require-acknowledged` exits with status 2 while any prose obligation is open, naming each with its key. The module documentation in [`src/obligations.rs`](src/obligations.rs) and [`src/evidence.rs`](src/evidence.rs) records the decisions and their reversal conditions.
+The console report lists changed items, obligations and witnesses. `--selection` receives `cargo nextest run` arguments, one per line, that run exactly the obligated witnesses.
+
+`--body` names a pull-request body. The command reads its acknowledgements and writes it back with a re-verification section between two markers:
+
+- a heading that carries the verdict: `## Re-verification · ✅ 9 of 9 settled`, `⚠️ 2 of 9 unticked`, or `✅ nothing owed`;
+- a table with one row per prose obligation: item, clause, names, verdict;
+- a "still holds" box and an "updated" box per obligation, collapsed under `<details>`.
+
+A ticked box carries forward while the specification and the changed items keep the revisions it was ticked at. `--previous` reads acknowledgements from another file instead, for a reader that must not rewrite the body.
+
+`--comment` receives a pull-request comment with the same heading and table, and the witnesses rerun collapsed beneath them. `--require-acknowledged` exits with status 2 while any prose obligation is open, naming each with its key.
+
+The module documentation in [`src/obligations.rs`](src/obligations.rs) and [`src/evidence.rs`](src/evidence.rs) records the decisions and their reversal conditions.
 
 ## Repository checks
 

@@ -22,6 +22,7 @@ use quenchant_gates::obligations::COMMENT_MARKER;
 use quenchant_gates::obligations::Change;
 use quenchant_gates::obligations::ChangedLines;
 use quenchant_gates::obligations::Discharge;
+use quenchant_gates::obligations::Obligation;
 use quenchant_gates::obligations::Report;
 use quenchant_gates::obligations::acknowledgements;
 use quenchant_gates::obligations::changed_items;
@@ -557,7 +558,9 @@ fn an_open_obligation_fails_only_when_acknowledgement_is_required()
     );
     assert_eq!(
         fixture.body(),
-        ticked.replace(", 0 settled.", ", 1 settled."),
+        ticked
+            .replace("⚠️ 1 of 1 unticked", "✅ 1 of 1 settled")
+            .replace("☐ unticked", "✅ still holds"),
         "rewriting the section keeps the tick and the prose around it, and counts it settled"
     );
 }
@@ -726,22 +729,115 @@ fn the_comment_lists_only_the_witnesses()
     };
     let comment = render_comment(&report);
     assert_eq!(
-        comment.lines().take(3).collect::<Vec<_>>(),
-        [
-            COMMENT_MARKER,
-            "<details>",
-            "<summary>Witnesses rerun with specifications enforced: 0</summary>",
-        ],
-        "the thread shows one line until expanded"
+        comment.lines().take(2).collect::<Vec<_>>(),
+        [COMMENT_MARKER, "### Re-verification · ⚠️ 1 of 1 unticked"],
+        "the comment opens with its marker and the body's verdict"
     );
     assert!(
-        !comment.contains("<!-- ack "),
-        "the prose obligation is the body's, never the comment's: {comment}"
+        comment.contains(
+            "<details>\n<summary>Witnesses rerun with specifications enforced: 0</summary>\n"
+        ),
+        "the witnesses are collapsed under one summary line: {comment}"
+    );
+    assert!(
+        !comment.contains("<!-- ack ") && !comment.contains("- [ ]"),
+        "the task boxes are the body's, never the comment's: {comment}"
     );
     assert_eq!(
         comment.matches("<details>").count(),
         comment.matches("</details>").count(),
         "every block closes"
+    );
+}
+
+#[test]
+fn the_heading_and_the_table_carry_the_verdict()
+{
+    let graph = chain();
+    let edit = changes(&[lines(LineNumber(3), LineNumber(3))]);
+    let changed = changed_items(&graph, &edit);
+    let open = Report {
+        base: "base".to_owned(),
+        changed: changed.clone(),
+        obligations: obligations(&graph, &changed, &edit, &BTreeMap::new()),
+        reruns: BTreeSet::new(),
+    };
+    let row = |verdict: &str| format!("| `b` | `requires` | `a` | {verdict} |");
+    let section = render_section(&open);
+    let comment = render_comment(&open);
+    for (place, text, heading) in [
+        ("body", &section, "## Re-verification · ⚠️ 1 of 1 unticked"),
+        (
+            "comment",
+            &comment,
+            "### Re-verification · ⚠️ 1 of 1 unticked",
+        ),
+    ] {
+        assert!(
+            text.lines().any(|line| line == heading),
+            "the {place} heading counts the open box: {text}"
+        );
+        assert!(
+            text.contains(&format!(
+                "| item | clause | names | verdict |\n| --- | --- | --- | --- |\n{}\n",
+                row("☐ unticked")
+            )),
+            "the {place} table has one row per prose obligation: {text}"
+        );
+    }
+    assert!(
+        section.contains("<details><summary>Acknowledgements</summary>\n\n")
+            && section.contains("<!-- ack updated b#requires@")
+            && section.contains("\n\n</details>\n"),
+        "the boxes are collapsed, a blank line inside each edge of the block: {section}"
+    );
+
+    for (ticked, verdict) in [("still holds", "✅ still holds"), ("updated", "🔁 updated")] {
+        let acknowledged = acknowledgements(DocText(
+            &section.replace(&format!("- [ ] {ticked}"), &format!("- [x] {ticked}")),
+        ));
+        let settled = Report {
+            obligations: obligations(&graph, &changed, &edit, &acknowledged),
+            ..open.clone()
+        };
+        let section = render_section(&settled);
+        assert!(
+            section.contains("## Re-verification · ✅ 1 of 1 settled\n")
+                && section.contains(&row(verdict)),
+            "a box ticked {ticked} settles the heading and the row: {section}"
+        );
+    }
+
+    let owed_nothing = Report {
+        base: "base".to_owned(),
+        ..Report::default()
+    };
+    let section = render_section(&owed_nothing);
+    assert!(
+        section.contains("## Re-verification · ✅ nothing owed\n")
+            && !section.contains("| item |")
+            && !section.contains("<details>"),
+        "a change that owes no prose has the verdict and neither table nor boxes: {section}"
+    );
+
+    let one_crate = Report {
+        base: "base".to_owned(),
+        changed: BTreeSet::from(["edges::LIMIT".to_owned()]),
+        obligations: vec![Obligation {
+            specification: "edges::read".to_owned(),
+            clause: "requires".to_owned(),
+            naming: Naming::Prose,
+            changed: BTreeSet::from(["edges::LIMIT".to_owned()]),
+            key: "edges::read#requires@0".to_owned(),
+            discharge: Discharge::Open,
+        }],
+        reruns: BTreeSet::new(),
+    };
+    let section = render_section(&one_crate);
+    assert!(
+        section.contains("· items in `edges`.\n")
+            && section.contains("| `read` | `requires` | `LIMIT` | ☐ unticked |"),
+        "the crate every row shares is named once and dropped from the rows: {section}"
     );
 }
 
@@ -776,7 +872,9 @@ fn the_section_replaces_its_own_markers_only()
     let fresh = render_section(&reread);
     assert_eq!(
         splice_section(DocText(&written), DocText(&fresh)),
-        written.replace(", 0 settled.", ", 1 settled."),
+        written
+            .replace("⚠️ 1 of 1 unticked", "✅ 1 of 1 settled")
+            .replace("☐ unticked", "✅ still holds"),
         "a fresh section over a ticked one keeps the tick and the prose on either side, and \
          counts it settled"
     );
