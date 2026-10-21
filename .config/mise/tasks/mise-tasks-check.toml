@@ -26,6 +26,20 @@ run = "cargo run --quiet --locked -p quenchant-gates -- pins"
 description = "Require allowed, full-SHA GitHub Action references"
 run = "cargo run --quiet --locked -p quenchant-gates -- action-pins"
 
+# A workflow never hashes the whole workspace through `hashFiles('**/…')`:
+# the runner evaluates it on the host and walks every file, and a container
+# job's restored `target/` makes the walk fail (#87). A step computes such a
+# fingerprint in the shell over tracked files instead.
+["check:workflow-hashing"]
+description = "No workspace-wide hashFiles glob in a workflow or composite action"
+run = """
+if git grep -nIE -e "hashFiles[(][^)]*'[*][*]" -- ':/.github'; then
+  echo 'workflow hashing check FAILED: hashFiles over the whole workspace; fingerprint tracked files in the shell' >&2
+  exit 1
+fi
+echo 'workflow hashing check OK: no workspace-wide hashFiles glob'
+"""
+
 ["check:publish"]
 description = "Verify the exact package publication eligibility boundary"
 run = "cargo run --quiet --locked -p quenchant-gates -- publish-allowlist"

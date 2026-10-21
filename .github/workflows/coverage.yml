@@ -91,11 +91,15 @@ jobs:
       # what a run reuses (cargo-llvm-cov rebuilds the workspace's own crates
       # so coverage data is never stale), so one entry per fingerprint is
       # exact, and a partial match restores the newest entry to rebuild from.
+      # The fingerprint is taken in the shell over the tracked manifests:
+      # `hashFiles` runs on the host and walks the whole workspace, which the
+      # container's restored `target/` makes it fail (#87).
       - &identify-coverage-state
         name: identify coverage-state inputs
-        env:
-          CI_STATE_FINGERPRINT: ${{ hashFiles('**/Cargo.toml', 'Cargo.lock', 'rust-toolchain.toml', '.cargo/config.toml') }}
-        run: printf 'COVERAGE_STATE_FINGERPRINT=%s\n' "$CI_STATE_FINGERPRINT" >> "$GITHUB_ENV"
+        shell: bash
+        run: |
+          fingerprint=$(git ls-files -z -- ':(glob)**/Cargo.toml' Cargo.lock rust-toolchain.toml .cargo/config.toml | sort -z | xargs -0 sha256sum | sha256sum)
+          printf 'COVERAGE_STATE_FINGERPRINT=%s\n' "${fingerprint%% *}" >> "$GITHUB_ENV"
       - &restore-coverage-state
         name: restore instrumented build state
         id: coverage-state-restore
@@ -107,9 +111,16 @@ jobs:
       - &measure-coverage
         name: measure enforcing coverage
         run: mise run check:coverage
+      # Whether an instrumented build exists, tested in the shell and read as
+      # a flag: a `hashFiles` walk of `target/coverage` fails as above.
+      - &find-coverage-state
+        name: find the instrumented build
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: if [[ -n "$(find target/coverage -name .rustc_info.json -print -quit 2>/dev/null)" ]]; then echo COVERAGE_STATE_BUILT=true >> "$GITHUB_ENV"; fi
       - &save-coverage-state
         name: cache instrumented build state
-        if: ${{ !cancelled() && steps.coverage-state-restore.outputs.cache-hit != 'true' && hashFiles('target/coverage/**/.rustc_info.json') != '' }}
+        if: ${{ !cancelled() && steps.coverage-state-restore.outputs.cache-hit != 'true' && env.COVERAGE_STATE_BUILT == 'true' }}
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: target/coverage
@@ -180,5 +191,6 @@ jobs:
       - *identify-coverage-state
       - *restore-coverage-state
       - *measure-coverage
+      - *find-coverage-state
       - *save-coverage-state
       - *upload-coverage
