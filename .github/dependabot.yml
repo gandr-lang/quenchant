@@ -10,6 +10,11 @@ updates:
     cooldown:
       default-days: 7
     open-pull-requests-limit: 2
+    # clippy_utils is a Git dependency on rust-clippy's tag for the pinned
+    # toolchain, so it moves only with the toolchain (`mise run
+    # toolchain:bump`); an update on its own fails to resolve.
+    ignore:
+      - dependency-name: clippy_utils
     groups:
       cargo:
         patterns: ["*"]
