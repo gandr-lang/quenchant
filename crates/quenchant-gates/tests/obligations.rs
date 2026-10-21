@@ -18,20 +18,28 @@ use quenchant_gates::evidence::Position;
 use quenchant_gates::evidence::documentation;
 use quenchant_gates::evidence::read_prose;
 use quenchant_gates::evidence::read_records;
+use quenchant_gates::obligations::ASSESSED_LABELS;
+use quenchant_gates::obligations::ASSESSMENT_MARKER;
+use quenchant_gates::obligations::ASSESSMENT_TEMPLATE;
+use quenchant_gates::obligations::Assessment;
 use quenchant_gates::obligations::COMMENT_MARKER;
 use quenchant_gates::obligations::Change;
 use quenchant_gates::obligations::ChangedLines;
 use quenchant_gates::obligations::Discharge;
 use quenchant_gates::obligations::Obligation;
 use quenchant_gates::obligations::Report;
+use quenchant_gates::obligations::Standing;
 use quenchant_gates::obligations::acknowledgements;
 use quenchant_gates::obligations::changed_items;
+use quenchant_gates::obligations::lint_assessment;
 use quenchant_gates::obligations::obligations;
+use quenchant_gates::obligations::open_count;
 use quenchant_gates::obligations::render_comment;
 use quenchant_gates::obligations::render_section;
 use quenchant_gates::obligations::splice_section;
 use quenchant_gates::semantic::ColumnNumber;
 use quenchant_gates::semantic::DocText;
+use quenchant_gates::semantic::IssueLabel;
 use quenchant_gates::semantic::LineNumber;
 
 /// One fixture crate in its own Git repository, beside the policy library's
@@ -566,6 +574,57 @@ fn an_open_obligation_fails_only_when_acknowledgement_is_required()
 }
 
 #[test]
+fn an_unsettled_lint_assessment_fails_the_required_run()
+{
+    let fixture = Fixture::new(DocText("edges"), DocText("assessed"));
+    let rustdoc = fixture.rustdoc();
+    let _fresh = fixture.obligations(&rustdoc);
+    let run = |body: &str| {
+        std::fs::write(fixture.scratch.join("body.md"), body).expect("write the body");
+        std::fs::write(fixture.scratch.join("previous.md"), "").expect("write the previous");
+        fixture
+            .command(&rustdoc)
+            .args(["--labels", "kind:defect, kind:performance", "--previous"])
+            .arg(fixture.scratch.join("previous.md"))
+            .arg("--require-acknowledged")
+            .output()
+            .expect("run the subcommand")
+    };
+    let unticked = run("## What\n\nA change.\n");
+    let stderr = String::from_utf8_lossy(&unticked.stderr);
+    assert!(
+        unticked.status.code() == Some(2_i32)
+            && stderr.contains("lint assessment: the box is unticked"),
+        "a labelled change with nothing else owed is refused until the assessment is ticked: {stderr}"
+    );
+    let written = fixture.body();
+    assert!(
+        written.contains(&format!(
+            "- [ ] lint assessment — {ASSESSMENT_TEMPLATE} {ASSESSMENT_MARKER}"
+        )),
+        "the body gains the assessment line: {written}"
+    );
+    let lintless = run(&written.replace(
+        &format!("- [ ] lint assessment — {ASSESSMENT_TEMPLATE}"),
+        "- [x] lint assessment — could: yes — , gandr-lang/quenchant#65",
+    ));
+    let stderr = String::from_utf8_lossy(&lintless.stderr);
+    assert!(
+        lintless.status.code() == Some(2_i32) && stderr.contains("is neither"),
+        "`could: yes` without a lint is refused: {stderr}"
+    );
+    let settled = run(&written.replace(
+        &format!("- [ ] lint assessment — {ASSESSMENT_TEMPLATE}"),
+        "- [x] lint assessment — could: no — the allocation is data-dependent, no syntactic shape",
+    ));
+    assert!(
+        settled.status.success(),
+        "a ticked `could: no` with a sentence, read from the body and not the previous text, settles it: {}",
+        String::from_utf8_lossy(&settled.stderr)
+    );
+}
+
+#[test]
 fn an_integration_witness_selects_its_target_binary()
 {
     let fixture = Fixture::new(DocText("edges"), DocText("integration"));
@@ -689,6 +748,7 @@ fn an_acknowledgement_holds_only_at_its_revisions()
         changed: changed.clone(),
         obligations: obligations(&graph, &changed, &edit, &BTreeMap::new()),
         reruns: BTreeSet::new(),
+        assessment: Assessment::NotOwed,
     };
     let ticked = render_section(&report).replace("- [ ] still holds", "- [x] still holds");
     let acknowledged = acknowledgements(DocText(&ticked));
@@ -726,6 +786,7 @@ fn the_comment_lists_only_the_witnesses()
         changed: changed.clone(),
         obligations: obligations(&graph, &changed, &edit, &BTreeMap::new()),
         reruns: BTreeSet::new(),
+        assessment: Assessment::NotOwed,
     };
     let comment = render_comment(&report);
     assert_eq!(
@@ -761,6 +822,7 @@ fn the_heading_and_the_table_carry_the_verdict()
         changed: changed.clone(),
         obligations: obligations(&graph, &changed, &edit, &BTreeMap::new()),
         reruns: BTreeSet::new(),
+        assessment: Assessment::NotOwed,
     };
     let row = |verdict: &str| format!("| `b` | `requires` | `a` | {verdict} |");
     let section = render_section(&open);
@@ -832,6 +894,7 @@ fn the_heading_and_the_table_carry_the_verdict()
             discharge: Discharge::Open,
         }],
         reruns: BTreeSet::new(),
+        assessment: Assessment::NotOwed,
     };
     let section = render_section(&one_crate);
     assert!(
@@ -839,6 +902,107 @@ fn the_heading_and_the_table_carry_the_verdict()
             && section.contains("| `read` | `requires` | `LIMIT` | ☐ unticked |"),
         "the crate every row shares is named once and dropped from the rows: {section}"
     );
+}
+
+#[test]
+fn a_performance_fix_owes_a_lint_assessment()
+{
+    let unlabelled = Report {
+        base: "base".to_owned(),
+        assessment: lint_assessment(&[IssueLabel("kind:defect")], DocText("")),
+        ..Report::default()
+    };
+    assert_eq!(
+        unlabelled.assessment,
+        Assessment::NotOwed,
+        "a label outside the assessed ones owes nothing"
+    );
+    assert_eq!(usize::from(open_count(&unlabelled)), 0_usize);
+
+    for label in ASSESSED_LABELS {
+        let owed = Report {
+            base: "base".to_owned(),
+            assessment: lint_assessment(
+                &[IssueLabel("kind:defect"), IssueLabel(label)],
+                DocText(""),
+            ),
+            ..Report::default()
+        };
+        let section = render_section(&owed);
+        assert!(
+            section.contains("## Re-verification · ⚠️ 1 of 1 unticked\n")
+                && section.contains(&format!(
+                    "- [ ] lint assessment — {ASSESSMENT_TEMPLATE} {ASSESSMENT_MARKER}"
+                )),
+            "{label} owes the assessment, rendered unticked with its template: {section}"
+        );
+        assert_eq!(
+            usize::from(open_count(&owed)),
+            1_usize,
+            "an unticked assessment is open"
+        );
+
+        let read = |verdict: &str| {
+            let body = section.replace(
+                &format!("- [ ] lint assessment — {ASSESSMENT_TEMPLATE}"),
+                &format!("- [x] lint assessment — {verdict}"),
+            );
+            lint_assessment(&[IssueLabel(label)], DocText(&body))
+        };
+        let sentence = "could: no — the allocation is data-dependent, no syntactic shape";
+        let settled = read(sentence);
+        assert_eq!(
+            settled,
+            Assessment::Owed {
+                written: sentence.to_owned(),
+                standing: Standing::Settled,
+            },
+            "a ticked `could: no` with a sentence settles it"
+        );
+        let rewritten = render_section(&Report {
+            assessment: settled,
+            ..owed.clone()
+        });
+        assert!(
+            rewritten.contains("## Re-verification · ✅ 1 of 1 settled\n")
+                && rewritten.contains(&format!(
+                    "- [x] lint assessment — {sentence} {ASSESSMENT_MARKER}"
+                )),
+            "a rewrite of the section keeps the verdict and its tick: {rewritten}"
+        );
+        assert_eq!(
+            read("could: yes — allocation_in_loop, gandr-lang/quenchant#65"),
+            Assessment::Owed {
+                written: "could: yes — allocation_in_loop, gandr-lang/quenchant#65".to_owned(),
+                standing: Standing::Settled,
+            },
+            "a ticked `could: yes` naming a lint and a reference settles it"
+        );
+        for malformed in [
+            "could: yes — , gandr-lang/quenchant#65",
+            "could: yes — allocation_in_loop",
+            "could: no — ",
+            ASSESSMENT_TEMPLATE,
+            "no lint applies",
+        ] {
+            let standing = read(malformed);
+            assert!(
+                matches!(standing, Assessment::Owed {
+                    standing: Standing::Malformed,
+                    ..
+                }),
+                "`{malformed}` ticked is in neither shape: {standing:?}"
+            );
+            assert_eq!(
+                usize::from(open_count(&Report {
+                    assessment: standing,
+                    ..owed.clone()
+                })),
+                1_usize,
+                "a malformed verdict keeps the assessment open"
+            );
+        }
+    }
 }
 
 #[test]
@@ -852,6 +1016,7 @@ fn the_section_replaces_its_own_markers_only()
         changed: changed.clone(),
         obligations: obligations(&graph, &changed, &edit, &BTreeMap::new()),
         reruns: BTreeSet::new(),
+        assessment: Assessment::NotOwed,
     };
     let section = render_section(&report);
     let gained = splice_section(DocText("## What\n\nA change.\n"), DocText(&section));

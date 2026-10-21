@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! quenchant-gates <anodized | witnesses> --manifest-path <Cargo.toml>
-//! quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--body <file>] [--comment <file>] [--selection <file>] [--require-acknowledged]
+//! quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--body <file>] [--comment <file>] [--selection <file>] [--labels <label,...>] [--require-acknowledged]
 //! quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]
 //! quenchant-gates toolchain-bump --version <stable> [--root <repository>]
 //! ```
@@ -36,9 +36,10 @@ use quenchant_gates::inventory;
 use quenchant_gates::obligations;
 use quenchant_gates::semantic::DocText;
 use quenchant_gates::semantic::GitRevision;
+use quenchant_gates::semantic::IssueLabel;
 
 /// Invalid argument shapes receive the complete supported command syntax.
-const USAGE: &str = "usage: quenchant-gates <anodized | witnesses> --manifest-path <Cargo.toml> [--require-enforcing]\n       quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--body <file>] [--comment <file>] [--selection <file>] [--require-acknowledged]\n       quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]\n       quenchant-gates toolchain-bump --version <stable> [--root <repository>]";
+const USAGE: &str = "usage: quenchant-gates <anodized | witnesses> --manifest-path <Cargo.toml> [--require-enforcing]\n       quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--body <file>] [--comment <file>] [--selection <file>] [--labels <label,...>] [--require-acknowledged]\n       quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]\n       quenchant-gates toolchain-bump --version <stable> [--root <repository>]";
 
 /// Argument interpretation selects one consumer or repository operation.
 ///
@@ -248,7 +249,7 @@ fn inventory_gate(manifest_path: &Path) -> Result<Vec<Finding>, GateError>
 }
 
 /// The options of the `obligations` subcommand that take a value.
-const OBLIGATION_OPTIONS: [&str; 8] = [
+const OBLIGATION_OPTIONS: [&str; 9] = [
     "--manifest-path",
     "--base",
     "--records",
@@ -257,6 +258,7 @@ const OBLIGATION_OPTIONS: [&str; 8] = [
     "--body",
     "--comment",
     "--selection",
+    "--labels",
 ];
 
 /// The `obligations` flag that fails the run while a prose obligation is open.
@@ -271,13 +273,15 @@ const REQUIRE_ACKNOWLEDGED: &str = "--require-acknowledged";
 ///   `--base`, `--records` and `--rustdoc` present, and at most one
 ///   [`REQUIRE_ACKNOWLEDGED`] among them.
 /// - ensures: reads the acknowledgements from `--previous`, or from `--body`
-///   when no `--previous` is given; prints [`obligations::render_text`] of the
-///   report; writes [`obligations::render_comment`] to `--comment`, the lines
-///   of [`obligations::selection`] to `--selection`, and `--body` back with its
+///   when no `--previous` is given, and the lint assessment owed under the
+///   comma-separated `--labels` from `--body`, or from `--previous` when no
+///   `--body` is given; prints [`obligations::render_text`] of the report;
+///   writes [`obligations::render_comment`] to `--comment`, the lines of
+///   [`obligations::selection`] to `--selection`, and `--body` back with its
 ///   section replaced by [`obligations::render_section`] when given. Once all
 ///   of that is done it succeeds, unless [`REQUIRE_ACKNOWLEDGED`] is given and
-///   a prose obligation is open: then it lists each open obligation with its
-///   key and exits with status 2.
+///   a prose obligation is open or an owed lint assessment unsettled: then it
+///   lists each with its key or its standing and exits with status 2.
 /// - fails: prints the usage on a malformed invocation and the error on an
 ///   operational failure, and exits with status 1 either way.
 /// - panics: none.
@@ -287,10 +291,12 @@ const REQUIRE_ACKNOWLEDGED: &str = "--require-acknowledged";
 /// # Adequacy
 /// - hypothesis: L3 — the fixture repository's invocations print the
 ///   obligations, write the comment, the selection and the body the tests read
-///   back, and refuse an open obligation only when asked to.
+///   back, and refuse an open obligation only when asked to; a labelled run
+///   refuses an unticked or malformed assessment read from the body.
 /// - witness: `gates::obligations::changing_a_named_item_obligates_the_specification`
 /// - witness: `gates::obligations::the_tag_table_replay_lists_both_preconditions`
 /// - witness: `gates::obligations::an_open_obligation_fails_only_when_acknowledgement_is_required`
+/// - witness: `gates::obligations::an_unsettled_lint_assessment_fails_the_required_run`
 #[expect(
     clippy::print_stderr,
     clippy::print_stdout,
@@ -351,12 +357,26 @@ fn run_obligations(mut arguments: core::iter::Skip<std::env::Args>) -> ExitCode
         .get("--previous")
         .or_else(|| texts.get("--body"))
         .map_or("", String::as_str);
+    let body = texts
+        .get("--body")
+        .or_else(|| texts.get("--previous"))
+        .map_or("", String::as_str);
+    let labels: Vec<IssueLabel<'_>> = options
+        .get("--labels")
+        .map_or("", String::as_str)
+        .split(',')
+        .map(str::trim)
+        .filter(|label| !label.is_empty())
+        .map(IssueLabel)
+        .collect();
     let inputs = obligations::Inputs {
         manifest_path: Path::new(manifest_path),
         base: GitRevision::from(base),
         records: Path::new(records),
         rustdoc: Path::new(rustdoc),
         previous: DocText(previous),
+        body: DocText(body),
+        labels: &labels,
     };
     let report = match obligations::run(&inputs) {
         Ok(report) => report,
@@ -392,7 +412,7 @@ fn run_obligations(mut arguments: core::iter::Skip<std::env::Args>) -> ExitCode
     }
     let open = usize::from(obligations::open_count(&report));
     if required && open > 0 {
-        eprintln!("obligations: {open} prose obligations are not acknowledged:");
+        eprintln!("obligations: {open} obligations are not acknowledged:");
         for obligation in report
             .obligations
             .iter()
@@ -402,6 +422,21 @@ fn run_obligations(mut arguments: core::iter::Skip<std::env::Args>) -> ExitCode
                 "  {} {} ({})",
                 obligation.specification, obligation.clause, obligation.key
             );
+        }
+        if let obligations::Assessment::Owed {
+            ref written,
+            standing,
+        } = report.assessment
+        {
+            match standing {
+                obligations::Standing::Unticked => {
+                    eprintln!("  lint assessment: the box is unticked");
+                },
+                obligations::Standing::Malformed => eprintln!(
+                    "  lint assessment: `{written}` is neither `could: yes — <lint>, <reference>` nor `could: no — <one sentence>`"
+                ),
+                obligations::Standing::Settled => {},
+            }
         }
         return ExitCode::from(2_u8);
     }

@@ -39,6 +39,13 @@
 //! replaces the boxes later; the key is what its verdict will be recorded
 //! against.
 //!
+//! **The lint assessment.** A pull request working an issue labelled
+//! `kind:performance`, or labelled `fix:performance` itself, owes one more
+//! prose obligation: whether a lint could have refused the pattern. Its task
+//! line reads `could: yes — <lint>, <reference>` or `could: no — <one
+//! sentence>`; it stays open while unticked or in neither shape, and is read
+//! from the body, so a rewrite keeps it.
+//!
 //! **One shape in two places.** The body section and the comment open with
 //! the same verdict heading: `Re-verification · ✅ 9 of 9 settled`,
 //! `⚠️ 2 of 9 unticked` while a box is open, or `✅ nothing owed`. The base and
@@ -71,9 +78,12 @@ use crate::semantic::CrateSegment;
 use crate::semantic::DocText;
 use crate::semantic::ErrorMessage;
 use crate::semantic::GitRevision;
+use crate::semantic::InShape;
 use crate::semantic::IntegrationTarget;
+use crate::semantic::IssueLabel;
 use crate::semantic::LineNumber;
 use crate::semantic::SourceText;
+use crate::semantic::Unsettled;
 
 /// The marker that opens the pull-request comment, so CI finds its own.
 pub const COMMENT_MARKER: &str = "<!-- quenchant-obligations -->";
@@ -104,6 +114,12 @@ pub struct Inputs<'input>
     pub rustdoc: &'input Path,
     /// The previous comment's text, empty when there is none.
     pub previous: DocText<'input>,
+    /// The pull request body the lint assessment is read from: the body being
+    /// written, or the previous text when there is none.
+    pub body: DocText<'input>,
+    /// The labels of the issues the pull request closes or advances, and its
+    /// own.
+    pub labels: &'input [IssueLabel<'input>],
 }
 
 /// Compute the obligations a working tree owes against a base revision.
@@ -115,7 +131,8 @@ pub struct Inputs<'input>
 /// - ensures: the report's changed items are [`changed_items`] of the diff
 ///   against `inputs.base`; its obligations are [`obligations`] over the graph
 ///   of records and prose links with the acknowledgements the previous comment
-///   carries; its reruns are [`reruns`] of those.
+///   carries; its reruns are [`reruns`] of those; its assessment is
+///   [`lint_assessment`] of `inputs.labels` over `inputs.body`.
 /// - fails: [`GateError::Tool`] when the workspace or the diff cannot be read,
 ///   [`GateError::Io`] or [`GateError::Parse`] when the records, the rustdoc
 ///   output or a source cannot.
@@ -146,6 +163,7 @@ pub fn run(inputs: &Inputs<'_>) -> Result<Report, GateError>
         obligations: obligations(&graph, &changed, &changes, &acknowledged),
         changed,
         reruns: BTreeSet::new(),
+        assessment: lint_assessment(inputs.labels, inputs.body),
     };
     report.reruns = reruns(&graph, &workspace, &root, &report)?;
     Ok(report)
@@ -227,6 +245,56 @@ pub struct Report
     pub obligations: Vec<Obligation>,
     /// The witnesses to rerun.
     pub reruns: BTreeSet<Rerun>,
+    /// Whether the change owes a lint assessment, and how it stands.
+    pub assessment: Assessment,
+}
+
+/// The labels whose pull requests owe a lint assessment: a pull request
+/// closing or advancing an issue so labelled, or labelled so itself.
+pub const ASSESSED_LABELS: [&str; 2] = ["kind:performance", "fix:performance"];
+
+/// The text that opens the lint assessment's task line, before its verdict.
+pub const ASSESSMENT_LABEL: &str = "lint assessment — ";
+
+/// The marker that closes the lint assessment's task line.
+pub const ASSESSMENT_MARKER: &str = "<!-- ack lint-assessment -->";
+
+/// The verdict a fresh assessment line holds, for the author to replace.
+pub const ASSESSMENT_TEMPLATE: &str = "`could: yes — <lint>, <reference>` or `could: no — <one \
+                                       sentence>`";
+
+/// Whether a pull request owes the lint assessment, and how it stands.
+///
+/// A performance fix states whether a lint could have refused the pattern it
+/// fixes: `could: yes — <lint>, <reference>`, naming the lint and the quenchant
+/// issue or pull request that adds it, or `could: no — <one sentence>` saying
+/// why no syntactic shape exists.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub enum Assessment
+{
+    /// No label asks for it.
+    #[default]
+    NotOwed,
+    /// A label asks for it.
+    Owed
+    {
+        /// The verdict as written on the task line.
+        written: String,
+        /// How it stands.
+        standing: Standing,
+    },
+}
+
+/// How an owed lint assessment stands.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Standing
+{
+    /// The box is open.
+    Unticked,
+    /// The box is ticked and the verdict is in neither shape.
+    Malformed,
+    /// The box is ticked and the verdict is in one of the shapes.
+    Settled,
 }
 
 /// The changed lines of the working tree against `base`.
@@ -730,7 +798,10 @@ pub fn render_text(report: &Report) -> String
 ///   each prose obligation with a "still holds" and an "updated" task box,
 ///   ticked as the obligation stands. Each box carries its `ack` marker and
 ///   key, so [`acknowledgements`] reads it back. A report without prose
-///   obligations says so, and has neither table nor boxes.
+///   obligations says so, and has neither table nor boxes. An owed lint
+///   assessment follows, uncollapsed: its instruction and its task line with
+///   the verdict as written, ticked unless it stands unticked, so
+///   [`lint_assessment`] reads it back.
 /// - panics: none.
 ///
 /// # Adequacy
@@ -747,7 +818,7 @@ pub fn render_section(report: &Report) -> String
     let prose = prose(report);
     let mut lines = vec![
         SECTION_START.to_owned(),
-        format!("## {}", verdict(&prose)),
+        format!("## {}", verdict(&prose, &report.assessment)),
         String::new(),
         facts(report, &prose),
         String::new(),
@@ -794,6 +865,7 @@ pub fn render_section(report: &Report) -> String
         }
         lines.extend([String::new(), "</details>".to_owned()]);
     }
+    lines.extend(assessment_lines(&report.assessment));
     lines.push(SECTION_END.to_owned());
     let mut text = lines.join("\n");
     text.push('\n');
@@ -813,25 +885,34 @@ fn prose(report: &Report) -> Vec<&Obligation>
         .collect()
 }
 
-/// The heading text that carries the verdict on `prose`.
+/// The heading text that carries the verdict on `prose` and the lint
+/// assessment.
 ///
 /// # Specification
-/// - ensures: `Re-verification · ✅ nothing owed` when `prose` is empty;
-///   `Re-verification · ⚠️ n of m unticked` while `n > 0` of the `m`
-///   obligations stand open; `Re-verification · ✅ m of m settled` otherwise.
+/// - ensures: `Re-verification · ✅ nothing owed` when `prose` is empty and no
+///   assessment is owed; `Re-verification · ⚠️ n of m unticked` while `n > 0`
+///   of the `m` obligations, the owed assessment counted as one, stand
+///   unsettled; `Re-verification · ✅ m of m settled` otherwise.
 /// - panics: none.
 ///
 /// # Adequacy
-/// - hypothesis: L3 — the three states each produce their own heading.
+/// - hypothesis: L3 — the three states each produce their own heading, and an
+///   owed assessment counts.
 /// - witness: `gates::obligations::the_heading_and_the_table_carry_the_verdict`
+/// - witness: `gates::obligations::a_performance_fix_owes_a_lint_assessment`
 #[spec(ensures: |ref output| output.starts_with("Re-verification · "))]
-fn verdict(prose: &[&Obligation]) -> String
+fn verdict(
+    prose: &[&Obligation],
+    assessment: &Assessment,
+) -> String
 {
+    let assessed = usize::from(matches!(*assessment, Assessment::Owed { .. }));
     let open = prose
         .iter()
         .filter(|obligation| obligation.discharge == Discharge::Open)
-        .count();
-    let owed = prose.len();
+        .count()
+        .saturating_add(usize::from(assessment.unsettled().0));
+    let owed = prose.len().saturating_add(assessed);
     if owed == 0 {
         "Re-verification · ✅ nothing owed".to_owned()
     }
@@ -1011,7 +1092,7 @@ pub fn render_comment(report: &Report) -> String
     let prose = prose(report);
     let mut lines = vec![
         COMMENT_MARKER.to_owned(),
-        format!("### {}", verdict(&prose)),
+        format!("### {}", verdict(&prose, &report.assessment)),
         String::new(),
         facts(report, &prose),
         String::new(),
@@ -1061,7 +1142,8 @@ fn code_list(paths: &BTreeSet<String>) -> String
         .join(", ")
 }
 
-/// The number of prose obligations nobody has settled.
+/// The number of obligations nobody has settled: the open prose obligations,
+/// and the lint assessment while it is owed and unsettled.
 ///
 /// # Specification
 /// trivial.
@@ -1069,11 +1151,172 @@ fn code_list(paths: &BTreeSet<String>) -> String
 #[must_use]
 pub fn open_count(report: &Report) -> Count
 {
-    Count(
-        report
-            .obligations
-            .iter()
-            .filter(|obligation| obligation.discharge == Discharge::Open)
-            .count(),
+    let prose = report
+        .obligations
+        .iter()
+        .filter(|obligation| obligation.discharge == Discharge::Open)
+        .count();
+    Count(prose.saturating_add(usize::from(report.assessment.unsettled().0)))
+}
+
+impl Assessment
+{
+    /// Whether the assessment is owed and not settled.
+    ///
+    /// # Specification
+    /// trivial.
+    #[inline]
+    #[must_use]
+    pub const fn unsettled(&self) -> Unsettled
+    {
+        Unsettled(matches!(*self, Self::Owed {
+            standing: Standing::Unticked | Standing::Malformed,
+            ..
+        }))
+    }
+}
+
+/// Whether the labels make the lint assessment owed, and how it stands in
+/// `previous`.
+///
+/// # Specification
+/// - ensures: [`Assessment::NotOwed`] when no label is one of
+///   [`ASSESSED_LABELS`]. Otherwise owed, with the verdict written on the task
+///   line of `previous` that carries [`ASSESSMENT_MARKER`], the last such line
+///   winning, or [`ASSESSMENT_TEMPLATE`] when there is none. It stands unticked
+///   while the box is open, settled when the box is ticked and the verdict is
+///   in one of [`verdict_shape`]'s shapes, malformed otherwise.
+/// - provides: the verdict is read from the body, never from a comment, and it
+///   carries over every rewrite of the section.
+/// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — an unlabelled report owes nothing; a labelled one is
+///   unticked as rendered, settled once ticked with `could: no — <sentence>`,
+///   and malformed when ticked with `could: yes` and no lint.
+/// - witness: `gates::obligations::a_performance_fix_owes_a_lint_assessment`
+#[inline]
+#[must_use]
+#[spec(ensures: |ref output| matches!(*output, Assessment::NotOwed) != labels.iter().any(|label| ASSESSED_LABELS.contains(&label.0)))]
+pub fn lint_assessment(
+    labels: &[IssueLabel<'_>],
+    previous: DocText<'_>,
+) -> Assessment
+{
+    if !labels
+        .iter()
+        .any(|label| ASSESSED_LABELS.contains(&label.0))
+    {
+        return Assessment::NotOwed;
+    }
+    let mut found = (ASSESSMENT_TEMPLATE.to_owned(), Standing::Unticked);
+    for line in previous.0.lines() {
+        let line = line.trim();
+        let ticked = line.starts_with("- [x]") || line.starts_with("- [X]");
+        if !(ticked || line.starts_with("- [ ]")) {
+            continue;
+        }
+        let Some((before, _)) = line.split_once(ASSESSMENT_MARKER)
+        else {
+            continue;
+        };
+        let Some((_, written)) = before.split_once(ASSESSMENT_LABEL)
+        else {
+            continue;
+        };
+        let written = written.trim().to_owned();
+        let standing = if !ticked {
+            Standing::Unticked
+        }
+        else if verdict_shape(DocText(&written)).0 {
+            Standing::Settled
+        }
+        else {
+            Standing::Malformed
+        };
+        found = (written, standing);
+    }
+    Assessment::Owed {
+        written: found.0,
+        standing: found.1,
+    }
+}
+
+/// Whether `written` is a lint assessment's verdict.
+///
+/// # Specification
+/// - ensures: true exactly for `could: yes — <lint>, <reference>`, the lint a
+///   non-empty name of lowercase letters, digits and underscores and the
+///   reference non-empty, and for `could: no — <sentence>`, the sentence
+///   non-empty; neither part may be a `<…>` placeholder. Backticks around the
+///   whole are ignored.
+/// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — both shapes pass; a `could: yes` without a lint, the
+///   template itself and free text fail.
+/// - witness: `gates::obligations::a_performance_fix_owes_a_lint_assessment`
+#[inline]
+#[must_use]
+#[spec(ensures: |output| !output.0 || written.0.contains("could: "))]
+pub fn verdict_shape(written: DocText<'_>) -> InShape
+{
+    let written = written.0.trim().trim_matches('`').trim();
+    let filled = |part: &str| !part.is_empty() && !part.starts_with('<');
+    if let Some(rest) = written.strip_prefix("could: yes — ") {
+        return InShape(rest.split_once(", ").is_some_and(|(lint, reference)| {
+            let lint = lint.trim();
+            filled(lint)
+                && lint
+                    .chars()
+                    .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '_')
+                && filled(reference.trim())
+        }));
+    }
+    InShape(
+        written
+            .strip_prefix("could: no — ")
+            .is_some_and(|sentence| filled(sentence.trim())),
     )
+}
+
+/// The lint assessment's task line and its instruction, for the body.
+///
+/// # Specification
+/// trivial.
+fn assessment_lines(assessment: &Assessment) -> Vec<String>
+{
+    let Assessment::Owed {
+        ref written,
+        standing,
+    } = *assessment
+    else {
+        return Vec::new();
+    };
+    let mut lines = vec![
+        String::new(),
+        "### Lint assessment".to_owned(),
+        String::new(),
+        "This pull request works a performance issue, so it states whether a lint could have \
+         refused the pattern. Replace the text after the dash with `could: yes — <lint>, \
+         <reference>` or `could: no — <one sentence>`, then tick the box."
+            .to_owned(),
+        String::new(),
+        format!(
+            "- [{}] {ASSESSMENT_LABEL}{written} {ASSESSMENT_MARKER}",
+            if standing == Standing::Unticked {
+                ' '
+            }
+            else {
+                'x'
+            }
+        ),
+    ];
+    if standing == Standing::Malformed {
+        lines.extend([
+            String::new(),
+            "⚠️ The ticked verdict is in neither shape.".to_owned(),
+        ]);
+    }
+    lines
 }
