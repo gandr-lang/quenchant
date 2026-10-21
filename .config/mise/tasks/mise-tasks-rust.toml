@@ -79,12 +79,12 @@ run = ".config/mise/scope cargo miri test --locked -p quenchant-arith --features
 # caught inventory is a failed measurement, not a clean campaign.
 # Only mutant builds cap lints: deleted bodies otherwise trip the unused wall
 # before any test can witness the injected fault. The regular gate is unchanged.
-# One cargo-mutants run holds the host at a time
-# (`.config/mise/mutants-lock.bash`).
+# One cargo-mutants run holds the host at a time, in a scope of its own whose
+# memory is capped (`.config/mise/mutants.bash`).
 ["mutants:campaign"]
 description = "Run a standalone mutation campaign with a nonempty kill inventory"
 run = [
-  "bash -c 'source .config/mise/mutants-lock.bash && hold_mutants_lock mise run mutants:campaign && exec .config/mise/scope cargo mutants --cap-lints=true --cargo-arg=--locked --test-tool nextest --output target/mutants'",
+  "bash -c 'source .config/mise/mutants.bash && hold_mutants_lock mise run mutants:campaign && exec \"${mutants_scope[@]}\" cargo mutants --cap-lints=true --cargo-arg=--locked --test-tool nextest --output target/mutants'",
   "test -s target/mutants/mutants.out/caught.txt",
 ]
 
