@@ -11,14 +11,23 @@
 # reads `oom_score_adj`, so the command also runs at 900: chosen before
 # anything at the default.
 #
+# Leading `-p NAME=VALUE` pairs set properties of the scope, as
+# `systemd-run -p` does: a mutation run's caps (`.config/mise/mutants.bash`).
+#
 # On a host without a reachable user manager (macOS, a CI container, a session
-# without `XDG_RUNTIME_DIR`), the command runs as it is.
+# without `XDG_RUNTIME_DIR`), the command runs as it is, without properties.
 set -euo pipefail
+
+properties=()
+while [[ ${1:-} == -p ]]; do
+  properties+=(-p "${2:?-p takes NAME=VALUE}")
+  shift 2
+done
 
 if [[ $(uname -s) == Linux && -n ${XDG_RUNTIME_DIR:-} ]] \
   && command -v systemd-run > /dev/null \
   && systemctl --user show-environment > /dev/null 2>&1; then
-  exec systemd-run --user --scope --quiet --collect --description="scoped: $*" -- \
+  exec systemd-run --user --scope --quiet --collect "${properties[@]}" --description="scoped: $*" -- \
     bash -c 'echo 900 > /proc/self/oom_score_adj; exec "$@"' scope "$@"
 fi
 exec "$@"
