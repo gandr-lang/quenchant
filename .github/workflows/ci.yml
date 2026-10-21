@@ -361,6 +361,8 @@ jobs:
         run: mise run check:ci-pins
       - name: check Action allowlist and pins
         run: mise run check:action-pins
+      - name: check workflow hashing
+        run: mise run check:workflow-hashing
       - name: check publication metadata
         run: mise run check:publish
       - name: lint authored commits
