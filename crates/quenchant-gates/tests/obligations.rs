@@ -32,19 +32,23 @@ use quenchant_gates::obligations::ASSESSED_LABELS;
 use quenchant_gates::obligations::ASSESSMENT_MARKER;
 use quenchant_gates::obligations::ASSESSMENT_TEMPLATE;
 use quenchant_gates::obligations::Assessment;
+use quenchant_gates::obligations::BODY_LIMIT;
 use quenchant_gates::obligations::Boxes;
 use quenchant_gates::obligations::COMMENT_MARKER;
 use quenchant_gates::obligations::Change;
 use quenchant_gates::obligations::ChangedLines;
 use quenchant_gates::obligations::Discharge;
 use quenchant_gates::obligations::Obligation;
+use quenchant_gates::obligations::Oversized;
 use quenchant_gates::obligations::Report;
 use quenchant_gates::obligations::Standing;
+use quenchant_gates::obligations::TABLE_IN_COMMENT;
 use quenchant_gates::obligations::acknowledgements;
 use quenchant_gates::obligations::changed_items;
 use quenchant_gates::obligations::lint_assessment;
 use quenchant_gates::obligations::obligations;
 use quenchant_gates::obligations::open_count;
+use quenchant_gates::obligations::render_body;
 use quenchant_gates::obligations::render_comment;
 use quenchant_gates::obligations::render_section;
 use quenchant_gates::obligations::splice_section;
@@ -906,6 +910,120 @@ fn clauses_naming_the_same_items_share_one_pair()
             .iter()
             .all(|obligation| obligation.discharge == Discharge::Open),
         "a change to one member's specification reopens the pair"
+    );
+}
+
+/// gandr-lang/quenchant#101: `COUNT` clauses, each naming a changed item of
+/// its own, with paths of gandr's length, so no two share a pair.
+///
+/// # Specification
+/// trivial.
+fn distinct_report<const COUNT: usize>() -> (Graph, BTreeSet<String>, ChangedLines, Report)
+{
+    let mut graph = Graph::default();
+    let mut spans = Vec::new();
+    for index in 0_usize .. COUNT {
+        let target = format!("gandr_core_checker::refusal::check_refusal::Refused{index:03}");
+        let specification =
+            format!("gandr_core_checker::module::admission::Admission::admit_{index:03}");
+        let base = index.saturating_mul(20_usize).saturating_add(1_usize);
+        let target_lines = lines(LineNumber(base), LineNumber(base.saturating_add(2_usize)));
+        let specification_lines = lines(
+            LineNumber(base.saturating_add(5_usize)),
+            LineNumber(base.saturating_add(15_usize)),
+        );
+        graph.items.insert(
+            target.clone(),
+            item(DocText(&target), target_lines, DocText("0123456789abcdef")),
+        );
+        graph.items.insert(
+            specification.clone(),
+            item(
+                DocText(&specification),
+                specification_lines,
+                DocText("fedcba9876543210"),
+            ),
+        );
+        graph.edges.insert(Edge {
+            specification,
+            clause: "errors".to_owned(),
+            naming: Naming::Prose,
+            target,
+        });
+        spans.push(target_lines);
+    }
+    let edit = changes(&spans);
+    let changed = changed_items(&graph, &edit);
+    let owed = obligations(&graph, &changed, &edit, &BTreeMap::new());
+    let report = Report {
+        base: "base".to_owned(),
+        changed: changed.clone(),
+        obligations: owed,
+        reruns: BTreeSet::new(),
+        assessment: Assessment::NotOwed,
+        hotpath: Verdict::NotOwed,
+    };
+    (graph, changed, edit, report)
+}
+
+/// A section whose table would carry the body past GitHub's limit leaves the
+/// table to the comment and still reads its ticks back; one whose boxes alone
+/// pass the limit is refused (gandr-lang/quenchant#101).
+#[test]
+fn a_section_too_long_for_a_body_leaves_its_table_to_the_comment()
+{
+    let body = "## What\n\nA change.\n";
+    let (_, _, _, short) = distinct_report::<3>();
+    let kept = render_body(DocText(body), &short).expect("a short section fits");
+    assert!(
+        kept.contains("| item | clause | names | verdict |\n") && !kept.contains(TABLE_IN_COMMENT),
+        "a short section keeps its table: {kept}"
+    );
+
+    let (graph, changed, edit, long) = distinct_report::<135>();
+    assert!(
+        splice_section(DocText(body), DocText(&render_section(&long)))
+            .chars()
+            .nth(BODY_LIMIT)
+            .is_some(),
+        "the table of 135 distinct clauses carries the body past the limit"
+    );
+    let fitted = render_body(DocText(body), &long).expect("without its table the section fits");
+    assert!(
+        fitted.chars().nth(BODY_LIMIT).is_none()
+            && fitted.contains(TABLE_IN_COMMENT)
+            && !fitted.contains("| item | clause | names | verdict |")
+            && fitted.contains("## Re-verification · ⚠️ 135 of 135 unticked\n")
+            && fitted.matches("- [ ] ").take(271).count() == 270,
+        "the table goes, the heading and every pair of boxes stay: {fitted}"
+    );
+    assert!(
+        render_comment(&long).contains("| item | clause | names | verdict |\n"),
+        "the comment keeps the table the body left"
+    );
+    let first = long
+        .obligations
+        .first()
+        .expect("the report holds its obligations");
+    let open = format!("- [ ] still holds <!-- ack still-holds {} -->", first.key);
+    let ticked = fitted.replacen(&open, &open.replace("[ ]", "[x]"), 1);
+    let settled = obligations(&graph, &changed, &edit, &acknowledgements(DocText(&ticked)));
+    assert_eq!(
+        settled
+            .iter()
+            .filter(|obligation| obligation.discharge == Discharge::StillHolds)
+            .map(|obligation| obligation.key.as_str())
+            .collect::<Vec<_>>(),
+        vec![first.key.as_str()],
+        "a tick in the shorter body reads back"
+    );
+
+    let (_, _, _, huge) = distinct_report::<400>();
+    let refused = render_body(DocText(body), &huge);
+    assert!(
+        matches!(refused, Err(Oversized { characters }) if characters > BODY_LIMIT),
+        "400 distinct pairs pass the limit even without the table: {:?}",
+        refused.map(|text| text.chars().count())
     );
 }
 

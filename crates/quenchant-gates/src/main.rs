@@ -282,13 +282,15 @@ const REQUIRE_ACKNOWLEDGED: &str = "--require-acknowledged";
 ///   report from the same text; prints [`obligations::render_text`] of the
 ///   report; writes [`obligations::render_comment`] to `--comment`, the lines
 ///   of [`obligations::selection`] to `--selection`, and `--body` back with its
-///   section replaced by [`obligations::render_section`] when given. Once all
-///   of that is done it succeeds, unless [`REQUIRE_ACKNOWLEDGED`] is given and
-///   a prose obligation is open or an owed lint assessment or hotpath verdict
-///   unsettled: then it lists each with its key or its standing and exits with
-///   status 2.
-/// - fails: prints the usage on a malformed invocation and the error on an
-///   operational failure, and exits with status 1 either way.
+///   section replaced, as [`obligations::render_body`] sizes it, when given.
+///   Once all of that is done it succeeds, unless [`REQUIRE_ACKNOWLEDGED`] is
+///   given and a prose obligation is open or an owed lint assessment or hotpath
+///   verdict unsettled: then it lists each with its key or its standing and
+///   exits with status 2.
+/// - fails: prints the usage on a malformed invocation, the error on an
+///   operational failure, and the character count of a body whose section
+///   passes [`obligations::BODY_LIMIT`] even without its table, and exits with
+///   status 1 in each case; an oversized body writes none of the outputs.
 /// - panics: none.
 /// - executable: none — the outcome is printed and written output, consumed
 ///   into an exit code.
@@ -424,11 +426,18 @@ fn run_obligations(mut arguments: core::iter::Skip<std::env::Args>) -> ExitCode
         outputs.push((path, lines));
     }
     if let (Some(path), Some(body)) = (options.get("--body"), texts.get("--body")) {
-        let section = obligations::render_section(&report);
-        outputs.push((
-            path,
-            obligations::splice_section(DocText(body), DocText(&section)),
-        ));
+        match obligations::render_body(DocText(body), &report) {
+            Ok(text) => outputs.push((path, text)),
+            Err(oversized) => {
+                eprintln!(
+                    "obligations: {path} would hold {} characters, past the {} a pull request \
+                     accepts, even with the table of clauses left to the comment",
+                    oversized.characters,
+                    obligations::BODY_LIMIT
+                );
+                return ExitCode::FAILURE;
+            },
+        }
     }
     for (path, contents) in outputs {
         if let Err(error) = std::fs::write(path, contents) {

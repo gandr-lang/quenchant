@@ -24,6 +24,13 @@
 //! it, as an incremental build reruns a dependent only when its input's
 //! output changed.
 //!
+//! **A body fits a pull request.** GitHub refuses a body over 65 536
+//! characters. A section whose table would carry the body past that leaves
+//! the table to the comment and keeps one line in its place; the boxes stay,
+//! so every tick reads back alike. A body still too long without its table
+//! is refused with its character count ([`render_body`]): its change raises
+//! more distinct prose obligations than one body can list.
+//!
 //! # Witnesses
 //!
 //! **Discharge.** An executable obligation is discharged by rerunning the
@@ -908,6 +915,90 @@ pub fn render_text(report: &Report) -> String
 #[spec(ensures: |ref output| output.starts_with(SECTION_START) && output.trim_end().ends_with(SECTION_END))]
 pub fn render_section(report: &Report) -> String
 {
+    section(report, Rows::Table)
+}
+
+/// The most characters GitHub accepts in a pull-request body, 65 536.
+pub const BODY_LIMIT: usize = 0x1_0000;
+
+/// The line that stands for the table in a section too long to carry it.
+pub const TABLE_IN_COMMENT: &str = "The table of clauses is in the obligations comment: with it, \
+                                    this body would pass the 65 536 characters a pull request \
+                                    accepts.";
+
+/// A body whose re-verification section, the table of clauses left to the
+/// comment, still passes [`BODY_LIMIT`].
+#[repr(transparent)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Oversized
+{
+    /// The characters the body would hold.
+    pub characters: usize,
+}
+
+/// `body` with its re-verification section replaced, sized to fit a pull
+/// request.
+///
+/// # Specification
+/// - ensures: `Ok` holds [`splice_section`] of `body` and [`render_section`]'s
+///   section when that body is at most [`BODY_LIMIT`] characters; otherwise of
+///   the same section with [`TABLE_IN_COMMENT`] for its table, when that one
+///   is. The boxes, their keys and the verdict are the same in both, so every
+///   tick reads back alike.
+/// - fails: [`Oversized`] with the shorter body's character count when it
+///   passes [`BODY_LIMIT`] too.
+/// - panics: none.
+///
+/// # Errors
+/// [`Oversized`] when the section passes the limit without its table.
+///
+/// # Adequacy
+/// - hypothesis: L3 — a short report keeps its table; a report whose table
+///   alone passes the limit leaves it to the comment, fits, and a tick of one
+///   of its boxes reads back; a report whose boxes alone pass it is refused.
+/// - witness: `gates::obligations::a_section_too_long_for_a_body_leaves_its_table_to_the_comment`
+#[inline]
+#[spec(ensures: |ref output| output.as_ref().is_ok_and(|text| text.chars().nth(BODY_LIMIT).is_none()) || output.as_ref().is_err_and(|oversized| oversized.characters > BODY_LIMIT))]
+pub fn render_body(
+    body: DocText<'_>,
+    report: &Report,
+) -> Result<String, Oversized>
+{
+    let full = splice_section(body, DocText(&render_section(report)));
+    if full.chars().nth(BODY_LIMIT).is_none() {
+        return Ok(full);
+    }
+    let compact = splice_section(body, DocText(&section(report, Rows::InComment)));
+    if compact.chars().nth(BODY_LIMIT).is_none() {
+        Ok(compact)
+    }
+    else {
+        Err(Oversized {
+            characters: compact.chars().count(),
+        })
+    }
+}
+
+/// Where a section's clauses are tabled.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Rows
+{
+    /// In the section, one row per clause.
+    Table,
+    /// In the comment only, with [`TABLE_IN_COMMENT`] in the section.
+    InComment,
+}
+
+/// The section [`render_section`] states, its clauses tabled as `rows`
+/// says.
+///
+/// # Specification
+/// trivial.
+fn section(
+    report: &Report,
+    rows: Rows,
+) -> String
+{
     let prose = prose(report);
     let mut lines = vec![
         SECTION_START.to_owned(),
@@ -920,7 +1011,10 @@ pub fn render_section(report: &Report) -> String
         lines.push("No prose clause names a changed item.".to_owned());
     }
     else {
-        lines.extend(table(&prose));
+        match rows {
+            Rows::Table => lines.extend(table(&prose)),
+            Rows::InComment => lines.push(TABLE_IN_COMMENT.to_owned()),
+        }
         lines.extend([
             String::new(),
             "<details><summary>Acknowledgements</summary>".to_owned(),
