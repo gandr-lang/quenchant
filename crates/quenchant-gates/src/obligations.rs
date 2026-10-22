@@ -30,8 +30,9 @@
 //! specification's witnesses with specifications enforced; the report lists
 //! them and the nextest selection that runs them. A prose obligation is
 //! discharged in the pull request: the body's re-verification section carries
-//! a "still holds" and an "updated" box per obligation, and a ticked box is
-//! read back from the body, or from the previous comment, on the next run. An
+//! a "still holds" and an "updated" box per obligation, one pair for all the
+//! clauses naming exactly the same changed items, and a ticked box is read
+//! back from the body, or from the previous comment, on the next run. An
 //! acknowledgement holds for the revisions it was given against: the
 //! obligation's key carries the specification's revision and each changed
 //! dependency's, so a later change to either reopens it. A clause whose own
@@ -227,6 +228,19 @@ pub struct Obligation
     pub key: String,
     /// How the obligation stands.
     pub discharge: Discharge,
+    /// Which boxes acknowledge it.
+    pub boxes: Boxes,
+}
+
+/// Which task boxes acknowledge a prose obligation.
+#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+pub enum Boxes
+{
+    /// Its own pair, recorded against its key.
+    Own,
+    /// One pair for every unedited prose obligation naming exactly the same
+    /// changed items, recorded against this key.
+    Shared(String),
 }
 
 /// One witness to rerun, with the package whose tests hold it.
@@ -489,15 +503,25 @@ pub fn changed_items(
 ///   obligation for what names it.
 /// - ensures: an executable obligation is discharged by its witnesses; a prose
 ///   obligation is `Updated` when a change touches its clause's lines, else as
-///   `acknowledged` records its key, else `Open`.
+///   `acknowledged` records its key, else as `acknowledged` records the key of
+///   the boxes it shares, else `Open`.
+/// - ensures: the unedited prose obligations that name exactly the same changed
+///   items share one pair of boxes when there are two or more of them,
+///   [`Boxes::Shared`] under one key: the names, their revisions, and each
+///   member's specification revision and clause, so a change to any of them or
+///   a member gained or lost reopens it. Every other obligation's boxes are
+///   [`Boxes::Own`].
 /// - panics: none.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — in a chain where the third specification names the second
 ///   and the second names the first, changing the first obligates the second
-///   only; changing the first and the second's specification obligates both.
+///   only; changing the first and the second's specification obligates both. A
+///   hundred clauses naming one item share one key, which one tick settles and
+///   a change to one member's specification reopens.
 /// - witness: `gates::obligations::an_unchanged_reverified_specification_stops_the_cascade`
 /// - witness: `gates::obligations::an_acknowledgement_holds_only_at_its_revisions`
+/// - witness: `gates::obligations::clauses_naming_the_same_items_share_one_pair`
 #[inline]
 #[must_use]
 #[spec(ensures: |ref output| output.is_sorted() && output.iter().all(|obligation| !obligation.changed.is_empty() && obligation.changed.is_subset(changed)))]
@@ -527,44 +551,96 @@ pub fn obligations(
                 .to_owned()
         })
     };
-    grouped
-        .into_iter()
-        .map(|((specification, clause, naming), dependencies)| {
-            let mut key = format!("{specification}#{clause}@{}", revision(&specification));
-            for dependency in &dependencies {
-                key.push('+');
-                key.push_str(&revision(dependency));
+    let mut owed: Vec<Obligation> = Vec::new();
+    // The unedited prose obligations, by index into `owed`.
+    let mut unedited: Vec<usize> = Vec::new();
+    for ((specification, clause, naming), dependencies) in grouped {
+        let mut key = format!("{specification}#{clause}@{}", revision(&specification));
+        for dependency in &dependencies {
+            key.push('+');
+            key.push_str(&revision(dependency));
+        }
+        let discharge = match naming {
+            Naming::Executable => Discharge::Witnesses,
+            Naming::Prose => {
+                let edited = graph
+                    .prose_clauses
+                    .get(&(specification.clone(), clause.clone()))
+                    .zip(graph.items.get(&specification))
+                    .is_some_and(|(&lines, item)| {
+                        changes
+                            .0
+                            .get(&item.position.file)
+                            .is_some_and(|file| file.iter().any(|&change| touches(change, lines).0))
+                    });
+                if edited {
+                    Discharge::Updated
+                }
+                else {
+                    unedited.push(owed.len());
+                    acknowledged.get(&key).copied().unwrap_or(Discharge::Open)
+                }
+            },
+        };
+        owed.push(Obligation {
+            specification,
+            clause,
+            naming,
+            changed: dependencies,
+            key,
+            discharge,
+            boxes: Boxes::Own,
+        });
+    }
+    // Ordered by what each names, stably, so the clauses naming the same
+    // changed items run together in report order.
+    let names = |index: &usize| owed.get(*index).map(|obligation| &obligation.changed);
+    unedited.sort_by(|left, right| names(left).cmp(&names(right)));
+    // Each sharing group's key and the acknowledgement recorded against it,
+    // and each member's group.
+    let mut groups: Vec<(String, Option<Discharge>)> = Vec::new();
+    let mut assigned: Vec<(usize, usize)> = Vec::new();
+    for members in unedited.chunk_by(|left, right| names(left) == names(right)) {
+        let (Some(first), true) = (members.first().and_then(names), members.len() > 1_usize)
+        else {
+            continue;
+        };
+        let mut key = String::new();
+        for (index, name) in first.iter().enumerate() {
+            key.push_str(if index == 0 { "" } else { "," });
+            key.push_str(name);
+        }
+        for (index, name) in first.iter().enumerate() {
+            key.push_str(if index == 0 { "@" } else { "+" });
+            key.push_str(&revision(name));
+        }
+        for (index, obligation) in members
+            .iter()
+            .filter_map(|&member| owed.get(member))
+            .enumerate()
+        {
+            key.push_str(if index == 0 { "#" } else { "+" });
+            key.push_str(&revision(&obligation.specification));
+            key.push('.');
+            key.push_str(&obligation.clause);
+        }
+        for &member in members {
+            assigned.push((member, groups.len()));
+        }
+        let shared = acknowledged.get(&key).copied();
+        groups.push((key, shared));
+    }
+    for (member, group) in assigned {
+        if let (Some(obligation), Some(&(ref key, shared))) =
+            (owed.get_mut(member), groups.get(group))
+        {
+            if let (Discharge::Open, Some(discharge)) = (obligation.discharge, shared) {
+                obligation.discharge = discharge;
             }
-            let discharge = match naming {
-                Naming::Executable => Discharge::Witnesses,
-                Naming::Prose => {
-                    let edited = graph
-                        .prose_clauses
-                        .get(&(specification.clone(), clause.clone()))
-                        .zip(graph.items.get(&specification))
-                        .is_some_and(|(&lines, item)| {
-                            changes.0.get(&item.position.file).is_some_and(|file| {
-                                file.iter().any(|&change| touches(change, lines).0)
-                            })
-                        });
-                    if edited {
-                        Discharge::Updated
-                    }
-                    else {
-                        acknowledged.get(&key).copied().unwrap_or(Discharge::Open)
-                    }
-                },
-            };
-            Obligation {
-                specification,
-                clause,
-                naming,
-                changed: dependencies,
-                key,
-                discharge,
-            }
-        })
-        .collect()
+            obligation.boxes = Boxes::Shared(key.clone());
+        }
+    }
+    owed
 }
 
 /// The acknowledgements a previous comment carries.
@@ -808,22 +884,25 @@ pub fn render_text(report: &Report) -> String
 /// - ensures: opens with [`SECTION_START`] and closes with [`SECTION_END`].
 ///   Between them come [`verdict`]'s heading at level two, the base and the
 ///   counts, and [`table`]'s rows. Then, collapsed under one `<details>` block,
-///   each prose obligation with a "still holds" and an "updated" task box,
-///   ticked as the obligation stands. Each box carries its `ack` marker and
-///   key, so [`acknowledgements`] reads it back. A report without prose
-///   obligations says so, and has neither table nor boxes. An owed lint
-///   assessment follows, uncollapsed: its instruction and its task line with
-///   the verdict as written, ticked unless it stands unticked, so
-///   [`lint_assessment`] reads it back; an owed hotpath verdict follows it the
-///   same way, read back by [`hotpath_verdict`].
+///   one pair of task boxes, "still holds" and "updated", per [`Boxes::Own`]
+///   obligation, ticked as it stands, and one pair per [`Boxes::Shared`] key
+///   where its first member stands, counting its members and ticked as all of
+///   them stand alike. Each box carries its `ack` marker and key, so
+///   [`acknowledgements`] reads it back. A report without prose obligations
+///   says so, and has neither table nor boxes. An owed lint assessment follows,
+///   uncollapsed: its instruction and its task line with the verdict as
+///   written, ticked unless it stands unticked, so [`lint_assessment`] reads it
+///   back; an owed hotpath verdict follows it the same way, read back by
+///   [`hotpath_verdict`].
 /// - panics: none.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — a section rendered from a report and ticked reads back as
-///   the acknowledgement it records, and its heading and rows state the verdict
-///   the boxes record.
+///   the acknowledgement it records, its heading and rows state the verdict the
+///   boxes record, and one ticked shared pair settles every clause sharing it.
 /// - witness: `gates::obligations::an_acknowledgement_holds_only_at_its_revisions`
 /// - witness: `gates::obligations::the_heading_and_the_table_carry_the_verdict`
+/// - witness: `gates::obligations::clauses_naming_the_same_items_share_one_pair`
 #[inline]
 #[must_use]
 #[spec(ensures: |ref output| output.starts_with(SECTION_START) && output.trim_end().ends_with(SECTION_END))]
@@ -846,34 +925,60 @@ pub fn render_section(report: &Report) -> String
             String::new(),
             "<details><summary>Acknowledgements</summary>".to_owned(),
             String::new(),
-            "Re-read each clause against the changed items it names, then tick one box. A tick \
-             holds until the clause's item or a named item changes again."
+            "Re-read each clause against the changed items it names, then tick one box. The \
+             clauses naming exactly the same changed items share one pair. A tick holds until \
+             the clause's item or a named item changes again."
                 .to_owned(),
             String::new(),
         ]);
+        // Each shared key's member count, and the standing every member
+        // shares, `Open` when they differ.
+        let mut shared: BTreeMap<&str, (usize, Discharge)> = BTreeMap::new();
         for obligation in &prose {
-            lines.push(format!(
-                "- `{}` `{}` names {}",
-                obligation.specification,
-                obligation.clause,
-                code_list(&obligation.changed)
-            ));
+            if let Boxes::Shared(ref key) = obligation.boxes {
+                let entry = shared
+                    .entry(key.as_str())
+                    .or_insert((0_usize, obligation.discharge));
+                entry.0 = entry.0.saturating_add(1_usize);
+                if entry.1 != obligation.discharge {
+                    entry.1 = Discharge::Open;
+                }
+            }
+        }
+        for obligation in &prose {
+            let (key, standing) = match obligation.boxes {
+                Boxes::Own => {
+                    lines.push(format!(
+                        "- `{}` `{}` names {}",
+                        obligation.specification,
+                        obligation.clause,
+                        code_list(&obligation.changed)
+                    ));
+                    (obligation.key.as_str(), obligation.discharge)
+                },
+                Boxes::Shared(ref key) => {
+                    let Some((members, standing)) = shared.remove(key.as_str())
+                    else {
+                        continue;
+                    };
+                    lines.push(format!(
+                        "- the {members} clauses naming {}",
+                        code_list(&obligation.changed)
+                    ));
+                    (key.as_str(), standing)
+                },
+            };
             for (label, kind, ticked) in [
                 (
                     "still holds",
                     "still-holds",
-                    obligation.discharge == Discharge::StillHolds,
+                    standing == Discharge::StillHolds,
                 ),
-                (
-                    "updated",
-                    "updated",
-                    obligation.discharge == Discharge::Updated,
-                ),
+                ("updated", "updated", standing == Discharge::Updated),
             ] {
                 lines.push(format!(
-                    "  - [{}] {label} <!-- ack {kind} {} -->",
+                    "  - [{}] {label} <!-- ack {kind} {key} -->",
                     if ticked { 'x' } else { ' ' },
-                    obligation.key
                 ));
             }
         }

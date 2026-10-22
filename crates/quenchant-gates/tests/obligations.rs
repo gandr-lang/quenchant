@@ -32,6 +32,7 @@ use quenchant_gates::obligations::ASSESSED_LABELS;
 use quenchant_gates::obligations::ASSESSMENT_MARKER;
 use quenchant_gates::obligations::ASSESSMENT_TEMPLATE;
 use quenchant_gates::obligations::Assessment;
+use quenchant_gates::obligations::Boxes;
 use quenchant_gates::obligations::COMMENT_MARKER;
 use quenchant_gates::obligations::Change;
 use quenchant_gates::obligations::ChangedLines;
@@ -700,10 +701,11 @@ fn the_tag_table_replay_lists_both_preconditions()
          else: {report}"
     );
     let body = fixture.body();
-    assert_eq!(
-        body.matches("<!-- ack still-holds tags::").count(),
-        2,
-        "the body asks for both acknowledgements: {body}"
+    assert!(
+        body.matches("<!-- ack still-holds tags::").take(2).count() == 1
+            && body.contains("- the 2 clauses naming `tags::NODE_TAG_TABLE`\n"),
+        "both preconditions name the one table, so the body asks for one acknowledgement of \
+         both: {body}"
     );
 }
 
@@ -784,6 +786,126 @@ fn an_acknowledgement_holds_only_at_its_revisions()
         standing,
         vec![Discharge::Open],
         "a later change to the named item reopens it"
+    );
+}
+
+/// A hundred prose clauses naming one changed item, as a reworded refusal
+/// enum's `errors` clauses do (gandr-lang/gandr#1847, where they passed the
+/// pull-request body's limit), share one pair of boxes; a clause naming
+/// another item keeps its own.
+#[test]
+fn clauses_naming_the_same_items_share_one_pair()
+{
+    let mut graph = Graph::default();
+    for (path, extent) in [
+        ("a", lines(LineNumber(1), LineNumber(5))),
+        ("g", lines(LineNumber(6), LineNumber(8))),
+        ("lone", lines(LineNumber(10), LineNumber(20))),
+    ] {
+        graph.items.insert(
+            path.to_owned(),
+            item(DocText(path), extent, DocText("0123456789abcdef")),
+        );
+    }
+    graph.edges.insert(Edge {
+        specification: "lone".to_owned(),
+        clause: "requires".to_owned(),
+        naming: Naming::Prose,
+        target: "g".to_owned(),
+    });
+    for index in 0_usize .. 100_usize {
+        let path = format!("s{index:02}");
+        let first = LineNumber(100_usize.saturating_add(index.saturating_mul(10_usize)));
+        let last = LineNumber(first.0.saturating_add(5_usize));
+        graph.items.insert(
+            path.clone(),
+            item(
+                DocText(&path),
+                lines(first, last),
+                DocText("fedcba9876543210"),
+            ),
+        );
+        graph.edges.insert(Edge {
+            specification: path,
+            clause: "errors".to_owned(),
+            naming: Naming::Prose,
+            target: "a".to_owned(),
+        });
+    }
+    let edit = changes(&[
+        lines(LineNumber(3), LineNumber(3)),
+        lines(LineNumber(7), LineNumber(7)),
+    ]);
+    let changed = changed_items(&graph, &edit);
+    let owed = obligations(&graph, &changed, &edit, &BTreeMap::new());
+    let shared: BTreeSet<&Boxes> = owed
+        .iter()
+        .filter(|obligation| obligation.specification != "lone")
+        .map(|obligation| &obligation.boxes)
+        .collect();
+    let [&Boxes::Shared(ref key)] = shared.iter().copied().collect::<Vec<_>>()[..]
+    else {
+        panic!("the hundred clauses naming `a` share one key: {shared:?}");
+    };
+    let shared_box = format!("- [ ] still holds <!-- ack still-holds {key} -->");
+    assert!(
+        owed.iter()
+            .any(|obligation| obligation.specification == "lone" && obligation.boxes == Boxes::Own),
+        "the one clause naming `g` keeps its own boxes: {owed:?}"
+    );
+    let report = Report {
+        base: "base".to_owned(),
+        changed: changed.clone(),
+        obligations: owed,
+        reruns: BTreeSet::new(),
+        assessment: Assessment::NotOwed,
+        hotpath: Verdict::NotOwed,
+    };
+    let section = render_section(&report);
+    assert_eq!(
+        section.matches("- [ ] ").take(5).count(),
+        4,
+        "one pair for the hundred, one for the lone clause: {section}"
+    );
+    assert!(
+        section.contains("- the 100 clauses naming `a`\n")
+            && section.contains("## Re-verification · ⚠️ 101 of 101 unticked\n"),
+        "the pair counts its clauses, and the heading still counts every clause: {section}"
+    );
+    let acknowledged = acknowledgements(DocText(
+        &section.replace(&shared_box, &shared_box.replace("[ ]", "[x]")),
+    ));
+    let settled = obligations(&graph, &changed, &edit, &acknowledged);
+    assert!(
+        settled.iter().all(|obligation| {
+            obligation.discharge
+                == if obligation.specification == "lone" {
+                    Discharge::Open
+                }
+                else {
+                    Discharge::StillHolds
+                }
+        }),
+        "the one tick settles the hundred, and only them: {settled:?}"
+    );
+    let rendered = render_section(&Report {
+        obligations: settled,
+        ..report
+    });
+    assert!(
+        rendered.contains(&shared_box.replace("[ ]", "[x]"))
+            && rendered.contains("## Re-verification · ⚠️ 1 of 101 unticked\n"),
+        "the tick renders again, so it reads back on the next run: {rendered}"
+    );
+
+    if let Some(member) = graph.items.get_mut("s07") {
+        "0000000000000000".clone_into(&mut member.revision);
+    }
+    assert!(
+        obligations(&graph, &changed, &edit, &acknowledged)
+            .iter()
+            .all(|obligation| obligation.discharge == Discharge::Open),
+        "a change to one member's specification reopens the pair"
     );
 }
 
@@ -906,6 +1028,7 @@ fn the_heading_and_the_table_carry_the_verdict()
             changed: BTreeSet::from(["edges::LIMIT".to_owned()]),
             key: "edges::read#requires@0".to_owned(),
             discharge: Discharge::Open,
+            boxes: Boxes::Own,
         }],
         reruns: BTreeSet::new(),
         assessment: Assessment::NotOwed,
