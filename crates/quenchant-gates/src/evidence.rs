@@ -427,6 +427,12 @@ pub fn read_prose(
 ) -> Result<(), GateError>
 {
     let mut sources: BTreeMap<String, Vec<String>> = BTreeMap::new();
+    let recorded: BTreeSet<String> = graph
+        .items
+        .keys()
+        .filter_map(|path| path.trim_start_matches('<').split("::").next())
+        .map(str::to_owned)
+        .collect();
     for path in files_with_extension(directory, FileExtension("json"))? {
         let text = std::fs::read_to_string(&path)
             .map_err(|error| GateError::io(&path, ErrorMessage::from(&error.to_string())))?;
@@ -442,7 +448,27 @@ pub fn read_prose(
                 "rustdoc JSON needs an `index` and a `paths` table".into(),
             ));
         };
-        let tables = RustdocTables { index, paths };
+        let outside = document
+            .get("external_crates")
+            .and_then(serde_json::Value::as_object)
+            .map(|crates| {
+                crates
+                    .iter()
+                    .filter(|&(_, krate)| {
+                        krate
+                            .get("name")
+                            .and_then(serde_json::Value::as_str)
+                            .is_none_or(|name| !recorded.contains(name))
+                    })
+                    .map(|(id, _)| id.clone())
+                    .collect()
+            })
+            .unwrap_or_default();
+        let tables = RustdocTables {
+            index,
+            paths,
+            outside,
+        };
         for entry in index.values() {
             let Some(links) = entry
                 .get("links")
@@ -510,25 +536,35 @@ pub fn read_prose(
     Ok(())
 }
 
-/// The two tables of one crate's rustdoc JSON that resolve a link.
+/// The tables of one crate's rustdoc JSON that resolve a link.
 struct RustdocTables<'json>
 {
     /// Local items by id.
     index: &'json serde_json::Map<String, serde_json::Value>,
     /// Item paths by id, foreign items included.
     paths: &'json serde_json::Map<String, serde_json::Value>,
+    /// The ids of the external crates no record belongs to.
+    outside: BTreeSet<String>,
 }
 
 /// The workspace items a resolved rustdoc link names.
 ///
 /// # Specification
 /// - ensures: a target in the crate's index with a span names the item recorded
-///   at that position; a target in the `paths` table names the recorded item
-///   with that path, or, failing that, every recorded item of the same crate
-///   with the same last segment; any other target names every recorded item
+///   at that position; a target in the `paths` table of a crate some record
+///   belongs to names the recorded item with that path, or, failing that, every
+///   recorded item of the same crate with the same last segment; any other
+///   target, written with at least two path segments, names every recorded item
 ///   whose path ends, segment by segment, with the written link stripped of
 ///   backticks, a disambiguator and a call or macro suffix.
-/// - provides: an empty set for a target outside the workspace.
+/// - provides: an empty set for a target in the `paths` table of a crate no
+///   record belongs to, whatever path it is listed under (rustdoc lists a
+///   standard-library variant under a local alias of its enum), and for a
+///   target in neither table written as one bare segment: rustdoc's JSON
+///   describes neither a prelude item (`Ok`, `Err`, `Some`, `None`) nor a
+///   dependency's variant, field or associated item, so a bare name cannot tell
+///   them apart, and matching it by its last segment would name every workspace
+///   item spelled alike.
 /// - panics: none.
 /// - executable: none — the outcome joins three tables; a predicate would
 ///   repeat the join.
@@ -536,9 +572,11 @@ struct RustdocTables<'json>
 /// # Adequacy
 /// - hypothesis: L3 — the fixture links a local constant; the replay fixture
 ///   links a table from functions in the same crate; each resolves to exactly
-///   its item.
+///   its item. The foreign fixture links the prelude's `Ok` and `Err` beside
+///   its own `<Daily as FromStr>::Err`, and resolves to nothing.
 /// - witness: `gates::obligations::the_fixture_names_its_clause_items_and_nothing_else`
 /// - witness: `gates::obligations::the_tag_table_replay_lists_both_preconditions`
+/// - witness: `gates::obligations::a_link_to_a_foreign_item_names_no_workspace_item`
 fn link_targets(
     graph: &Graph,
     tables: &RustdocTables<'_>,
@@ -558,12 +596,15 @@ fn link_targets(
             Maybe::Absent(_) => BTreeSet::new(),
         };
     }
-    if let Some(segments) = tables
-        .paths
-        .get(&id)
-        .and_then(|summary| summary.get("path"))
-        .and_then(serde_json::Value::as_array)
+    if let Some(summary) = tables.paths.get(&id)
+        && let Some(segments) = summary.get("path").and_then(serde_json::Value::as_array)
     {
+        if summary
+            .get("crate_id")
+            .is_some_and(|krate| tables.outside.contains(&krate.to_string()))
+        {
+            return BTreeSet::new();
+        }
         let segments: Vec<&str> = segments
             .iter()
             .filter_map(serde_json::Value::as_str)
@@ -591,6 +632,9 @@ fn link_targets(
         .map_or(unquoted, |(_, name)| name)
         .trim_end_matches("()")
         .trim_end_matches('!');
+    if !spelled.contains("::") {
+        return BTreeSet::new();
+    }
     let suffix = format!("::{spelled}");
     graph
         .items

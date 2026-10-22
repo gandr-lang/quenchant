@@ -1303,7 +1303,7 @@ unproduced = [
             .expect("the evidence pass wrote its record directory")
             .map(|entry| entry.expect("a record entry is readable").path())
             .collect();
-        for fixture in ["edges", "tags"] {
+        for fixture in ["aliased", "edges", "foreign", "tags"] {
             let marker = format!("ui_evidence_{fixture}_rs.");
             let matching: Vec<&std::path::PathBuf> = written
                 .iter()

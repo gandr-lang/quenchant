@@ -1,0 +1,8 @@
+{"column":1,"docs":[9,9],"end":10,"file":"ui_evidence/foreign.rs","line":10,"path":"foreign::Daily","record":"item","revision":"d8fdfeeb53ddb766a20241441425a920","start":9}
+{"column":1,"docs":[27,27],"end":34,"file":"ui_evidence/foreign.rs","line":28,"path":"foreign::Logged","record":"item","revision":"1f4f98e7d234acd5d3898649e2578b2f","start":27}
+{"column":5,"docs":[30,30],"end":31,"file":"ui_evidence/foreign.rs","line":31,"path":"foreign::Logged::Ok","record":"item","revision":"fc1e9235ec4b5736edaed80357a7a279","start":30}
+{"column":5,"docs":[32,32],"end":33,"file":"ui_evidence/foreign.rs","line":33,"path":"foreign::Logged::Err","record":"item","revision":"c6a07bee644eb00e6d5ea088257718b1","start":32}
+{"column":1,"docs":[36,39],"end":43,"file":"ui_evidence/foreign.rs","line":40,"path":"foreign::lane","record":"item","revision":"ad7f177d1c7b0b3f0a97078c68ec118d","start":36}
+{"column":1,"docs":[45,48],"end":51,"file":"ui_evidence/foreign.rs","line":49,"path":"foreign::main","record":"item","revision":"eeb942cf4613d957fd2975158adc9735","start":45}
+{"column":5,"docs":[14,14],"end":15,"file":"ui_evidence/foreign.rs","line":15,"path":"<foreign::Daily as core::str::traits::FromStr>::Err","record":"item","revision":"38c86facf8fb773420e0425cec5f9930","start":14}
+{"column":5,"docs":[17,20],"end":24,"file":"ui_evidence/foreign.rs","line":21,"path":"<foreign::Daily as core::str::traits::FromStr>::from_str","record":"item","revision":"529903ee9b2e06330831f64e11b33047","start":17}

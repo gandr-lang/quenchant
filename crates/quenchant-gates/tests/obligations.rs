@@ -677,6 +677,47 @@ fn changing_an_item_reached_only_through_a_call_obligates_nothing()
     assert!(selection.is_empty(), "nothing is selected: {selection}");
 }
 
+/// gandr-lang/quenchant#98: each fixture's `lane` links the standard
+/// library's `Ok` and `Err`, which share their last segment with the
+/// fixture's own `Logged::Err` and `<Daily as FromStr>::Err`. rustdoc's JSON
+/// lists the linked variants under no path in `foreign`, and under the local
+/// alias `Answer`'s path, with the standard library's crate id, in `aliased`.
+#[test]
+fn a_link_to_a_foreign_item_names_no_workspace_item()
+{
+    for name in ["foreign", "aliased"] {
+        let fixture = Fixture::new(DocText(name), DocText("foreign"));
+        let rustdoc = fixture.rustdoc();
+        let mut graph =
+            read_records(&fixture.records, &fixture.repository).expect("the records are readable");
+        read_prose(&mut graph, &rustdoc, &fixture.repository)
+            .expect("the rustdoc output is readable");
+        let edges: Vec<&Edge> = graph.edges.iter().collect();
+        assert!(
+            edges.is_empty(),
+            "{name}: the standard library's `Ok` and `Err` are outside the workspace: {edges:?}"
+        );
+        fixture.edit(
+            DocText("/// Refused."),
+            DocText("/// Refused, the spelling unread."),
+        );
+        let (report, _, selection) = fixture.obligations(&rustdoc);
+        assert!(
+            report.starts_with(&format!(
+                "obligations against HEAD: 2 changed items, 0 obligations, 0 witnesses to rerun\n\
+                 changed: {name}::Logged\n\
+                 changed: {name}::Logged::Err\n"
+            )),
+            "{name}: the changed `Err` obligates no clause linking the standard library's: \
+             {report}"
+        );
+        assert!(
+            selection.is_empty(),
+            "{name}: nothing is selected: {selection}"
+        );
+    }
+}
+
 #[test]
 fn the_tag_table_replay_lists_both_preconditions()
 {
