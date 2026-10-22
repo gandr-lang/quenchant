@@ -20,13 +20,15 @@
 //! destination is the key rustdoc resolved it under; `comrak` builds a tree
 //! the gate does not need, and a line scanner misreads code spans and
 //! reference definitions. Rustdoc JSON reporting each link's source range
-//! would make the parse unnecessary.
+//! would make the parse unnecessary. Beside them, [`hotpath`] owes a verdict
+//! on a red hotpath check, counted and read back as the lint assessment is.
 
 extern crate alloc;
 
 pub mod anodized;
 pub mod catalog;
 pub mod evidence;
+pub mod hotpath;
 pub mod inventory;
 pub mod obligations;
 pub mod semantic;
