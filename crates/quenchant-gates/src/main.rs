@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! quenchant-gates <anodized | witnesses> --manifest-path <Cargo.toml>
-//! quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--body <file>] [--comment <file>] [--selection <file>] [--labels <label,...>] [--require-acknowledged]
+//! quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--body <file>] [--comment <file>] [--selection <file>] [--labels <label,...>] [--hotpath <report>] [--require-acknowledged]
 //! quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]
 //! quenchant-gates toolchain-bump --version <stable> [--root <repository>]
 //! ```
@@ -32,14 +32,16 @@ use quenchant_gates::GateError;
 use quenchant_gates::anodized::Requirement;
 use quenchant_gates::anodized::Verdict;
 use quenchant_gates::anodized::invocation_state;
+use quenchant_gates::hotpath;
 use quenchant_gates::inventory;
 use quenchant_gates::obligations;
 use quenchant_gates::semantic::DocText;
 use quenchant_gates::semantic::GitRevision;
 use quenchant_gates::semantic::IssueLabel;
+use quenchant_shape::shape::Maybe;
 
 /// Invalid argument shapes receive the complete supported command syntax.
-const USAGE: &str = "usage: quenchant-gates <anodized | witnesses> --manifest-path <Cargo.toml> [--require-enforcing]\n       quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--body <file>] [--comment <file>] [--selection <file>] [--labels <label,...>] [--require-acknowledged]\n       quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]\n       quenchant-gates toolchain-bump --version <stable> [--root <repository>]";
+const USAGE: &str = "usage: quenchant-gates <anodized | witnesses> --manifest-path <Cargo.toml> [--require-enforcing]\n       quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--body <file>] [--comment <file>] [--selection <file>] [--labels <label,...>] [--hotpath <report>] [--require-acknowledged]\n       quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]\n       quenchant-gates toolchain-bump --version <stable> [--root <repository>]";
 
 /// Argument interpretation selects one consumer or repository operation.
 ///
@@ -249,7 +251,7 @@ fn inventory_gate(manifest_path: &Path) -> Result<Vec<Finding>, GateError>
 }
 
 /// The options of the `obligations` subcommand that take a value.
-const OBLIGATION_OPTIONS: [&str; 9] = [
+const OBLIGATION_OPTIONS: [&str; 10] = [
     "--manifest-path",
     "--base",
     "--records",
@@ -259,6 +261,7 @@ const OBLIGATION_OPTIONS: [&str; 9] = [
     "--comment",
     "--selection",
     "--labels",
+    "--hotpath",
 ];
 
 /// The `obligations` flag that fails the run while a prose obligation is open.
@@ -275,13 +278,15 @@ const REQUIRE_ACKNOWLEDGED: &str = "--require-acknowledged";
 /// - ensures: reads the acknowledgements from `--previous`, or from `--body`
 ///   when no `--previous` is given, and the lint assessment owed under the
 ///   comma-separated `--labels` from `--body`, or from `--previous` when no
-///   `--body` is given; prints [`obligations::render_text`] of the report;
-///   writes [`obligations::render_comment`] to `--comment`, the lines of
-///   [`obligations::selection`] to `--selection`, and `--body` back with its
+///   `--body` is given, and the hotpath verdict owed under the `--hotpath`
+///   report from the same text; prints [`obligations::render_text`] of the
+///   report; writes [`obligations::render_comment`] to `--comment`, the lines
+///   of [`obligations::selection`] to `--selection`, and `--body` back with its
 ///   section replaced by [`obligations::render_section`] when given. Once all
 ///   of that is done it succeeds, unless [`REQUIRE_ACKNOWLEDGED`] is given and
-///   a prose obligation is open or an owed lint assessment unsettled: then it
-///   lists each with its key or its standing and exits with status 2.
+///   a prose obligation is open or an owed lint assessment or hotpath verdict
+///   unsettled: then it lists each with its key or its standing and exits with
+///   status 2.
 /// - fails: prints the usage on a malformed invocation and the error on an
 ///   operational failure, and exits with status 1 either way.
 /// - panics: none.
@@ -292,11 +297,13 @@ const REQUIRE_ACKNOWLEDGED: &str = "--require-acknowledged";
 /// - hypothesis: L3 — the fixture repository's invocations print the
 ///   obligations, write the comment, the selection and the body the tests read
 ///   back, and refuse an open obligation only when asked to; a labelled run
-///   refuses an unticked or malformed assessment read from the body.
+///   refuses an unticked or malformed assessment read from the body, and a red
+///   hotpath report an unticked, malformed or unmoved verdict.
 /// - witness: `gates::obligations::changing_a_named_item_obligates_the_specification`
 /// - witness: `gates::obligations::the_tag_table_replay_lists_both_preconditions`
 /// - witness: `gates::obligations::an_open_obligation_fails_only_when_acknowledgement_is_required`
 /// - witness: `gates::obligations::an_unsettled_lint_assessment_fails_the_required_run`
+/// - witness: `gates::obligations::an_unsettled_hotpath_verdict_fails_the_required_run`
 #[expect(
     clippy::print_stderr,
     clippy::print_stdout,
@@ -369,6 +376,24 @@ fn run_obligations(mut arguments: core::iter::Skip<std::env::Args>) -> ExitCode
         .filter(|label| !label.is_empty())
         .map(IssueLabel)
         .collect();
+    let hotpath = match options.get("--hotpath") {
+        None => Maybe::Absent(hotpath::Unreported),
+        Some(path) => {
+            let read = std::fs::read_to_string(path)
+                .map_err(|error| error.to_string())
+                .and_then(|text| {
+                    hotpath::read_report(DocText(&text), Path::new(path))
+                        .map_err(|error| error.to_string())
+                });
+            match read {
+                Ok(deltas) => Maybe::Present(deltas),
+                Err(error) => {
+                    eprintln!("obligations could not read {path}: {error}");
+                    return ExitCode::FAILURE;
+                },
+            }
+        },
+    };
     let inputs = obligations::Inputs {
         manifest_path: Path::new(manifest_path),
         base: GitRevision::from(base),
@@ -377,6 +402,7 @@ fn run_obligations(mut arguments: core::iter::Skip<std::env::Args>) -> ExitCode
         previous: DocText(previous),
         body: DocText(body),
         labels: &labels,
+        hotpath: &hotpath,
     };
     let report = match obligations::run(&inputs) {
         Ok(report) => report,
@@ -436,6 +462,24 @@ fn run_obligations(mut arguments: core::iter::Skip<std::env::Args>) -> ExitCode
                     "  lint assessment: `{written}` is neither `could: yes — <lint>, <reference>` nor `could: no — <one sentence>`"
                 ),
                 obligations::Standing::Settled => {},
+            }
+        }
+        if let hotpath::Verdict::Owed {
+            ref written,
+            standing,
+        } = report.hotpath
+        {
+            match standing {
+                hotpath::Standing::Unticked => {
+                    eprintln!("  hotpath verdict: the box is unticked");
+                },
+                hotpath::Standing::Malformed => eprintln!(
+                    "  hotpath verdict: `{written}` is neither `hotpath: fixed — <benchmark> <before> → <after>` nor `hotpath: accepted — <benchmark> exercises <feature>; <n> allocations per <use>; <one sentence>` over a benchmark of the report"
+                ),
+                hotpath::Standing::Unmoved => eprintln!(
+                    "  hotpath verdict: `{written}` accepts a benchmark the report does not move"
+                ),
+                hotpath::Standing::Settled => {},
             }
         }
         return ExitCode::from(2_u8);

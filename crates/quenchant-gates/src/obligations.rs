@@ -63,6 +63,7 @@ use std::path::Path;
 use std::process::Command;
 
 use anodized::spec;
+use quenchant_shape::shape::Maybe;
 
 use crate::GateError;
 use crate::evidence::Graph;
@@ -70,6 +71,11 @@ use crate::evidence::LineSpan;
 use crate::evidence::Naming;
 use crate::evidence::read_prose;
 use crate::evidence::read_records;
+use crate::hotpath::Deltas;
+use crate::hotpath::Unreported;
+use crate::hotpath::Verdict;
+use crate::hotpath::hotpath_verdict;
+use crate::hotpath::verdict_lines;
 use crate::inventory::Workspace;
 use crate::semantic::CommandLine;
 use crate::semantic::Contains;
@@ -114,12 +120,15 @@ pub struct Inputs<'input>
     pub rustdoc: &'input Path,
     /// The previous comment's text, empty when there is none.
     pub previous: DocText<'input>,
-    /// The pull request body the lint assessment is read from: the body being
-    /// written, or the previous text when there is none.
+    /// The pull request body the lint assessment and the hotpath verdict are
+    /// read from: the body being written, or the previous text when there is
+    /// none.
     pub body: DocText<'input>,
     /// The labels of the issues the pull request closes or advances, and its
     /// own.
     pub labels: &'input [IssueLabel<'input>],
+    /// The hotpath check's per-benchmark deltas, when a report is given.
+    pub hotpath: &'input Maybe<Deltas, Unreported>,
 }
 
 /// Compute the obligations a working tree owes against a base revision.
@@ -132,7 +141,8 @@ pub struct Inputs<'input>
 ///   against `inputs.base`; its obligations are [`obligations`] over the graph
 ///   of records and prose links with the acknowledgements the previous comment
 ///   carries; its reruns are [`reruns`] of those; its assessment is
-///   [`lint_assessment`] of `inputs.labels` over `inputs.body`.
+///   [`lint_assessment`] of `inputs.labels` over `inputs.body`, and its hotpath
+///   verdict [`hotpath_verdict`] of `inputs.hotpath` over it.
 /// - fails: [`GateError::Tool`] when the workspace or the diff cannot be read,
 ///   [`GateError::Io`] or [`GateError::Parse`] when the records, the rustdoc
 ///   output or a source cannot.
@@ -164,6 +174,7 @@ pub fn run(inputs: &Inputs<'_>) -> Result<Report, GateError>
         changed,
         reruns: BTreeSet::new(),
         assessment: lint_assessment(inputs.labels, inputs.body),
+        hotpath: hotpath_verdict(inputs.hotpath, inputs.body),
     };
     report.reruns = reruns(&graph, &workspace, &root, &report)?;
     Ok(report)
@@ -247,6 +258,8 @@ pub struct Report
     pub reruns: BTreeSet<Rerun>,
     /// Whether the change owes a lint assessment, and how it stands.
     pub assessment: Assessment,
+    /// Whether the change owes a hotpath verdict, and how it stands.
+    pub hotpath: Verdict,
 }
 
 /// The labels whose pull requests owe a lint assessment: a pull request
@@ -801,7 +814,8 @@ pub fn render_text(report: &Report) -> String
 ///   obligations says so, and has neither table nor boxes. An owed lint
 ///   assessment follows, uncollapsed: its instruction and its task line with
 ///   the verdict as written, ticked unless it stands unticked, so
-///   [`lint_assessment`] reads it back.
+///   [`lint_assessment`] reads it back; an owed hotpath verdict follows it the
+///   same way, read back by [`hotpath_verdict`].
 /// - panics: none.
 ///
 /// # Adequacy
@@ -818,7 +832,7 @@ pub fn render_section(report: &Report) -> String
     let prose = prose(report);
     let mut lines = vec![
         SECTION_START.to_owned(),
-        format!("## {}", verdict(&prose, &report.assessment)),
+        format!("## {}", verdict(&prose, report)),
         String::new(),
         facts(report, &prose),
         String::new(),
@@ -866,6 +880,7 @@ pub fn render_section(report: &Report) -> String
         lines.extend([String::new(), "</details>".to_owned()]);
     }
     lines.extend(assessment_lines(&report.assessment));
+    lines.extend(verdict_lines(&report.hotpath));
     lines.push(SECTION_END.to_owned());
     let mut text = lines.join("\n");
     text.push('\n');
@@ -885,14 +900,15 @@ fn prose(report: &Report) -> Vec<&Obligation>
         .collect()
 }
 
-/// The heading text that carries the verdict on `prose` and the lint
-/// assessment.
+/// The heading text that carries the verdict on `prose`, the lint
+/// assessment and the hotpath verdict.
 ///
 /// # Specification
-/// - ensures: `Re-verification · ✅ nothing owed` when `prose` is empty and no
-///   assessment is owed; `Re-verification · ⚠️ n of m unticked` while `n > 0`
-///   of the `m` obligations, the owed assessment counted as one, stand
-///   unsettled; `Re-verification · ✅ m of m settled` otherwise.
+/// - ensures: `Re-verification · ✅ nothing owed` when `prose` is empty and
+///   neither the assessment nor the hotpath verdict is owed; `Re-verification ·
+///   ⚠️ n of m unticked` while `n > 0` of the `m` obligations, each owed one of
+///   those two counted as one, stand unsettled; `Re-verification · ✅ m of m
+///   settled` otherwise.
 /// - panics: none.
 ///
 /// # Adequacy
@@ -900,18 +916,21 @@ fn prose(report: &Report) -> Vec<&Obligation>
 ///   owed assessment counts.
 /// - witness: `gates::obligations::the_heading_and_the_table_carry_the_verdict`
 /// - witness: `gates::obligations::a_performance_fix_owes_a_lint_assessment`
+/// - witness: `gates::obligations::a_red_hotpath_check_owes_a_verdict`
 #[spec(ensures: |ref output| output.starts_with("Re-verification · "))]
 fn verdict(
     prose: &[&Obligation],
-    assessment: &Assessment,
+    report: &Report,
 ) -> String
 {
-    let assessed = usize::from(matches!(*assessment, Assessment::Owed { .. }));
+    let assessed = usize::from(matches!(report.assessment, Assessment::Owed { .. }))
+        .saturating_add(usize::from(matches!(report.hotpath, Verdict::Owed { .. })));
     let open = prose
         .iter()
         .filter(|obligation| obligation.discharge == Discharge::Open)
         .count()
-        .saturating_add(usize::from(assessment.unsettled().0));
+        .saturating_add(usize::from(report.assessment.unsettled().0))
+        .saturating_add(usize::from(report.hotpath.unsettled().0));
     let owed = prose.len().saturating_add(assessed);
     if owed == 0 {
         "Re-verification · ✅ nothing owed".to_owned()
@@ -1092,7 +1111,7 @@ pub fn render_comment(report: &Report) -> String
     let prose = prose(report);
     let mut lines = vec![
         COMMENT_MARKER.to_owned(),
-        format!("### {}", verdict(&prose, &report.assessment)),
+        format!("### {}", verdict(&prose, report)),
         String::new(),
         facts(report, &prose),
         String::new(),
@@ -1143,7 +1162,7 @@ fn code_list(paths: &BTreeSet<String>) -> String
 }
 
 /// The number of obligations nobody has settled: the open prose obligations,
-/// and the lint assessment while it is owed and unsettled.
+/// and the lint assessment and the hotpath verdict while owed and unsettled.
 ///
 /// # Specification
 /// trivial.
@@ -1156,7 +1175,11 @@ pub fn open_count(report: &Report) -> Count
         .iter()
         .filter(|obligation| obligation.discharge == Discharge::Open)
         .count();
-    Count(prose.saturating_add(usize::from(report.assessment.unsettled().0)))
+    Count(
+        prose
+            .saturating_add(usize::from(report.assessment.unsettled().0))
+            .saturating_add(usize::from(report.hotpath.unsettled().0)),
+    )
 }
 
 impl Assessment

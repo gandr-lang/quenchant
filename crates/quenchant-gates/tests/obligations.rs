@@ -18,6 +18,16 @@ use quenchant_gates::evidence::Position;
 use quenchant_gates::evidence::documentation;
 use quenchant_gates::evidence::read_prose;
 use quenchant_gates::evidence::read_records;
+use quenchant_gates::hotpath::Delta;
+use quenchant_gates::hotpath::Deltas;
+use quenchant_gates::hotpath::HOTPATH_MARKER;
+use quenchant_gates::hotpath::HOTPATH_TEMPLATE;
+use quenchant_gates::hotpath::Regressed;
+use quenchant_gates::hotpath::Standing as HotpathStanding;
+use quenchant_gates::hotpath::Unreported;
+use quenchant_gates::hotpath::Verdict;
+use quenchant_gates::hotpath::hotpath_verdict;
+use quenchant_gates::hotpath::read_report;
 use quenchant_gates::obligations::ASSESSED_LABELS;
 use quenchant_gates::obligations::ASSESSMENT_MARKER;
 use quenchant_gates::obligations::ASSESSMENT_TEMPLATE;
@@ -41,6 +51,7 @@ use quenchant_gates::semantic::ColumnNumber;
 use quenchant_gates::semantic::DocText;
 use quenchant_gates::semantic::IssueLabel;
 use quenchant_gates::semantic::LineNumber;
+use quenchant_shape::shape::Maybe;
 
 /// One fixture crate in its own Git repository, beside the policy library's
 /// pinned records for it.
@@ -749,6 +760,7 @@ fn an_acknowledgement_holds_only_at_its_revisions()
         obligations: obligations(&graph, &changed, &edit, &BTreeMap::new()),
         reruns: BTreeSet::new(),
         assessment: Assessment::NotOwed,
+        hotpath: Verdict::NotOwed,
     };
     let ticked = render_section(&report).replace("- [ ] still holds", "- [x] still holds");
     let acknowledged = acknowledgements(DocText(&ticked));
@@ -787,6 +799,7 @@ fn the_comment_lists_only_the_witnesses()
         obligations: obligations(&graph, &changed, &edit, &BTreeMap::new()),
         reruns: BTreeSet::new(),
         assessment: Assessment::NotOwed,
+        hotpath: Verdict::NotOwed,
     };
     let comment = render_comment(&report);
     assert_eq!(
@@ -823,6 +836,7 @@ fn the_heading_and_the_table_carry_the_verdict()
         obligations: obligations(&graph, &changed, &edit, &BTreeMap::new()),
         reruns: BTreeSet::new(),
         assessment: Assessment::NotOwed,
+        hotpath: Verdict::NotOwed,
     };
     let row = |verdict: &str| format!("| `b` | `requires` | `a` | {verdict} |");
     let section = render_section(&open);
@@ -895,6 +909,7 @@ fn the_heading_and_the_table_carry_the_verdict()
         }],
         reruns: BTreeSet::new(),
         assessment: Assessment::NotOwed,
+        hotpath: Verdict::NotOwed,
     };
     let section = render_section(&one_crate);
     assert!(
@@ -1005,6 +1020,186 @@ fn a_performance_fix_owes_a_lint_assessment()
     }
 }
 
+/// A red check's report: `gandr` regressed, `gandr-timing` unmoved.
+const RED: &str = r#"[
+  {"benchmark": "gandr", "before": "872", "after": "903", "regressed": true},
+  {"benchmark": "gandr-timing", "before": "313.23 ms", "after": "313.23 ms", "regressed": false}
+]"#;
+
+#[test]
+fn a_red_hotpath_check_owes_a_verdict()
+{
+    let path = Path::new("hotpath.json");
+    let red = read_report(DocText(RED), path).expect("read the report");
+    assert_eq!(
+        red.0.first(),
+        Some(&Delta {
+            benchmark: "gandr".to_owned(),
+            before: "872".to_owned(),
+            after: "903".to_owned(),
+            regressed: Regressed::Yes,
+        })
+    );
+    assert!(
+        matches!(
+            read_report(
+                DocText(r#"[{"benchmark": "gandr", "before": "872"}]"#),
+                path
+            ),
+            Err(GateError::Parse { .. })
+        ),
+        "a delta without its numbers is a malformed report"
+    );
+    assert_eq!(
+        hotpath_verdict(&Maybe::Absent(Unreported), DocText("")),
+        Verdict::NotOwed,
+        "no report, nothing owed"
+    );
+    let green = Deltas(
+        red.0
+            .iter()
+            .map(|delta| Delta {
+                regressed: Regressed::No,
+                ..delta.clone()
+            })
+            .collect(),
+    );
+    assert_eq!(
+        hotpath_verdict(&Maybe::Present(green), DocText("")),
+        Verdict::NotOwed,
+        "a report without a regression owes nothing"
+    );
+
+    let report = Maybe::Present(red);
+    let owed = Report {
+        base: "base".to_owned(),
+        hotpath: hotpath_verdict(&report, DocText("")),
+        ..Report::default()
+    };
+    let section = render_section(&owed);
+    assert!(
+        section.contains("## Re-verification · ⚠️ 1 of 1 unticked\n")
+            && section.contains(&format!("- [ ] {HOTPATH_TEMPLATE} {HOTPATH_MARKER}")),
+        "a regression owes the verdict, rendered unticked with its template: {section}"
+    );
+    assert_eq!(usize::from(open_count(&owed)), 1_usize);
+
+    let read = |verdict: &str| {
+        let body = section.replace(
+            &format!("- [ ] {HOTPATH_TEMPLATE}"),
+            &format!("- [x] {verdict}"),
+        );
+        hotpath_verdict(&report, DocText(&body))
+    };
+    let standing = |verdict: &str| match read(verdict) {
+        Verdict::Owed { standing, .. } => standing,
+        Verdict::NotOwed => panic!("a red report owes the verdict"),
+    };
+    let fixed = "hotpath: fixed — gandr 903 → 872";
+    assert_eq!(
+        standing(fixed),
+        HotpathStanding::Settled,
+        "a fixed verdict settles it"
+    );
+    let accepted = "hotpath: accepted — gandr exercises record literals; 31 allocations per \
+                    record; an arena per record was considered and loses to the shared one";
+    assert_eq!(
+        standing(accepted),
+        HotpathStanding::Settled,
+        "an accepted verdict over the moved benchmark settles it"
+    );
+    let rewritten = render_section(&Report {
+        hotpath: read(accepted),
+        ..owed.clone()
+    });
+    assert!(
+        rewritten.contains("## Re-verification · ✅ 1 of 1 settled\n")
+            && rewritten.contains(&format!("- [x] {accepted} {HOTPATH_MARKER}")),
+        "a rewrite of the section keeps the verdict and its tick: {rewritten}"
+    );
+    let unmoved = accepted.replace("— gandr exercises", "— gandr-timing exercises");
+    assert_eq!(
+        standing(&unmoved),
+        HotpathStanding::Unmoved,
+        "accepting a benchmark the report does not move is refused"
+    );
+    for malformed in [
+        "hotpath: fixed — gandr",
+        "hotpath: fixed — store 903 → 872",
+        "hotpath: fixed — gandr <before> → <after>",
+        "hotpath: accepted — gandr exercises records; many allocations per record; a sentence",
+        "hotpath: accepted — gandr exercises records; 31 allocations per record",
+        "hotpath: accepted — store exercises records; 31 allocations per record; a sentence",
+        HOTPATH_TEMPLATE,
+        "the diff is small",
+    ] {
+        assert_eq!(
+            standing(malformed),
+            HotpathStanding::Malformed,
+            "`{malformed}` ticked is in neither shape"
+        );
+    }
+    for open in [&unmoved, "hotpath: fixed — gandr"] {
+        assert_eq!(
+            usize::from(open_count(&Report {
+                hotpath: read(open),
+                ..owed.clone()
+            })),
+            1_usize,
+            "`{open}` keeps the verdict open"
+        );
+    }
+}
+
+#[test]
+fn an_unsettled_hotpath_verdict_fails_the_required_run()
+{
+    let fixture = Fixture::new(DocText("edges"), DocText("hotpath"));
+    let rustdoc = fixture.rustdoc();
+    let _fresh = fixture.obligations(&rustdoc);
+    std::fs::write(fixture.scratch.join("hotpath.json"), RED).expect("write the report");
+    let run = |body: &str| {
+        std::fs::write(fixture.scratch.join("body.md"), body).expect("write the body");
+        fixture
+            .command(&rustdoc)
+            .arg("--hotpath")
+            .arg(fixture.scratch.join("hotpath.json"))
+            .arg("--require-acknowledged")
+            .output()
+            .expect("run the subcommand")
+    };
+    let unticked = run("## What\n\nA change.\n");
+    let stderr = String::from_utf8_lossy(&unticked.stderr);
+    assert!(
+        unticked.status.code() == Some(2_i32)
+            && stderr.contains("hotpath verdict: the box is unticked"),
+        "a red report is refused until the verdict is ticked: {stderr}"
+    );
+    let written = fixture.body();
+    let template = format!("- [ ] {HOTPATH_TEMPLATE}");
+    assert!(
+        written.contains(&format!("{template} {HOTPATH_MARKER}")),
+        "the body gains the verdict line: {written}"
+    );
+    let unmoved = run(&written.replace(
+        &template,
+        "- [x] hotpath: accepted — gandr-timing exercises records; 31 allocations per record; \
+         an arena per record loses",
+    ));
+    let stderr = String::from_utf8_lossy(&unmoved.stderr);
+    assert!(
+        unmoved.status.code() == Some(2_i32)
+            && stderr.contains("accepts a benchmark the report does not move"),
+        "accepting the unmoved benchmark is refused, naming why: {stderr}"
+    );
+    let settled = run(&written.replace(&template, "- [x] hotpath: fixed — gandr 903 → 872"));
+    assert!(
+        settled.status.success(),
+        "a ticked fixed verdict settles it: {}",
+        String::from_utf8_lossy(&settled.stderr)
+    );
+}
+
 #[test]
 fn the_section_replaces_its_own_markers_only()
 {
@@ -1017,6 +1212,7 @@ fn the_section_replaces_its_own_markers_only()
         obligations: obligations(&graph, &changed, &edit, &BTreeMap::new()),
         reruns: BTreeSet::new(),
         assessment: Assessment::NotOwed,
+        hotpath: Verdict::NotOwed,
     };
     let section = render_section(&report);
     let gained = splice_section(DocText("## What\n\nA change.\n"), DocText(&section));
