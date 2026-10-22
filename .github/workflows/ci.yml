@@ -72,7 +72,7 @@ jobs:
       - &install-tools
         name: install job tools
         if: ${{ env.CI_INSTALL_TOOLS != 'false' }}
-        uses: taiki-e/install-action@1ed6d7be6168f6c9046541087ff549b6bc581fdf # v2.87.2
+        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
         # Tool sets resolve here: job-level env cannot reference workflow env.
         env:
           CI_TOOLS_NEXTEST: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
@@ -85,7 +85,7 @@ jobs:
       - &install-policy-tools
         name: install mise-managed policy tools
         if: *without-image
-        uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
         with:
           version: 2026.8.15
           # Keep Rustup proxies supplying RUSTUP_TOOLCHAIN to compiler plugins.
@@ -126,7 +126,7 @@ jobs:
         name: upload test report
         if: always()
         continue-on-error: true
-        uses: &upload-artifact actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        uses: &upload-artifact actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.1
         with:
           name: ${{ env.CI_REPORT_NAME }}
           path: ${{ env.CI_REPORT_PATH }}
