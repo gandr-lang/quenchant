@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! quenchant-gates anodized --manifest-path <Cargo.toml> [--require-enforcing]
-//! quenchant-gates witnesses --manifest-path <Cargo.toml> [--inventory <nextest-list.json>]...
+//! quenchant-gates witnesses --manifest-path <Cargo.toml> [--inventory <nextest-list.json>]... [--package <name>]... [--exclude <name>]...
 //! quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--body <file>] [--comment <file>] [--selection <file>] [--labels <label,...>] [--hotpath <report>] [--require-acknowledged]
 //! quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]
 //! quenchant-gates toolchain-bump --version <stable> [--root <repository>]
@@ -10,12 +10,12 @@
 //!
 //! An explicit consumer manifest selects both gates' scope, including for an
 //! installed binary launched elsewhere. `anodized` classifies invocation cfgs
-//! and can require panic-enabled checking; `witnesses` resolves the consumer's
-//! runnable inventory, listed here or read from the `cargo nextest list
-//! --message-format json` listings `--inventory` names, as a sharded test run
-//! writes them where its tests were built; `obligations` reports the
-//! re-verification a change owes and writes the pull-request comment and the
-//! nextest selection that discharges it.
+//! and can require panic-enabled checking; `witnesses` resolves the witnesses
+//! of the members `--package` and `--exclude` select against the consumer's
+//! runnable inventory, listed here or read from the nextest listings
+//! `--inventory` names, as a sharded test run writes them; `obligations`
+//! reports the re-verification a change owes and writes the pull-request
+//! comment and the nextest selection that discharges it.
 //!
 //! Policy violations and operational failures both produce unsuccessful exits
 //! with distinct diagnostics. Failure to obtain an inventory remains an
@@ -25,6 +25,7 @@ extern crate alloc;
 
 mod repository;
 
+use alloc::collections::BTreeSet;
 use std::path::Path;
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -39,12 +40,13 @@ use quenchant_gates::hotpath;
 use quenchant_gates::inventory;
 use quenchant_gates::obligations;
 use quenchant_gates::semantic::DocText;
+use quenchant_gates::semantic::ErrorMessage;
 use quenchant_gates::semantic::GitRevision;
 use quenchant_gates::semantic::IssueLabel;
 use quenchant_shape::shape::Maybe;
 
 /// Invalid argument shapes receive the complete supported command syntax.
-const USAGE: &str = "usage: quenchant-gates anodized --manifest-path <Cargo.toml> [--require-enforcing]\n       quenchant-gates witnesses --manifest-path <Cargo.toml> [--inventory <nextest-list.json>]...\n       quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--body <file>] [--comment <file>] [--selection <file>] [--labels <label,...>] [--hotpath <report>] [--require-acknowledged]\n       quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]\n       quenchant-gates toolchain-bump --version <stable> [--root <repository>]";
+const USAGE: &str = "usage: quenchant-gates anodized --manifest-path <Cargo.toml> [--require-enforcing]\n       quenchant-gates witnesses --manifest-path <Cargo.toml> [--inventory <nextest-list.json>]... [--package <name>]... [--exclude <name>]...\n       quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--body <file>] [--comment <file>] [--selection <file>] [--labels <label,...>] [--hotpath <report>] [--require-acknowledged]\n       quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]\n       quenchant-gates toolchain-bump --version <stable> [--root <repository>]";
 
 /// Argument interpretation selects one consumer or repository operation.
 ///
@@ -109,6 +111,7 @@ fn main() -> ExitCode
     };
     let mut requirement = Requirement::Observe;
     let mut listings = Vec::new();
+    let mut scope = Scope::default();
     while let Some(extra) = arguments.next() {
         match (subcommand.as_str(), extra.as_str()) {
             ("anodized", "--require-enforcing") if requirement == Requirement::Observe => {
@@ -122,6 +125,19 @@ fn main() -> ExitCode
                 };
                 listings.push(PathBuf::from(listing));
             },
+            ("witnesses", flag @ ("--package" | "--exclude")) => {
+                let Some(name) = arguments.next()
+                else {
+                    eprintln!("`{flag}` takes a member's name\n{USAGE}");
+                    return ExitCode::FAILURE;
+                };
+                if flag == "--package" {
+                    scope.packages.push(name);
+                }
+                else {
+                    scope.excludes.push(name);
+                }
+            },
             _ => {
                 eprintln!("unexpected argument `{extra}`\n{USAGE}");
                 return ExitCode::FAILURE;
@@ -131,7 +147,7 @@ fn main() -> ExitCode
     let manifest_path = PathBuf::from(manifest_path);
     match subcommand.as_str() {
         "anodized" => anodized_gate(&manifest_path, requirement),
-        "witnesses" => run_witnesses(&manifest_path, &listings),
+        "witnesses" => run_witnesses(&manifest_path, &listings, &scope),
         _ => {
             eprintln!("unknown gate `{subcommand}`\n{USAGE}");
             ExitCode::FAILURE
@@ -187,7 +203,8 @@ fn anodized_gate(
 ///
 /// # Specification
 /// - requires: `manifest_path` names the manifest of the workspace to gate;
-///   `listings`, when any, are nextest listings of its built tests.
+///   `listings`, when any, are nextest listings of its built tests; `scope`
+///   names members of it.
 /// - ensures: prints one line per unresolved or ambiguous witness and fails
 ///   when there is at least one, and prints the passing line and succeeds when
 ///   every witness resolves.
@@ -200,10 +217,12 @@ fn anodized_gate(
 ///   output; checking them here would rerun the external inventory.
 ///
 /// # Adequacy
-/// - hypothesis: L3 — a present witness passes, an absent witness fails, and a
-///   broken consumer or listing cannot report a pass.
+/// - hypothesis: L3 — a present witness passes, an absent witness fails, a
+///   member outside the named packages is not read, and a broken consumer, a
+///   listing or an unknown package cannot report a pass.
 /// - witness: `gates::repository::witness_inventory_uses_consumer_selection_over_shadowed_plugins`
 /// - witness: `gates::repository::saved_listings_resolve_the_witnesses_without_listing_again`
+/// - witness: `gates::repository::a_shard_resolves_only_the_members_it_names`
 #[expect(
     clippy::print_stderr,
     clippy::print_stdout,
@@ -213,9 +232,10 @@ fn anodized_gate(
 fn run_witnesses(
     manifest_path: &Path,
     listings: &[PathBuf],
+    scope: &Scope,
 ) -> ExitCode
 {
-    let findings = match inventory_gate(manifest_path, listings) {
+    let findings = match inventory_gate(manifest_path, listings, scope) {
         Ok(findings) => findings,
         Err(error) => {
             eprintln!("adequacy witness resolution (G0) could not run: {error}");
@@ -234,40 +254,83 @@ fn run_witnesses(
     ExitCode::FAILURE
 }
 
+/// The members a witness run reads: those `packages` names when it names any,
+/// else every member, less those `excludes` names. They are cargo's
+/// `--package` and `--workspace --exclude`, as a test shard selects its
+/// packages.
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+struct Scope
+{
+    /// The members `--package` names.
+    packages: Vec<String>,
+    /// The members `--exclude` names.
+    excludes: Vec<String>,
+}
+
 /// Workspace discovery and runnable inventory precede witness resolution.
 ///
 /// # Specification
 /// - requires: `manifest_path` names the manifest of the workspace to gate;
 ///   `listings`, when any, are nextest listings of its built tests, which then
-///   stand for the listing this gate would run.
-/// - ensures: every `- witness:` bullet of every member is resolved against
-///   that member's own test targets, and the findings come back in a
-///   deterministic order.
+///   stand for the listing this gate would run; `scope` names members of it.
+/// - ensures: every `- witness:` bullet of every member `scope` reads is
+///   resolved against that member's own test targets, and the findings come
+///   back in a deterministic order. A member's witnesses name its own tests, so
+///   members partitioned across shards resolve, shard by shard, exactly the
+///   witnesses the whole would.
 /// - provides: the unreported half of [`run_witnesses`], separated so an
 ///   operational failure stays a `Result` rather than becoming an empty
 ///   verdict.
 /// - fails: propagates the [`GateError`] raised by discovery, listing, or
-///   reading a member's sources or a listing.
+///   reading a member's sources or a listing, and [`GateError::Tool`] when
+///   `scope` names a package that is no member of the workspace.
 /// - panics: none.
 ///
 /// # Errors
-/// [`GateError::Tool`] when `cargo metadata` or a test listing fails, or a
-/// saved listing is not nextest's or lists nothing; [`GateError::Io`] when a
-/// member's source or a listing cannot be read; and [`GateError::Parse`] when
-/// one of those sources is not parseable Rust.
+/// [`GateError::Tool`] when `cargo metadata` or a test listing fails, a saved
+/// listing is not nextest's or lists nothing, or a named package is no member;
+/// [`GateError::Io`] when a member's source or a listing cannot be read; and
+/// [`GateError::Parse`] when one of those sources is not parseable Rust.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — the real consumer’s witness is resolved only against its
-///   own selected inventory, listed here or read from saved listings.
+///   own selected inventory, listed here or read from saved listings, and only
+///   over the members the scope reads.
 /// - witness: `gates::repository::witness_inventory_uses_consumer_selection_over_shadowed_plugins`
 /// - witness: `gates::repository::saved_listings_resolve_the_witnesses_without_listing_again`
+/// - witness: `gates::repository::a_shard_resolves_only_the_members_it_names`
 #[spec(ensures: |ref output| output.as_ref().is_ok_and(|findings| findings.is_sorted()) || output.is_err())]
 fn inventory_gate(
     manifest_path: &Path,
     listings: &[PathBuf],
+    scope: &Scope,
 ) -> Result<Vec<Finding>, GateError>
 {
-    let workspace = inventory::discover(manifest_path)?;
+    let mut workspace = inventory::discover(manifest_path)?;
+    let members: BTreeSet<&str> = workspace
+        .members
+        .iter()
+        .map(|member| member.name.as_str())
+        .collect();
+    let named = scope
+        .packages
+        .iter()
+        .map(|name| ("--package", name))
+        .chain(scope.excludes.iter().map(|name| ("--exclude", name)));
+    for (flag, name) in named {
+        if !members.contains(name.as_str()) {
+            return Err(GateError::tool(
+                "cargo metadata".into(),
+                ErrorMessage::from(&format!("`{flag} {name}` names no workspace member")),
+            ));
+        }
+    }
+    let packages: BTreeSet<&str> = scope.packages.iter().map(String::as_str).collect();
+    let excludes: BTreeSet<&str> = scope.excludes.iter().map(String::as_str).collect();
+    workspace.members.retain(|member| {
+        (packages.is_empty() || packages.contains(member.name.as_str()))
+            && !excludes.contains(member.name.as_str())
+    });
     let catalog = if listings.is_empty() {
         inventory::catalog(&workspace)?
     }

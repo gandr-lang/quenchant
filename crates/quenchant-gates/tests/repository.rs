@@ -409,3 +409,91 @@ pub fn operation() { let _: () = unknown_item; }
         "`--inventory` without a path must not run the gate"
     );
 }
+
+#[test]
+fn a_shard_resolves_only_the_members_it_names()
+{
+    let fixture = Fixture(
+        std::env::temp_dir().join(format!("quenchant-shard-members-{}", std::process::id())),
+    );
+    let workspace = fixture.0.join("workspace");
+    std::fs::create_dir_all(&workspace).expect("create workspace");
+    std::fs::write(
+        workspace.join("Cargo.toml"),
+        "[workspace]\nresolver = \"3\"\nmembers = [\"first\", \"second\"]\n",
+    )
+    .expect("write workspace manifest");
+    // Each member names a witness only its own shard lists; the sources
+    // parse but do not compile, so a pass is the listings' alone.
+    for member in ["first", "second"] {
+        std::fs::create_dir_all(workspace.join(member).join("src")).expect("create member");
+        std::fs::write(
+            workspace.join(member).join("Cargo.toml"),
+            format!("[package]\nname = \"{member}\"\nversion = \"0.0.0\"\nedition = \"2024\"\n"),
+        )
+        .expect("write member manifest");
+        std::fs::write(
+            workspace.join(member).join("src/lib.rs"),
+            format!(
+                "/// One witness, listed by this member's shard.\n///\n/// # Adequacy\n/// - \
+                 hypothesis: the declared test is present in this package's inventory.\n/// - \
+                 witness: `tests::{member}`\npub fn operation() {{ let _: () = unknown_item; }}\n"
+            ),
+        )
+        .expect("write member source");
+    }
+    let listing = fixture.0.join("first.json");
+    std::fs::write(
+        &listing,
+        r#"{"rust-suites": {"first": {"package-name": "first", "binary-id": "first", "binary-name": "first", "kind": "lib", "testcases": {"tests::first": {}}}}}"#,
+    )
+    .expect("write the first shard's listing");
+    let gate = |scope: &[(&str, &str)]| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_quenchant-gates"));
+        command
+            .args(["witnesses", "--manifest-path"])
+            .arg(workspace.join("Cargo.toml"))
+            .arg("--inventory")
+            .arg(&listing);
+        for &(flag, package) in scope {
+            command.arg(flag).arg(package);
+        }
+        command.output().expect("run the witness gate")
+    };
+
+    for scope in [[("--package", "first")], [("--exclude", "second")]] {
+        let output = gate(&scope);
+        assert!(
+            output.status.success(),
+            "the shard that selects its member, by name or by excluding the rest, resolves that \
+             member's witness alone: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let output = gate(&[]);
+    assert!(
+        !output.status.success()
+            && String::from_utf8_lossy(&output.stdout).contains("tests::second"),
+        "without a scope every member is read, and the other shard's witness is unresolved: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+
+    let output = gate(&[("--package", "first"), ("--package", "second")]);
+    assert!(
+        !output.status.success()
+            && String::from_utf8_lossy(&output.stdout).contains("tests::second"),
+        "a named member whose tests the listing lacks is unresolved, never skipped: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+
+    for scope in [[("--package", "third")], [("--exclude", "third")]] {
+        let output = gate(&scope);
+        assert!(
+            !output.status.success()
+                && String::from_utf8_lossy(&output.stderr).contains("could not run"),
+            "a package that is no member is an operational failure, never a pass: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
