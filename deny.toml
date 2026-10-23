@@ -121,7 +121,7 @@ allow-build-scripts = [
   # Dylint's UI harness configures compiletest through this build script.
   "compiletest_rs@0.11.2",
   # The Dylint bridge UI fixture builds cxx's bundled C++ runtime.
-  "cxx@1.0.202",
+  "cxx@1.0.205",
   # Dylint configures its driver through this build script.
   "dylint@6.0.4",
   # Dylint configures its tool paths through this build script.
@@ -158,7 +158,7 @@ allow-build-scripts = [
   # Cargo metadata requires serde_core's compiler capability probe.
   "serde_core@1.0.229",
   # Gate reports require serde_json's compiler capability probe.
-  "serde_json@1.0.151",
+  "serde_json@1.0.154",
   # Dylint's rustfix stack requires thiserror 1's compiler probe.
   "thiserror@1.0.69",
   # Cargo metadata requires thiserror 2's compiler probe.
@@ -179,7 +179,7 @@ include-workspace = true
 include-archives = true
 
 [[bans.build.bypass]]
-crate = "cxx@1.0.202"
+crate = "cxx@1.0.205"
 # Registry checksum pins documentation builders, which no fixture invokes.
 allow = [{ path = "book/build.js" }, { path = "book/build.sh" }]
 
