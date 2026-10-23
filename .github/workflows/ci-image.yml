@@ -28,7 +28,9 @@ concurrency:
 jobs:
   template:
     if: false
-    runs-on: &linux ubuntu-latest
+    # Every CI job that runs the image runs on arm64 except coverage.yml's
+    # measuring run.
+    runs-on: &linux ubuntu-24.04-arm
     permissions: &image-permissions
       contents: read
       packages: write
@@ -60,10 +62,10 @@ jobs:
         include:
           - arch: amd64
             platform: linux/amd64
-            runner: *linux
+            runner: ubuntu-latest
           - arch: arm64
             platform: linux/arm64
-            runner: ubuntu-24.04-arm
+            runner: *linux
     steps:
       - *git-checkout
       - *registry-login

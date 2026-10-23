@@ -1,0 +1,112 @@
+[
+  {
+    "name": "a landed branch's worktree is removed, its branch deleted as merged",
+    "input": [
+      {
+        "path": "/w/unit",
+        "branch": "unit",
+        "primary": false,
+        "cwd": false,
+        "merged": true,
+        "scratch": null
+      }
+    ],
+    "output": "[{\"path\":\"/w/unit\",\"branch\":\"unit\",\"action\":\"remove\",\"reason\":\"landed in origin/main\"}]"
+  },
+  {
+    "name": "a branch not landed keeps its worktree",
+    "input": [
+      {
+        "path": "/w/unit",
+        "branch": "unit",
+        "primary": false,
+        "cwd": false,
+        "merged": false,
+        "scratch": null
+      }
+    ],
+    "output": "[{\"path\":\"/w/unit\",\"branch\":\"unit\",\"action\":\"keep\",\"reason\":\"not landed\"}]"
+  },
+  {
+    "name": "a landed wip/ branch keeps its worktree",
+    "input": [
+      {
+        "path": "/w/try",
+        "branch": "wip/try",
+        "primary": false,
+        "cwd": false,
+        "merged": true,
+        "scratch": null
+      }
+    ],
+    "output": "[{\"path\":\"/w/try\",\"branch\":\"wip/try\",\"action\":\"keep\",\"reason\":\"a wip/ branch\"}]"
+  },
+  {
+    "name": "the caller's own worktree is kept though its branch landed",
+    "input": [
+      {
+        "path": "/w/unit",
+        "branch": "unit",
+        "primary": false,
+        "cwd": true,
+        "merged": true,
+        "scratch": null
+      }
+    ],
+    "output": "[{\"path\":\"/w/unit\",\"branch\":\"unit\",\"action\":\"keep\",\"reason\":\"the caller's own worktree\"}]"
+  },
+  {
+    "name": "the primary worktree is kept on main",
+    "input": [
+      {
+        "path": "/w/clone",
+        "branch": "main",
+        "primary": true,
+        "cwd": false,
+        "merged": true,
+        "scratch": null
+      }
+    ],
+    "output": "[{\"path\":\"/w/clone\",\"branch\":\"main\",\"action\":\"keep\",\"reason\":\"the primary worktree\"}]"
+  },
+  {
+    "name": "a scratch is force-removed after 4 hours unchanged, kept before",
+    "input": [
+      {
+        "path": "/tmp/tmp.old",
+        "branch": null,
+        "primary": false,
+        "cwd": false,
+        "merged": false,
+        "scratch": {
+          "young": false
+        }
+      },
+      {
+        "path": "/tmp/tmp.new",
+        "branch": null,
+        "primary": false,
+        "cwd": false,
+        "merged": false,
+        "scratch": {
+          "young": true
+        }
+      }
+    ],
+    "output": "[{\"path\":\"/tmp/tmp.old\",\"branch\":null,\"action\":\"force\",\"reason\":\"scratch unchanged for 4 hours\"},{\"path\":\"/tmp/tmp.new\",\"branch\":null,\"action\":\"keep\",\"reason\":\"scratch changed within 4 hours\"}]"
+  },
+  {
+    "name": "a detached worktree outside the temporary directories is kept",
+    "input": [
+      {
+        "path": "/w/bisect",
+        "branch": null,
+        "primary": false,
+        "cwd": false,
+        "merged": false,
+        "scratch": null
+      }
+    ],
+    "output": "[{\"path\":\"/w/bisect\",\"branch\":null,\"action\":\"keep\",\"reason\":\"detached, not a scratch\"}]"
+  }
+]

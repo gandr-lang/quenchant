@@ -1,0 +1,16 @@
+# No worktree is created without a sweep: the clone's landed worktrees and
+# leaked scratch go first, and under the disk floor the creation is refused
+# (`wt:sweep --guard`).
+[pre-start]
+sweep = "mise run wt:sweep --guard"
+
+# A new worktree starts warm where the filesystem clones (`wt:warm`): every
+# gitignored artifact of the primary worktree is copied in as a reflink, and
+# a filesystem that cannot clone skips the copy. Existing files are never
+# overwritten, so the step is safe to re-run; a mutation run's output stays
+# with the worktree that produced it.
+[post-start]
+copy = "mise run wt:warm"
+
+[step.copy-ignored]
+exclude = ["mutants.out/"]
