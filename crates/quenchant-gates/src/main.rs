@@ -1,7 +1,8 @@
 //! Consumer-scoped verification and repository-policy refusals.
 //!
 //! ```text
-//! quenchant-gates <anodized | witnesses> --manifest-path <Cargo.toml>
+//! quenchant-gates anodized --manifest-path <Cargo.toml> [--require-enforcing]
+//! quenchant-gates witnesses --manifest-path <Cargo.toml> [--inventory <nextest-list.json>]...
 //! quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--body <file>] [--comment <file>] [--selection <file>] [--labels <label,...>] [--hotpath <report>] [--require-acknowledged]
 //! quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]
 //! quenchant-gates toolchain-bump --version <stable> [--root <repository>]
@@ -10,9 +11,11 @@
 //! An explicit consumer manifest selects both gates' scope, including for an
 //! installed binary launched elsewhere. `anodized` classifies invocation cfgs
 //! and can require panic-enabled checking; `witnesses` resolves the consumer's
-//! runnable inventory; `obligations` reports the re-verification a change owes
-//! and writes the pull-request comment and the nextest selection that
-//! discharges it.
+//! runnable inventory, listed here or read from the `cargo nextest list
+//! --message-format json` listings `--inventory` names, as a sharded test run
+//! writes them where its tests were built; `obligations` reports the
+//! re-verification a change owes and writes the pull-request comment and the
+//! nextest selection that discharges it.
 //!
 //! Policy violations and operational failures both produce unsuccessful exits
 //! with distinct diagnostics. Failure to obtain an inventory remains an
@@ -41,7 +44,7 @@ use quenchant_gates::semantic::IssueLabel;
 use quenchant_shape::shape::Maybe;
 
 /// Invalid argument shapes receive the complete supported command syntax.
-const USAGE: &str = "usage: quenchant-gates <anodized | witnesses> --manifest-path <Cargo.toml> [--require-enforcing]\n       quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--body <file>] [--comment <file>] [--selection <file>] [--labels <label,...>] [--hotpath <report>] [--require-acknowledged]\n       quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]\n       quenchant-gates toolchain-bump --version <stable> [--root <repository>]";
+const USAGE: &str = "usage: quenchant-gates anodized --manifest-path <Cargo.toml> [--require-enforcing]\n       quenchant-gates witnesses --manifest-path <Cargo.toml> [--inventory <nextest-list.json>]...\n       quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--body <file>] [--comment <file>] [--selection <file>] [--labels <label,...>] [--hotpath <report>] [--require-acknowledged]\n       quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]\n       quenchant-gates toolchain-bump --version <stable> [--root <repository>]";
 
 /// Argument interpretation selects one consumer or repository operation.
 ///
@@ -104,24 +107,31 @@ fn main() -> ExitCode
         eprintln!("`--manifest-path` takes a path\n{USAGE}");
         return ExitCode::FAILURE;
     };
-    let requirement = match arguments.next() {
-        None => Requirement::Observe,
-        Some(extra) if subcommand == "anodized" && extra == "--require-enforcing" => {
-            Requirement::Enforcing
-        },
-        Some(extra) => {
-            eprintln!("unexpected argument `{extra}`\n{USAGE}");
-            return ExitCode::FAILURE;
-        },
-    };
-    if let Some(extra) = arguments.next() {
-        eprintln!("unexpected argument `{extra}`\n{USAGE}");
-        return ExitCode::FAILURE;
+    let mut requirement = Requirement::Observe;
+    let mut listings = Vec::new();
+    while let Some(extra) = arguments.next() {
+        match (subcommand.as_str(), extra.as_str()) {
+            ("anodized", "--require-enforcing") if requirement == Requirement::Observe => {
+                requirement = Requirement::Enforcing;
+            },
+            ("witnesses", "--inventory") => {
+                let Some(listing) = arguments.next()
+                else {
+                    eprintln!("`--inventory` takes a path\n{USAGE}");
+                    return ExitCode::FAILURE;
+                };
+                listings.push(PathBuf::from(listing));
+            },
+            _ => {
+                eprintln!("unexpected argument `{extra}`\n{USAGE}");
+                return ExitCode::FAILURE;
+            },
+        }
     }
     let manifest_path = PathBuf::from(manifest_path);
     match subcommand.as_str() {
         "anodized" => anodized_gate(&manifest_path, requirement),
-        "witnesses" => run_witnesses(&manifest_path),
+        "witnesses" => run_witnesses(&manifest_path, &listings),
         _ => {
             eprintln!("unknown gate `{subcommand}`\n{USAGE}");
             ExitCode::FAILURE
@@ -176,31 +186,36 @@ fn anodized_gate(
 /// Witness findings determine the consumer run's process outcome.
 ///
 /// # Specification
-/// - requires: `manifest_path` names the manifest of the workspace to gate.
+/// - requires: `manifest_path` names the manifest of the workspace to gate;
+///   `listings`, when any, are nextest listings of its built tests.
 /// - ensures: prints one line per unresolved or ambiguous witness and fails
 ///   when there is at least one, and prints the passing line and succeeds when
 ///   every witness resolves.
 /// - provides: the exit status the gate CI job reads.
 /// - fails: reports a failing status and a distinct "could not run" message
-///   when the workspace cannot be discovered or its tests cannot be listed, so
-///   an unmeasured run is never reported as a pass.
+///   when the workspace cannot be discovered or its tests cannot be listed or
+///   read from the listings, so an unmeasured run is never reported as a pass.
 /// - panics: none.
 /// - executable: none — the findings are consumed into write-only process
 ///   output; checking them here would rerun the external inventory.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — a present witness passes, an absent witness fails, and a
-///   broken consumer cannot report a pass.
+///   broken consumer or listing cannot report a pass.
 /// - witness: `gates::repository::witness_inventory_uses_consumer_selection_over_shadowed_plugins`
+/// - witness: `gates::repository::saved_listings_resolve_the_witnesses_without_listing_again`
 #[expect(
     clippy::print_stderr,
     clippy::print_stdout,
     reason = "G0's verdict is its console report; the CI job reads the printed findings, each \
               addressed to the source line that must change"
 )]
-fn run_witnesses(manifest_path: &Path) -> ExitCode
+fn run_witnesses(
+    manifest_path: &Path,
+    listings: &[PathBuf],
+) -> ExitCode
 {
-    let findings = match inventory_gate(manifest_path) {
+    let findings = match inventory_gate(manifest_path, listings) {
         Ok(findings) => findings,
         Err(error) => {
             eprintln!("adequacy witness resolution (G0) could not run: {error}");
@@ -222,7 +237,9 @@ fn run_witnesses(manifest_path: &Path) -> ExitCode
 /// Workspace discovery and runnable inventory precede witness resolution.
 ///
 /// # Specification
-/// - requires: `manifest_path` names the manifest of the workspace to gate.
+/// - requires: `manifest_path` names the manifest of the workspace to gate;
+///   `listings`, when any, are nextest listings of its built tests, which then
+///   stand for the listing this gate would run.
 /// - ensures: every `- witness:` bullet of every member is resolved against
 ///   that member's own test targets, and the findings come back in a
 ///   deterministic order.
@@ -230,23 +247,33 @@ fn run_witnesses(manifest_path: &Path) -> ExitCode
 ///   operational failure stays a `Result` rather than becoming an empty
 ///   verdict.
 /// - fails: propagates the [`GateError`] raised by discovery, listing, or
-///   reading a member's sources.
+///   reading a member's sources or a listing.
 /// - panics: none.
 ///
 /// # Errors
-/// [`GateError::Tool`] when `cargo metadata` or a test listing fails,
-/// [`GateError::Io`] when a member's source cannot be read, and
-/// [`GateError::Parse`] when one of those sources is not parseable Rust.
+/// [`GateError::Tool`] when `cargo metadata` or a test listing fails, or a
+/// saved listing is not nextest's or lists nothing; [`GateError::Io`] when a
+/// member's source or a listing cannot be read; and [`GateError::Parse`] when
+/// one of those sources is not parseable Rust.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — the real consumer’s witness is resolved only against its
-///   own selected inventory.
+///   own selected inventory, listed here or read from saved listings.
 /// - witness: `gates::repository::witness_inventory_uses_consumer_selection_over_shadowed_plugins`
+/// - witness: `gates::repository::saved_listings_resolve_the_witnesses_without_listing_again`
 #[spec(ensures: |ref output| output.as_ref().is_ok_and(|findings| findings.is_sorted()) || output.is_err())]
-fn inventory_gate(manifest_path: &Path) -> Result<Vec<Finding>, GateError>
+fn inventory_gate(
+    manifest_path: &Path,
+    listings: &[PathBuf],
+) -> Result<Vec<Finding>, GateError>
 {
     let workspace = inventory::discover(manifest_path)?;
-    let catalog = inventory::catalog(&workspace)?;
+    let catalog = if listings.is_empty() {
+        inventory::catalog(&workspace)?
+    }
+    else {
+        inventory::catalog_from(listings)?
+    };
     inventory::run(&workspace, &catalog)
 }
 
