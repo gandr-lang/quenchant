@@ -568,5 +568,5 @@ wt step copy-ignored
 # when gandr's tool gains what quenchant's lanes need.
 ["ci:lane-budget"]
 description = "Each CI lane's median job time over recent runs against its budget"
-env.GANDR_LANE_BUDGET_REV = "a56c96da230477cdb418191c6fff9411b65ede83"
+env.GANDR_LANE_BUDGET_REV = "038f2d0fd42358c959ba3af2da4984a543ccd30a"
 run = "cargo install --quiet --git https://github.com/gandr-lang/gandr --rev \"$GANDR_LANE_BUDGET_REV\" --locked --root target/workflow-tools --bin lane-budget gandr-workflow-lane-budget && target/workflow-tools/bin/lane-budget"

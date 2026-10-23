@@ -57,13 +57,12 @@
 //! **One shape in two places.** The body section and the comment open with
 //! the same verdict heading: `Re-verification · ✅ 9 of 9 settled`,
 //! `⚠️ 2 of 9 unticked` while a box is open, or `✅ nothing owed`. The base and
-//! the counts follow on the next line, then a table with one row per prose
-//! obligation: item, clause, names, verdict. The detail is collapsed under
-//! `<details>`. In the body the detail is the task boxes, whose lines and
-//! `ack` markers [`acknowledgements`] reads, so a body any earlier version
-//! wrote still reads back. In the comment the detail is the witnesses rerun,
-//! and the comment carries no task box. The shape follows the benchmark
-//! report's comment: the verdict on one line, the detail one click away.
+//! the counts follow on the next line, then a table, one row per prose
+//! obligation, collapsed under `9 clauses — settled` or `— 2 unticked`. In
+//! the body the boxes follow, collapsed; their lines and `ack` markers
+//! [`acknowledgements`] reads, so a body any earlier version wrote still reads
+//! back. In the comment the witnesses rerun follow, collapsed, and the comment
+//! carries no task box: the verdict on one line, each list one click away.
 
 use alloc::collections::BTreeMap;
 use alloc::collections::BTreeSet;
@@ -1017,7 +1016,10 @@ fn section(
         }
         lines.extend([
             String::new(),
-            "<details><summary>Acknowledgements</summary>".to_owned(),
+            format!(
+                "<details><summary>Acknowledgements: {}</summary>",
+                clauses(&prose)
+            ),
             String::new(),
             "Re-read each clause against the changed items it names, then tick one box. The \
              clauses naming exactly the same changed items share one pair. A tick holds until \
@@ -1168,20 +1170,47 @@ fn facts(
     )
 }
 
-/// One markdown table row per prose obligation: the item, the clause, what it
-/// names, and its verdict.
+/// The count of `prose` and its standing: `n clauses — settled`, or `n clauses
+/// — k unticked` while `k > 0` of them stand open.
 ///
 /// # Specification
-/// - ensures: a header row, a delimiter row, then one row per obligation in
-///   order. Each path drops the crate every row shares, which [`facts`] names
-///   once. The verdict reads `✅ still holds`, `🔁 updated` or `☐ unticked`.
+/// trivial.
+fn clauses(prose: &[&Obligation]) -> String
+{
+    let open = prose
+        .iter()
+        .filter(|obligation| obligation.discharge == Discharge::Open)
+        .count();
+    let noun = if prose.len() == 1 {
+        "clause"
+    }
+    else {
+        "clauses"
+    };
+    if open > 0 {
+        format!("{} {noun} — {open} unticked", prose.len())
+    }
+    else {
+        format!("{} {noun} — settled", prose.len())
+    }
+}
+
+/// One markdown table row per prose obligation: the item, the clause, what it
+/// names, and its verdict, collapsed under [`clauses`]'s summary.
+///
+/// # Specification
+/// - ensures: a `<details>` line whose summary is [`clauses`] and a blank line;
+///   a header row, a delimiter row, then one row per obligation in order; a
+///   blank line and `</details>`. Each path drops the crate every row shares,
+///   which [`facts`] names once. The verdict reads `✅ still holds`, `🔁
+///   updated` or `☐ unticked`.
 /// - panics: none.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — an open and a ticked obligation render the row shape with
-///   their verdicts.
+///   their verdicts, collapsed under the count of the open one.
 /// - witness: `gates::obligations::the_heading_and_the_table_carry_the_verdict`
-#[spec(ensures: |ref output| output.len() == prose.len().saturating_add(2_usize))]
+#[spec(ensures: |ref output| output.len() == prose.len().saturating_add(6_usize))]
 fn table(prose: &[&Obligation]) -> Vec<String>
 {
     let shared = shared_crate(prose);
@@ -1202,6 +1231,8 @@ fn table(prose: &[&Obligation]) -> Vec<String>
         row.push('`');
     };
     let mut rows = vec![
+        format!("<details><summary>{}</summary>", clauses(prose)),
+        String::new(),
         "| item | clause | names | verdict |".to_owned(),
         "| --- | --- | --- | --- |".to_owned(),
     ];
@@ -1225,6 +1256,7 @@ fn table(prose: &[&Obligation]) -> Vec<String>
         });
         row
     }));
+    rows.extend([String::new(), "</details>".to_owned()]);
     rows
 }
 
@@ -1319,10 +1351,16 @@ pub fn render_comment(report: &Report) -> String
         lines.extend(table(&prose));
         lines.push(String::new());
     }
+    let witnesses = if report.reruns.len() == 1 {
+        "witness"
+    }
+    else {
+        "witnesses"
+    };
     lines.extend([
         "<details>".to_owned(),
         format!(
-            "<summary>Witnesses rerun with specifications enforced: {}</summary>",
+            "<summary>{} {witnesses} — rerun with specifications enforced</summary>",
             report.reruns.len()
         ),
         String::new(),

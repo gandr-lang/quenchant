@@ -584,6 +584,7 @@ fn an_open_obligation_fails_only_when_acknowledgement_is_required()
         fixture.body(),
         ticked
             .replace("⚠️ 1 of 1 unticked", "✅ 1 of 1 settled")
+            .replace("1 clause — 1 unticked", "1 clause — settled")
             .replace("☐ unticked", "✅ still holds"),
         "rewriting the section keeps the tick and the prose around it, and counts it settled"
     );
@@ -1090,7 +1091,7 @@ fn the_comment_lists_only_the_witnesses()
     );
     assert!(
         comment.contains(
-            "<details>\n<summary>Witnesses rerun with specifications enforced: 0</summary>\n"
+            "<details>\n<summary>0 witnesses — rerun with specifications enforced</summary>\n"
         ),
         "the witnesses are collapsed under one summary line: {comment}"
     );
@@ -1136,14 +1137,16 @@ fn the_heading_and_the_table_carry_the_verdict()
         );
         assert!(
             text.contains(&format!(
-                "| item | clause | names | verdict |\n| --- | --- | --- | --- |\n{}\n",
+                "<details><summary>1 clause — 1 unticked</summary>\n\n| item | clause | names | \
+                 verdict |\n| --- | --- | --- | --- |\n{}\n\n</details>\n",
                 row("☐ unticked")
             )),
-            "the {place} table has one row per prose obligation: {text}"
+            "the {place} table has one row per prose obligation, collapsed under the count \
+             of the open one: {text}"
         );
     }
     assert!(
-        section.contains("<details><summary>Acknowledgements</summary>\n\n")
+        section.contains("<details><summary>Acknowledgements: 1 clause — 1 unticked</summary>\n\n")
             && section.contains("<!-- ack updated b#requires@")
             && section.contains("\n\n</details>\n"),
         "the boxes are collapsed, a blank line inside each edge of the block: {section}"
@@ -1160,8 +1163,9 @@ fn the_heading_and_the_table_carry_the_verdict()
         let section = render_section(&settled);
         assert!(
             section.contains("## Re-verification · ✅ 1 of 1 settled\n")
-                && section.contains(&row(verdict)),
-            "a box ticked {ticked} settles the heading and the row: {section}"
+                && section.contains(&row(verdict))
+                && section.contains("<details><summary>1 clause — settled</summary>\n"),
+            "a box ticked {ticked} settles the heading, the row and the summary: {section}"
         );
     }
 
@@ -1517,6 +1521,7 @@ fn the_section_replaces_its_own_markers_only()
         splice_section(DocText(&written), DocText(&fresh)),
         written
             .replace("⚠️ 1 of 1 unticked", "✅ 1 of 1 settled")
+            .replace("1 clause — 1 unticked", "1 clause — settled")
             .replace("☐ unticked", "✅ still holds"),
         "a fresh section over a ticked one keeps the tick and the prose on either side, and \
          counts it settled"
