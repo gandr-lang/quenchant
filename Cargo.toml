@@ -75,7 +75,7 @@ version = "=0.1.98"
 # consumers:
 # - quenchant-fixture-macros (dev)
 [workspace.dependencies.cxx]
-version = "=1.0.202"
+version = "=1.0.205"
 default-features = false
 features = ["alloc"]
 
@@ -207,7 +207,7 @@ features = ["display", "parse"]
 # consumers:
 # - quenchant-gates
 [workspace.dependencies.yaml-rust2]
-version = "0.12.0"
+version = "0.13.0"
 default-features = false
 
 [workspace.lints.clippy]
