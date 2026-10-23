@@ -557,3 +557,16 @@ if ! "${clone[@]}" "$probe" "$here/.wt-warm-probe" 2> /dev/null; then
 fi
 wt step copy-ignored
 '''
+
+# Each CI lane's median job time over the newest merge-queue and
+# pull-request runs of `ci.yml`, against the budgets the nightly workflow
+# states, and with `--issue` the one issue that stays open while a lane is
+# over its budget. The tool is gandr's (`crates/workflow-lane-budget`),
+# installed from the gandr revision `GANDR_LANE_BUDGET_REV` names, with that
+# revision's lockfile, into `target/workflow-tools`; an installed binary at
+# the same revision is kept. quenchant keeps no copy of it, and the pin moves
+# when gandr's tool gains what quenchant's lanes need.
+["ci:lane-budget"]
+description = "Each CI lane's median job time over recent runs against its budget"
+env.GANDR_LANE_BUDGET_REV = "a56c96da230477cdb418191c6fff9411b65ede83"
+run = "cargo install --quiet --git https://github.com/gandr-lang/gandr --rev \"$GANDR_LANE_BUDGET_REV\" --locked --root target/workflow-tools --bin lane-budget gandr-workflow-lane-budget && target/workflow-tools/bin/lane-budget"
