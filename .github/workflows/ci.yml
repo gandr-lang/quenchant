@@ -43,7 +43,10 @@ jobs:
   template:
     if: false
     needs: &rust-needs [changes, ci-image-ref]
-    runs-on: &linux ubuntu-latest
+    # arm64, as gandr's lanes (gandr-lang/gandr#702: its suite 27% and a warm
+    # rebuild 9% faster than ubuntu-latest's x86-64). coverage.yml's measuring
+    # run is the one x86-64 Linux job, so the image is published for both.
+    runs-on: &linux ubuntu-24.04-arm
     # Job containers pull repository-linked GHCR images with GITHUB_TOKEN.
     permissions: &image-read-permissions
       contents: read
@@ -72,7 +75,7 @@ jobs:
       - &install-tools
         name: install job tools
         if: ${{ env.CI_INSTALL_TOOLS != 'false' }}
-        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         # Tool sets resolve here: job-level env cannot reference workflow env.
         env:
           CI_TOOLS_NEXTEST: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
@@ -85,7 +88,7 @@ jobs:
       - &install-policy-tools
         name: install mise-managed policy tools
         if: *without-image
-        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+        uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
         with:
           version: 2026.8.15
           # Keep Rustup proxies supplying RUSTUP_TOOLCHAIN to compiler plugins.

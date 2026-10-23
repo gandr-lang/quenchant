@@ -42,7 +42,7 @@ jobs:
   # Definitions only: aliases run in each consuming job's context.
   template:
     if: false
-    runs-on: &linux ubuntu-latest
+    runs-on: &linux ubuntu-24.04-arm
     permissions: &image-read-permissions
       contents: read
       packages: read
@@ -71,7 +71,7 @@ jobs:
       - &install-tools
         name: install job tools
         if: *without-image
-        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
         env:
           CI_TOOLS_NEXTEST: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
         with:
@@ -79,7 +79,7 @@ jobs:
       - &install-policy-tools
         name: install mise-managed policy tools
         if: *without-image
-        uses: jdx/mise-action@08ae2a091c038e1e05ec6f5115dc5c69d5a2a6b8 # v5.1.2
+        uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
         with:
           version: 2026.10.3
           cache: true
@@ -176,7 +176,8 @@ jobs:
     name: measure and upload coverage
     needs: [ci-image-ref, freshness]
     if: ${{ !cancelled() && !failure() && (github.event_name == 'workflow_dispatch' || needs.freshness.outputs.stale == 'true') }}
-    runs-on: *linux
+    # The measuring run stays on x86-64, as gandr's does.
+    runs-on: ubuntu-latest
     permissions: *image-read-permissions
     container: ${{ needs.ci-image-ref.outputs.ref }} # zizmor: ignore[unpinned-images]
     timeout-minutes: 45

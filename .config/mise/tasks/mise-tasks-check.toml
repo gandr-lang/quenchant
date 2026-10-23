@@ -117,8 +117,10 @@ env.DYLINT_RUSTFLAGS = "-D spec_attribute_present -D adequacy_present -D maybe_s
 # The plugin must link through dylint-link even when cargo dylint builds it
 # from the workspace root, where its crate-local Cargo configuration is absent.
 # Cargo's linker variable is per target, so each host the wall runs on is
-# named: the Linux CI image and the Apple Silicon and Intel developer hosts.
+# named: the Linux CI image on arm64 and x86-64, and the Apple Silicon and
+# Intel developer hosts.
 env.CARGO_TARGET_X86_64_UNKNOWN_LINUX_GNU_LINKER = "dylint-link"
+env.CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER = "dylint-link"
 env.CARGO_TARGET_AARCH64_APPLE_DARWIN_LINKER = "dylint-link"
 env.CARGO_TARGET_X86_64_APPLE_DARWIN_LINKER = "dylint-link"
 # Cargo's encoded flags win even when empty. Otherwise encode the ordinary
@@ -165,6 +167,29 @@ while IFS= read -r case; do
 done < <(jq -c '.[]' .config/claims/cases.json)
 (( failed == 0 )) || exit 1
 echo "claims check OK: $(jq length .config/claims/cases.json) cases gave their removals"
+'''
+
+# What `wt:sweep` removes (`.config/worktrees/sweep.jq`). Each case in
+# `.config/worktrees/cases.json` holds the worktrees' facts and the decisions
+# they must give, as compact JSON.
+["check:worktrees"]
+description = "The worktree sweep gives each recorded case its decisions"
+tools.jq = "1.8.1"
+run = '''
+#!/usr/bin/env bash
+set -euo pipefail
+failed=0
+while IFS= read -r case; do
+  name=$(jq -r .name <<< "$case")
+  got=$(jq .input <<< "$case" | jq -c -f .config/worktrees/sweep.jq)
+  want=$(jq -r .output <<< "$case")
+  if [[ "$got" != "$want" ]]; then
+    printf 'worktrees case FAILED: %s\n  gave:\n%s\n  wanted:\n%s\n' "$name" "$got" "$want" >&2
+    failed=1
+  fi
+done < <(jq -c '.[]' .config/worktrees/cases.json)
+(( failed == 0 )) || exit 1
+echo "worktrees check OK: $(jq length .config/worktrees/cases.json) cases gave their decisions"
 '''
 
 # Fan out to every check:* task; a new check:* task is picked up without

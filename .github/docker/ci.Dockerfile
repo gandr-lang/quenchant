@@ -41,7 +41,10 @@ RUN set -eux; \
     rustup default "$(sed -n 's/^channel = "\(.*\)"/\1/p' rust-toolchain.toml)"
 
 # ci.yml selects mise's version. A BuildKit secret authenticates release
-# attestations without persisting a credential in any layer.
+# attestations without persisting a credential in any layer. Build caches
+# (Cargo's registry, mise's downloads) leave in the layer that made them:
+# every container job extracts the whole image before its first step
+# (gandr-lang/gandr#1999).
 RUN --mount=type=secret,id=github_token,uid=1000,required=false set -eux; \
     if [ -s /run/secrets/github_token ]; then GITHUB_TOKEN="$(cat /run/secrets/github_token)"; export GITHUB_TOKEN; fi; \
     expected="$(sed -n 's/^  MISE_DISABLE_TOOLS: "\(.*\)"$/\1/p' /opt/pins/ci.yml)"; \
@@ -56,7 +59,8 @@ RUN --mount=type=secret,id=github_token,uid=1000,required=false set -eux; \
     mkdir -p /opt/ci/.local/bin; \
     curl -fsSL "https://github.com/jdx/mise/releases/download/v${MISE_VERSION}/mise-v${MISE_VERSION}-linux-${ARCH}" -o /opt/ci/.local/bin/mise; \
     chmod +x /opt/ci/.local/bin/mise; \
-    mise install
+    mise install; \
+    rm -rf /opt/ci/.cargo/registry /opt/ci/.cargo/git /opt/ci/.cache
 
 # Cargo resolves its subcommands by name; expose pinned binaries without shims.
 RUN set -eux; \
@@ -106,7 +110,7 @@ RUN set -eux; \
     mv "/opt/ci/warmup/gates/target/release/libdylint_warmup_gates.so" "/opt/ci/warmup/gates/target/release/libdylint_warmup_gates@${TC}.so"; \
     DYLINT_LIBRARY_PATH=/opt/ci/warmup/gates/target/release cargo dylint --lib dylint_warmup_gates --no-deps; \
     ls -l "/opt/ci/.dylint_drivers/${TC}/dylint-driver"; \
-    rm -rf /opt/ci/warmup
+    rm -rf /opt/ci/warmup /opt/ci/.cargo/registry /opt/ci/.cargo/git
 
 # The runner overrides HOME. Explicit homes retain the image's populated
 # tools, while root can write the workspace and runner file-command mounts.
