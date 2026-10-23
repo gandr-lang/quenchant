@@ -302,6 +302,54 @@ pub fn catalog(workspace: &Workspace) -> Result<TestCatalog, GateError>
     Ok(catalog)
 }
 
+/// Runnable inventory read from saved nextest listings rather than listed
+/// here.
+///
+/// # Specification
+/// - requires: each of `listings` holds one `cargo nextest list
+///   --message-format json` document, listed under the configuration the
+///   witnesses are resolved against; together they list the workspace.
+/// - ensures: the catalog holds every test of every listing; an inventory that
+///   found no test at all is refused, as [`catalog`] refuses one.
+/// - provides: the resolution table where the tests were built and listed
+///   elsewhere, as by the shards of a sharded test run.
+/// - fails: [`GateError::Io`] when a listing cannot be read;
+///   [`GateError::Tool`] when one is not a nextest listing, or the listings
+///   hold no test.
+/// - panics: none.
+///
+/// # Errors
+/// [`GateError::Io`] when a listing cannot be read, and [`GateError::Tool`]
+/// when one is not a nextest listing or the listings list nothing.
+///
+/// # Adequacy
+/// - hypothesis: L3 — two shards' listings resolve the witnesses of both, and a
+///   missing or empty listing cannot pass.
+/// - witness: `gates::repository::saved_listings_resolve_the_witnesses_without_listing_again`
+#[spec(ensures: |ref output| output.as_ref().is_ok_and(|listed| usize::from(listed.alias_count()) > 0) || matches!(output, &Err(GateError::Io { .. } | GateError::Tool { .. }))) ]
+#[inline]
+pub fn catalog_from(listings: &[PathBuf]) -> Result<TestCatalog, GateError>
+{
+    let mut catalog = TestCatalog::new();
+    let mut text = String::new();
+    for listing in listings {
+        text.clear();
+        std::fs::File::open(listing)
+            .and_then(|mut file| std::io::Read::read_to_string(&mut file, &mut text))
+            .map_err(|error| GateError::io(listing, ErrorMessage::from(&error.to_string())))?;
+        catalog.absorb(&TestCatalog::from_nextest_json(SourceText::from(&text))?);
+    }
+    if usize::from(catalog.alias_count()) == 0_usize {
+        return Err(GateError::tool(
+            "saved nextest listings".into(),
+            "the listings hold no tests at all; a gate that measured nothing must not report a \
+             pass"
+                .into(),
+        ));
+    }
+    Ok(catalog)
+}
+
 /// Validate each member's authored witness references against the runnable
 /// catalog.
 ///

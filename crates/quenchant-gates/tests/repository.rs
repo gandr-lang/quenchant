@@ -314,3 +314,98 @@ fn main() {
         "an operational failure must not substitute a global plugin"
     );
 }
+
+#[test]
+fn saved_listings_resolve_the_witnesses_without_listing_again()
+{
+    let fixture = Fixture(
+        std::env::temp_dir().join(format!("quenchant-saved-listings-{}", std::process::id())),
+    );
+    let consumer = fixture.0.join("consumer");
+    std::fs::create_dir_all(consumer.join("src")).expect("create consumer");
+    std::fs::write(
+        consumer.join("Cargo.toml"),
+        r#"[package]
+name = "listed-consumer"
+version = "0.0.0"
+edition = "2024"
+"#,
+    )
+    .expect("write consumer manifest");
+    // The source parses but does not compile: a gate that listed the tests
+    // itself could not run, so a pass is the saved listings' alone.
+    std::fs::write(
+        consumer.join("src/lib.rs"),
+        r#"
+/// Two witnesses, each listed by another shard.
+///
+/// # Adequacy
+/// - hypothesis: the declared tests are present in this package's inventory.
+/// - witness: `tests::first`
+/// - witness: `tests::second`
+pub fn operation() { let _: () = unknown_item; }
+"#,
+    )
+    .expect("write consumer source");
+    let listing = r#"{"rust-suites": {"listed-consumer": {"package-name": "listed-consumer", "binary-id": "listed-consumer", "binary-name": "listed_consumer", "kind": "lib", "testcases": {"TEST": {}}}}}"#;
+    let first = fixture.0.join("first.json");
+    let second = fixture.0.join("second.json");
+    let empty = fixture.0.join("empty.json");
+    std::fs::write(&first, listing.replace("TEST", "tests::first"))
+        .expect("write the first shard's listing");
+    std::fs::write(&second, listing.replace("TEST", "tests::second"))
+        .expect("write the second shard's listing");
+    std::fs::write(&empty, r#"{"rust-suites": {}}"#).expect("write an empty listing");
+    let gate = |listings: &[&PathBuf]| {
+        let mut command = Command::new(env!("CARGO_BIN_EXE_quenchant-gates"));
+        command
+            .args(["witnesses", "--manifest-path"])
+            .arg(consumer.join("Cargo.toml"));
+        for listing in listings {
+            command.arg("--inventory").arg(listing);
+        }
+        command.output().expect("run the witness gate")
+    };
+
+    let output = gate(&[&first, &second]);
+    assert!(
+        output.status.success(),
+        "two shards' listings resolve both witnesses: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let output = gate(&[&first]);
+    assert!(!output.status.success());
+    assert!(
+        String::from_utf8_lossy(&output.stdout).contains("tests::second"),
+        "a witness no listing holds is unresolved: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+
+    for (listings, case) in [
+        (vec![&empty], "a listing of no tests"),
+        (
+            vec![&first, &fixture.0.join("missing.json")],
+            "a missing listing",
+        ),
+    ] {
+        let output = gate(&listings);
+        assert!(!output.status.success(), "{case} cannot pass");
+        assert!(
+            String::from_utf8_lossy(&output.stderr).contains("could not run"),
+            "{case} is an operational failure, never a verdict: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    let output = Command::new(env!("CARGO_BIN_EXE_quenchant-gates"))
+        .args(["witnesses", "--manifest-path"])
+        .arg(consumer.join("Cargo.toml"))
+        .arg("--inventory")
+        .output()
+        .expect("run the gate with a bare flag");
+    assert!(
+        !output.status.success(),
+        "`--inventory` without a path must not run the gate"
+    );
+}
