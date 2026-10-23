@@ -42,7 +42,7 @@ jobs:
   # Definitions only: aliases run in each consuming job's context.
   template:
     if: false
-    needs: &rust-needs [changes, ci-image-ref]
+    needs: &rust-needs prepare
     # arm64, as gandr's lanes (gandr-lang/gandr#702: its suite 27% and a warm
     # rebuild 9% faster than ubuntu-latest's x86-64). coverage.yml's measuring
     # run is the one x86-64 Linux job, so the image is published for both.
@@ -68,7 +68,7 @@ jobs:
         name: setup rust
         uses: ./.github/actions/setup-rust # zizmor: ignore[self-repository]
         with:
-          install-toolchain: &without-image ${{ needs.ci-image-ref.outputs.ref == '' }}
+          install-toolchain: &without-image ${{ needs.prepare.outputs.image == '' }}
           cache-save: ${{ env.CI_CACHE_SAVE == 'true' }}
           cache-key: ${{ env.CI_CACHE_KEY || 'rust-deps' }}
           cache-workspace-crates: true
@@ -120,7 +120,7 @@ jobs:
           key: ${{ steps.dylint-library-restore.outputs.cache-primary-key }}
       - &save-dylint-drivers
         name: save Dylint drivers
-        if: ${{ !cancelled() && needs.ci-image-ref.outputs.ref == '' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.dylint-drivers-restore.outputs.cache-hit != 'true' }}
+        if: ${{ !cancelled() && needs.prepare.outputs.image == '' && github.event_name == 'push' && github.ref == 'refs/heads/main' && steps.dylint-drivers-restore.outputs.cache-hit != 'true' }}
         uses: *cache-save
         with:
           path: *dylint-drivers
@@ -135,19 +135,28 @@ jobs:
           path: ${{ env.CI_REPORT_PATH }}
           if-no-files-found: ignore
 
+  # One job reads what the run's lanes decide on, so neither lookup costs a
+  # runner of its own:
+  # - the changed-file categories. A missing base or a failed fetch or diff
+  #   forces the Rust checks, never skips them; the queue always checks its
+  #   complete merge result;
+  # - whether the pull request is a stacked member, based on another pull
+  #   request's branch rather than main;
+  # - the image reference: a job's container cannot read env directly, so
+  #   the job's outputs carry the workflow switch.
   # Always trigger the workflow: a skipped workflow supplies no required
   # check, whereas a skipped job succeeds. Formatting sees docs-only changes.
-  changes:
-    name: detect changed-file categories
+  prepare:
+    name: prepare the run
     # Dependency updates land through a maintainer's pull request, so a
-    # dependabot pull request runs nothing: the entry jobs skip, every job
-    # that needs them skips with them, and a skipped required check passes.
+    # dependabot pull request runs nothing: this job skips, every job that
+    # needs it skips with it, and a skipped required check passes.
     if: &not-dependabot ${{ github.actor != 'dependabot[bot]' }}
     runs-on: *linux
     outputs:
-      # Missing bases and failed fetches/diffs force Rust checks, never skip
-      # them. The queue always checks its complete merge result.
       rust: ${{ github.event_name == 'merge_group' || steps.fetch.outcome != 'success' || steps.filter.outcome != 'success' || steps.filter.outputs.rust == 'true' }}
+      stacked: ${{ github.event_name == 'pull_request' && github.base_ref != github.event.repository.default_branch }}
+      image: ${{ steps.image.outputs.ref }}
     env:
       CI_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
     steps:
@@ -169,29 +178,22 @@ jobs:
           git diff --no-renames --name-only -z "$CI_BASE_SHA" HEAD |
           jq -rRs '"rust=" + (split("\u0000") | any(length > 0 and ((endswith(".md") or startswith("docs/") or startswith("LICENSE") or . == ".gitignore") | not)) | tostring)'
           >> "$GITHUB_OUTPUT"
-
-  # container cannot read env directly; needs carries the workflow switch.
-  ci-image-ref:
-    name: resolve the CI image reference
-    if: *not-dependabot
-    runs-on: *linux
-    outputs:
-      ref: ${{ steps.resolve.outputs.ref }}
-    steps:
-      - id: resolve
+      - id: image
         name: resolve the image reference
         run: echo "ref=${QUENCHANT_CI_IMAGE:+ghcr.io/gandr-lang/quenchant-ci:${QUENCHANT_CI_IMAGE}}" >> "$GITHUB_OUTPUT"
 
   # Rust, test, and workflow changes exercise the full gate before review;
-  # merge groups still check their complete merge result.
+  # merge groups still check their complete merge result. A stacked member,
+  # based on another pull request's branch, runs the lint lanes only: the
+  # merge group tests its tree (gandr-lang/gandr#2045).
   cargo-build-crates:
     name: build and test the workspace
     needs: *rust-needs
-    if: &heavy-lane ${{ needs.changes.outputs.rust == 'true' }}
+    if: &heavy-lane ${{ needs.prepare.outputs.rust == 'true' && needs.prepare.outputs.stacked != 'true' }}
     runs-on: *linux
     permissions: *image-read-permissions
     # The relayed tag hashes the three pin files; the base is digest-pinned.
-    container: &ci-image ${{ needs.ci-image-ref.outputs.ref }} # zizmor: ignore[unpinned-images]
+    container: &ci-image ${{ needs.prepare.outputs.image }} # zizmor: ignore[unpinned-images]
     env:
       CI_CACHE_SAVE: "true"
       CI_INSTALL_TOOLS: *without-image
@@ -297,7 +299,7 @@ jobs:
   anodized-gate:
     name: check anodized invocation policy
     needs: *rust-needs
-    if: &rust-lane ${{ needs.changes.outputs.rust == 'true' }}
+    if: &rust-lane ${{ needs.prepare.outputs.rust == 'true' }}
     runs-on: *linux
     permissions: *image-read-permissions
     container: *ci-image # zizmor: ignore[unpinned-images]
@@ -337,7 +339,7 @@ jobs:
 
   format-gate:
     name: check policy and formatting
-    needs: ci-image-ref
+    needs: prepare
     runs-on: *linux
     permissions: *image-read-permissions
     container: *ci-image # zizmor: ignore[unpinned-images]
