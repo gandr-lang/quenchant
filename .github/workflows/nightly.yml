@@ -1,0 +1,81 @@
+# <critical>
+# MUST preserve anchor-first CI: maximal sharing, no copied orchestration.
+# New functionality MUST reuse template anchors or add anchors for likely reuse.
+# MUST parameterize differences; performance exceptions require measured evidence.
+# Share exceptional logic through actions; preserve parallelism, caches, and gates.
+# </critical>
+name: Nightly
+
+# Every day, each CI lane's median job time against its budget, as gandr's
+# nightly holds its own: CI time drifts one small change at a time, and a
+# daily comparison names the lane within a day without blocking a landing.
+# A dispatch always runs.
+on:
+  schedule:
+    - cron: "0 4 * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+# One run at a time; a dispatch during the scheduled run replaces it.
+concurrency:
+  group: nightly-main
+  cancel-in-progress: true
+
+env:
+  CARGO_INCREMENTAL: "0"
+  CARGO_TERM_COLOR: always
+  MISE_CARGO_BINSTALL_QUICKINSTALL: "true"
+  MISE_CARGO_BINSTALL_NATIVE: "true"
+  # Must match ci.yml and the image. The image checks the list at build time.
+  MISE_DISABLE_TOOLS: "cargo:cargo-mutants,github:nektos/act,github:j178/prek,npm:@commitlint/cli"
+
+jobs:
+  # Each budget is about a quarter over the lane's median across the ten
+  # newest runs when the job was added: the workspace's build and tests
+  # 3 m 12 s, the Dylint library 2 m 33 s, Clippy 1 m 16 s, the anodized
+  # policy 1 m 8 s, the policy and formatting gates 1 m 7 s and the workflow
+  # lints 7 s. No landing here is classified deep by gandr's cone (a kernel
+  # or core crate, the lockfile, the toolchain), so each lane holds one
+  # budget. The job runs on the bare runner, whose `gh` the tool reads the
+  # runs and the issue through.
+  lane-budget:
+    name: hold each CI lane to its budget
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      actions: read
+      issues: write
+    timeout-minutes: 15
+    steps:
+      - name: git checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          fetch-depth: 1
+      - name: setup rust
+        uses: ./.github/actions/setup-rust # zizmor: ignore[self-repository]
+        with:
+          install-toolchain: true
+          cache-save: false
+      - name: install mise-managed policy tools
+        uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        with:
+          version: 2026.10.3
+          cache: true
+          cache_key: mise-ci-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('mise.toml', 'mise.lock', 'rust-toolchain.toml') }}
+          cache_save: false
+      - name: compare each lane with its budget
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: >-
+          mise run ci:lane-budget --issue "CI lane budgets"
+          --budget "build and test the workspace=240"
+          --budget "test Dylint library=195"
+          --budget "check Clippy wall=95"
+          --budget "check anodized invocation policy=85"
+          --budget "check policy and formatting=85"
+          --budget "check workflow lints (zizmor)=30"
+          >> "$GITHUB_STEP_SUMMARY"
