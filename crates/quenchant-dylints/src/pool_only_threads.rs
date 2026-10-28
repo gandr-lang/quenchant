@@ -18,8 +18,10 @@
 //! itself — states why with `#[expect(pool_only_threads, reason = "…")]` at
 //! the site or on a node between it and its enclosing item. An expectation on
 //! an enclosing module, implementation or crate, one without its reason and an
-//! `allow` written in the source are refused. A test target and an item under
-//! `#[cfg(test)]` are not read: a test owns the threads it races.
+//! `allow` written in the source are refused. An item under `#[cfg(test)]` is
+//! not read: a test owns the threads it races. A test target reads only the
+//! sites that state an expectation, so the expectation a library states holds
+//! in the library's test build too, and the target's own threads stay free.
 
 use anodized::spec;
 use clippy_utils::is_in_test;
@@ -31,6 +33,7 @@ use rustc_hir::def::Res;
 use rustc_hir::def_id::DefId;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
+use rustc_lint::Level;
 use rustc_session::declare_lint;
 use rustc_session::declare_lint_pass;
 
@@ -141,18 +144,20 @@ impl<'tcx> LateLintPass<'tcx> for PoolOnlyThreads
     /// Refuse a call that starts a thread or a pool, outside the tests.
     ///
     /// # Specification
-    /// - ensures: reports `expr` exactly when [`started`] names its callee and
-    ///   neither the crate is a test target nor `expr` sits in a test; an
-    ///   exception the site does not state properly is refused at the crate
-    ///   root ([`report_refusing`]).
+    /// - ensures: reports `expr` exactly when [`started`] names its callee,
+    ///   `expr` sits in no test, and either the crate is no test target or the
+    ///   level at `expr` is an expectation; an exception the site does not
+    ///   state properly is refused at the crate root ([`report_refusing`]).
     /// - panics: none.
     /// - executable: none — rustc owns resolution and diagnostic emission.
     ///
     /// # Adequacy
     /// - hypothesis: L3 — the fixtures refuse each starting call, accept a
     ///   reasoned expectation and a test, and refuse an unreasoned expectation,
-    ///   an inherited one and an `allow`.
+    ///   an inherited one and an `allow`; in a test target, a reasoned
+    ///   expectation is fulfilled and an unstated thread is not reported.
     /// - witness: `tests::ui_pool_threads`
+    /// - witness: `tests::ui_pool_threads_test_target`
     fn check_expr(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -163,7 +168,16 @@ impl<'tcx> LateLintPass<'tcx> for PoolOnlyThreads
         else {
             return;
         };
-        if cx.tcx.sess.is_test_crate() || is_in_test(cx.tcx, expr.hir_id) {
+        if is_in_test(cx.tcx, expr.hir_id) {
+            return;
+        }
+        if cx.tcx.sess.is_test_crate()
+            && cx
+                .tcx
+                .lint_level_spec_at_node(POOL_ONLY_THREADS, expr.hir_id)
+                .level()
+                != Level::Expect
+        {
             return;
         }
         report_refusing(
