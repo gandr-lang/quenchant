@@ -21,6 +21,7 @@ quenchant-anodized.workspace = true
 [dev-dependencies]
 clap.workspace = true
 cxx.workspace = true
+rayon.workspace = true
 serde.workspace = true
 
 [lints]

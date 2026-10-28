@@ -120,6 +120,12 @@ allow-build-scripts = [
   "camino@1.2.5",
   # Dylint's UI harness configures compiletest through this build script.
   "compiletest_rs@0.11.2",
+  # The pool rule's rayon fixture reaches crossbeam's thread-sanitizer probe.
+  "crossbeam-deque@0.8.8",
+  # The pool rule's rayon fixture reaches crossbeam's thread-sanitizer probe.
+  "crossbeam-epoch@0.9.21",
+  # The pool rule's rayon fixture reaches crossbeam's target atomics probe.
+  "crossbeam-utils@0.8.23",
   # The Dylint bridge UI fixture builds cxx's bundled C++ runtime.
   "cxx@1.0.205",
   # Dylint configures its driver through this build script.
@@ -144,9 +150,12 @@ allow-build-scripts = [
   "proc-macro2@1.0.107",
   # The gate's documentation reader; the script generates the parser's own
   # spec tests only under `gen-tests`, which stays off, and is empty otherwise.
-  "pulldown-cmark@0.13.4",
+  "pulldown-cmark@0.13.5",
   # Procedural macros require quote's compiler capability probe.
   "quote@1.0.47",
+  # The pool rule's rayon fixture; the empty script exists for `links`,
+  # which keeps one rayon-core in a build.
+  "rayon-core@1.13.0",
   # Clippy requires rustc_apfloat's compiler compatibility probe.
   "rustc_apfloat@0.2.3+llvm-462a31f5a5ab",
   # tempfile requires rustix's target capability probe.

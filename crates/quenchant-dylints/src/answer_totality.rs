@@ -94,25 +94,37 @@ pub enum SiteException
     Allowed,
 }
 
-/// Report one finding of `lint` at a site, then refuse an exception the site
-/// does not state properly.
+/// The refusals a rule prints for an exception its site does not state
+/// properly.
+pub struct ExceptionRefusals
+{
+    /// For an `expect` on an enclosing module, implementation or crate.
+    pub inherited: DiagnosticText<'static>,
+    /// For an `expect` without its reason.
+    pub unreasoned: DiagnosticText<'static>,
+    /// For an `allow` written in the source.
+    pub allowed: DiagnosticText<'static>,
+}
+
+/// The answer-totality rules' refusals.
+const ANSWER_TOTALITY_REFUSALS: ExceptionRefusals = ExceptionRefusals {
+    inherited: DiagnosticText(INHERITED_MESSAGE),
+    unreasoned: DiagnosticText(UNREASONED_MESSAGE),
+    allowed: DiagnosticText(ALLOWED_MESSAGE),
+};
+
+/// Report one finding of an answer-totality rule at a site, then refuse an
+/// exception the site does not state properly.
 ///
 /// # Specification
-/// - requires: `hir_id` is the node the finding belongs to and `span` lies
-///   within it.
-/// - ensures: emits `message` with `help` at `hir_id`, which fulfils an
-///   expectation in force there; then, when [`site_exception`] reads the level
-///   as inherited, unreasoned or allowed, emits that refusal at the crate root
-///   so the site's own level cannot hide it.
+/// - requires: as [`report_refusing`].
+/// - ensures: [`report_refusing`] with the answer-totality refusals.
 /// - panics: none.
 /// - executable: none — rustc owns diagnostic emission and suppression; no
 ///   emitted-diagnostic readback is available here.
 ///
 /// # Adequacy
-/// - hypothesis: L3 — the refused fixtures carry an unexpected site, an
-///   expectation without its reason, an expectation on an enclosing module and
-///   an `allow`, each reported; the accepted fixtures carry reasoned
-///   expectations on an item, a statement and an arm, none reported.
+/// - hypothesis: L3 — as [`report_refusing`].
 /// - witness: `tests::ui_answer_totality`
 /// - witness: `tests::ui_answer_totality_refused`
 pub fn report(
@@ -124,16 +136,59 @@ pub fn report(
     help: DiagnosticText<'_>,
 )
 {
+    report_refusing(
+        cx,
+        lint,
+        hir_id,
+        span,
+        message,
+        help,
+        &ANSWER_TOTALITY_REFUSALS,
+    );
+}
+
+/// Report one finding of `lint` at a site, then refuse an exception the site
+/// does not state properly with the rule's `refusals`.
+///
+/// # Specification
+/// - requires: `hir_id` is the node the finding belongs to and `span` lies
+///   within it.
+/// - ensures: emits `message` with `help` at `hir_id`, which fulfils an
+///   expectation in force there; then, when [`site_exception`] reads the level
+///   as inherited, unreasoned or allowed, emits that refusal from `refusals` at
+///   the crate root so the site's own level cannot hide it.
+/// - panics: none.
+/// - executable: none — rustc owns diagnostic emission and suppression; no
+///   emitted-diagnostic readback is available here.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the refused fixtures carry an unexpected site, an
+///   expectation without its reason, an expectation on an enclosing module and
+///   an `allow`, each reported; the accepted fixtures carry reasoned
+///   expectations on an item, a statement and an arm, none reported.
+/// - witness: `tests::ui_answer_totality`
+/// - witness: `tests::ui_answer_totality_refused`
+/// - witness: `tests::ui_pool_threads`
+pub fn report_refusing(
+    cx: &LateContext<'_>,
+    lint: &'static Lint,
+    hir_id: HirId,
+    span: Span,
+    message: String,
+    help: DiagnosticText<'_>,
+    refusals: &ExceptionRefusals,
+)
+{
     span_lint_hir_and_then(cx, lint, hir_id, span, message, |diag| {
         diag.help(help.0.to_owned());
     });
     let refusal = match site_exception(cx, lint, hir_id) {
         SiteException::Absent | SiteException::Approved => return,
-        SiteException::Inherited => INHERITED_MESSAGE,
-        SiteException::Unreasoned => UNREASONED_MESSAGE,
-        SiteException::Allowed => ALLOWED_MESSAGE,
+        SiteException::Inherited => refusals.inherited,
+        SiteException::Unreasoned => refusals.unreasoned,
+        SiteException::Allowed => refusals.allowed,
     };
-    span_lint_hir(cx, lint, CRATE_HIR_ID, span, refusal);
+    span_lint_hir(cx, lint, CRATE_HIR_ID, span, refusal.0);
 }
 
 /// Report each configuration defect of one rule at the crate root.

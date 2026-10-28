@@ -30,7 +30,9 @@
 //! whose cost is wrong for its receiver's type ([`cost_shape`]), and
 //! `allocation_free_region` refuses an allocation reachable from a function
 //! whose `# Cost` section marks it allocation-free in steady state
-//! ([`allocation_free_region`]).
+//! ([`allocation_free_region`]). `pool_only_threads`, opted into per consumer,
+//! refuses a thread or a pool started outside the consumer's work pool, unless
+//! the site states why it owns its thread ([`pool_only_threads`]).
 //!
 //! # Boundaries
 //!
@@ -89,6 +91,7 @@ mod mold_coverage;
 mod option_field;
 mod option_signature;
 mod ownership;
+mod pool_only_threads;
 mod presenter_coverage;
 mod raw_pointer;
 mod reverse_after_build;
@@ -428,6 +431,7 @@ pub fn register_lints(
         front_shift::FRONT_SHIFT_IN_LOOP,
         linear_search::LINEAR_SEARCH_IN_LOOP,
         reverse_after_build::REVERSE_AFTER_BUILD,
+        pool_only_threads::POOL_ONLY_THREADS,
     ]);
     lint_store.register_group(true, answer_totality::GROUP, None, vec![
         LintId::of(dishonest_answer::DISHONEST_ANSWER),
@@ -525,6 +529,7 @@ pub fn register_lints(
             cost_regions.clone(),
         ))
     }));
+    lint_store.register_late_pass(Box::new(|_| Box::new(pool_only_threads::PoolOnlyThreads)));
     if let Maybe::Present(directory) = evidence::evidence_directory() {
         let clause_index = evidence::ClauseIndex::default();
         let attribute_index = evidence::AttributeIndex::default();
@@ -1450,6 +1455,55 @@ unproduced = [
             .run();
     }
 
+    /// The pool rule's flags: the fixture libraries, the rule denied and the
+    /// unrelated signature rules allowed.
+    ///
+    /// # Specification
+    /// - ensures: [`fixture_extern_flags`] followed by `-Dpool_only_threads`,
+    ///   unknown lints denied and the signature and specification rules
+    ///   allowed.
+    /// - panics: as [`fixture_extern_flags`].
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — the fixtures link the real rayon and see only the
+    ///   pool rule's findings.
+    /// - witness: `tests::ui_pool_threads`
+    /// - witness: `tests::ui_pool_threads_test_target`
+    #[spec(ensures: |output| output.iter().any(|flag| flag == "-Dpool_only_threads"))]
+    fn pool_threads_flags() -> Vec<String>
+    {
+        let mut flags = fixture_extern_flags();
+        flags.extend(
+            [
+                "-Dunknown-lints",
+                "-Dpool_only_threads",
+                "-Aprimitive_signature",
+                "-Asingle_field_struct_needs_transparent_repr",
+                "-Aspecification_present",
+            ]
+            .map(str::to_owned),
+        );
+        flags
+    }
+
+    #[test]
+    fn ui_pool_threads()
+    {
+        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_pool_threads")
+            .rustc_flags(pool_threads_flags())
+            .run();
+    }
+
+    #[test]
+    fn ui_pool_threads_test_target()
+    {
+        let mut flags = pool_threads_flags();
+        flags.push("--test".to_owned());
+        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_pool_threads_test_target")
+            .rustc_flags(flags)
+            .run();
+    }
+
     /// Cargo's selected build, rather than cache order, identifies UI
     /// dependencies.
     ///
@@ -1550,6 +1604,7 @@ unproduced = [
         let mut cxx = None;
         let mut serde = None;
         let mut clap = None;
+        let mut rayon = None;
         for message in
             serde_json::Deserializer::from_slice(&output.stdout).into_iter::<serde_json::Value>()
         {
@@ -1600,6 +1655,9 @@ unproduced = [
                     (Some("clap"), Some("rlib")) => {
                         clap = Some(path.to_path_buf());
                     },
+                    (Some("rayon"), Some("rlib")) => {
+                        rayon = Some(path.to_path_buf());
+                    },
                     (Some("anodized"), Some("rlib")) if instrumented => {
                         anodized = Some(path.to_path_buf());
                     },
@@ -1627,6 +1685,7 @@ unproduced = [
         let cxx = cxx.expect("Cargo reported the real C++ bridge library");
         let serde = serde.expect("Cargo reported the serde library");
         let clap = clap.expect("Cargo reported the clap library");
+        let rayon = rayon.expect("Cargo reported the rayon library");
         let mut flags = vec!["--edition=2024".to_owned()];
         for directory in directories {
             flags.push("-L".to_owned());
@@ -1649,6 +1708,8 @@ unproduced = [
             format!("serde={}", serde.display()),
             "--extern".to_owned(),
             format!("clap={}", clap.display()),
+            "--extern".to_owned(),
+            format!("rayon={}", rayon.display()),
             "--cfg".to_owned(),
             "anodized_panic".to_owned(),
         ]);

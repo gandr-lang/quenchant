@@ -113,7 +113,7 @@ features = ["span-locations"]
 # consumers:
 # - quenchant-gates
 [workspace.dependencies.pulldown-cmark]
-version = "0.13.4"
+version = "0.13.5"
 default-features = false
 
 # Specification facade, imported by its library name, anodized.
@@ -158,6 +158,18 @@ version = "=0.0.0"
 # - quenchant-shape (dev)
 [workspace.dependencies.quote]
 version = "1.0.47"
+default-features = false
+
+# The work pool whose forks the pool rule refuses outside the consumer's own
+# pool; the UI matrix links the real crate. It is the ecosystem's standard
+# work-stealing pool and the one gandr holds. Reversal: no consumer holds a
+# rayon pool.
+# features:
+# - none: the crate has no optional feature the fixtures need
+# consumers:
+# - quenchant-fixture-macros (dev)
+[workspace.dependencies.rayon]
+version = "1.12.0"
 default-features = false
 
 # Bounded-time matching of refused repository content.
