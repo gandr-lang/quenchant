@@ -1,0 +1,106 @@
+error: `std::thread::spawn` starts work outside the pool
+  --> $DIR/threads.rs:7:10
+   |
+LL |     drop(std::thread::spawn(|| ()).join());
+   |          ^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: fork the work on the consumer's pool (`Fork::each`, `Fork::join`); a site that owns its thread states why with `#[expect(pool_only_threads, reason = "...")]`
+   = note: requested on the command line with `-D pool-only-threads`
+
+error: `std::thread::scope` starts work outside the pool
+  --> $DIR/threads.rs:12:5
+   |
+LL | /     std::thread::scope(|scope| {
+LL | |         // A spawn inside a scope starts nothing the scope did not.
+LL | |         drop(scope.spawn(|| ()));
+LL | |     });
+   | |______^
+   |
+   = help: fork the work on the consumer's pool (`Fork::each`, `Fork::join`); a site that owns its thread states why with `#[expect(pool_only_threads, reason = "...")]`
+
+error: `std::thread::Builder::spawn` starts work outside the pool
+  --> $DIR/threads.rs:20:10
+   |
+LL |     drop(std::thread::Builder::new().spawn(|| ()));
+   |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: fork the work on the consumer's pool (`Fork::each`, `Fork::join`); a site that owns its thread states why with `#[expect(pool_only_threads, reason = "...")]`
+
+error: `std::thread::scope` starts work outside the pool
+  --> $DIR/threads.rs:21:5
+   |
+LL | /     std::thread::scope(|scope| {
+LL | |         drop(std::thread::Builder::new().spawn_scoped(scope, || ()));
+LL | |     });
+   | |______^
+   |
+   = help: fork the work on the consumer's pool (`Fork::each`, `Fork::join`); a site that owns its thread states why with `#[expect(pool_only_threads, reason = "...")]`
+
+error: `std::thread::Builder::spawn_scoped` starts work outside the pool
+  --> $DIR/threads.rs:22:14
+   |
+LL |         drop(std::thread::Builder::new().spawn_scoped(scope, || ()));
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: fork the work on the consumer's pool (`Fork::each`, `Fork::join`); a site that owns its thread states why with `#[expect(pool_only_threads, reason = "...")]`
+
+error: `rayon::ThreadPoolBuilder::new` starts work outside the pool
+  --> $DIR/threads.rs:28:10
+   |
+LL |     drop(rayon::ThreadPoolBuilder::new().num_threads(2).build());
+   |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: fork the work on the consumer's pool (`Fork::each`, `Fork::join`); a site that owns its thread states why with `#[expect(pool_only_threads, reason = "...")]`
+
+error: `rayon::scope` starts work outside the pool
+  --> $DIR/threads.rs:33:5
+   |
+LL |     rayon::scope(|_| ());
+   |     ^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: fork the work on the consumer's pool (`Fork::each`, `Fork::join`); a site that owns its thread states why with `#[expect(pool_only_threads, reason = "...")]`
+
+error: `rayon::in_place_scope` starts work outside the pool
+  --> $DIR/threads.rs:34:5
+   |
+LL |     rayon::in_place_scope(|_| ());
+   |     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: fork the work on the consumer's pool (`Fork::each`, `Fork::join`); a site that owns its thread states why with `#[expect(pool_only_threads, reason = "...")]`
+
+error: `rayon::spawn` starts work outside the pool
+  --> $DIR/threads.rs:35:5
+   |
+LL |     rayon::spawn(|| ());
+   |     ^^^^^^^^^^^^^^^^^^^
+   |
+   = help: fork the work on the consumer's pool (`Fork::each`, `Fork::join`); a site that owns its thread states why with `#[expect(pool_only_threads, reason = "...")]`
+
+error: `rayon::join` starts work outside the pool
+  --> $DIR/threads.rs:36:19
+   |
+LL |     let _joined = rayon::join(|| 1_u8, || 2_u8);
+   |                   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: fork the work on the consumer's pool (`Fork::each`, `Fork::join`); a site that owns its thread states why with `#[expect(pool_only_threads, reason = "...")]`
+
+error: a pool-only-threads exception must state why the site owns its thread: write `reason = "..."` on its `#[expect(pool_only_threads, ..)]`
+  --> $DIR/threads.rs:67:10
+   |
+LL |     drop(std::thread::spawn(|| ()).join());
+   |          ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: a pool-only-threads exception must be stated where the thread starts: an `#[expect(pool_only_threads, ..)]` on an enclosing module, implementation or crate excepts nothing inside it
+  --> $DIR/threads.rs:78:14
+   |
+LL |         drop(std::thread::spawn(|| ()).join());
+   |              ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: a thread outside the pool is admitted only by `#[expect(pool_only_threads, reason = "...")]`; an `allow` does not say why the site owns its thread, nor fail when the thread goes
+  --> $DIR/threads.rs:85:10
+   |
+LL |     drop(std::thread::spawn(|| ()).join());
+   |          ^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: aborting due to 13 previous errors
+
