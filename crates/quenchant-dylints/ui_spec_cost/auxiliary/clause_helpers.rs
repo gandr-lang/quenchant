@@ -80,3 +80,117 @@ impl Recorded for Ledger
         self.entries.last().copied()
     }
 }
+
+/// Nodes held in a family, behind a module the crate does not export.
+mod nodes
+{
+    /// A family of nodes whose implementations are chosen by the caller.
+    pub trait Nodes
+    {
+        /// The node at `offset`.
+        ///
+        /// # Clause cost
+        /// - bound: every implementation reads one node.
+        fn node_at(
+            &self,
+            offset: usize,
+        ) -> Option<u32>;
+    }
+
+    impl Nodes for Vec<u32>
+    {
+        fn node_at(
+            &self,
+            offset: usize,
+        ) -> Option<u32>
+        {
+            self.get(offset).copied()
+        }
+    }
+
+    /// The node at `offset` of any family.
+    pub fn read_in<Held: Nodes + ?Sized>(
+        family: &Held,
+        offset: usize,
+    ) -> Option<u32>
+    {
+        family.node_at(offset)
+    }
+}
+
+/// Commands held in a family.
+#[derive(Clone, Debug, Default)]
+#[repr(transparent)]
+pub struct Arena
+{
+    commands: Vec<u32>,
+}
+
+impl Arena
+{
+    /// The command at `offset`.
+    pub fn command(
+        &self,
+        offset: usize,
+    ) -> Option<u32>
+    {
+        nodes::read_in(&self.commands, offset)
+    }
+}
+
+/// Cells held in a shelf, behind a module the crate exports.
+pub mod cells
+{
+    /// A shelf of cells whose implementations are chosen by the caller.
+    pub trait Cells
+    {
+        /// The cell at `offset`.
+        ///
+        /// # Clause cost
+        /// - bound: every implementation reads one cell.
+        fn cell_at(
+            &self,
+            offset: usize,
+        ) -> Option<u32>;
+    }
+
+    impl Cells for Vec<u32>
+    {
+        fn cell_at(
+            &self,
+            offset: usize,
+        ) -> Option<u32>
+        {
+            self.get(offset).copied()
+        }
+    }
+
+    /// The cell at `offset` of any shelf.
+    pub fn read_at<Held: Cells + ?Sized>(
+        shelf: &Held,
+        offset: usize,
+    ) -> Option<u32>
+    {
+        shelf.cell_at(offset)
+    }
+}
+
+/// Cells held on a shelf.
+#[derive(Clone, Debug, Default)]
+#[repr(transparent)]
+pub struct Shelf
+{
+    cells: Vec<u32>,
+}
+
+impl Shelf
+{
+    /// The cell at `offset`.
+    pub fn cell(
+        &self,
+        offset: usize,
+    ) -> Option<u32>
+    {
+        cells::read_at(&self.cells, offset)
+    }
+}

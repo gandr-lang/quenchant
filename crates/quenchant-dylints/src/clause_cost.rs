@@ -50,6 +50,7 @@ use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
 use rustc_middle::ty;
 use rustc_middle::ty::GenericArgsRef;
+use rustc_middle::ty::TyCtxt;
 use rustc_session::declare_lint;
 use rustc_session::impl_lint_pass;
 use rustc_session::lint::Level;
@@ -123,7 +124,7 @@ declare_lint! {
     ///
     /// ### Declaring a bound
     ///
-    /// Following stops at a function whose rustdoc has a `# Clause cost` section with a `- bound:` clause stating why a clause may call it on accumulated state. A heading without that clause is refused at the function. A trait method that resolves to no single body, a `dyn` call for instance, is refused unless its declaration states the bound. Bodies from other crates are read from their metadata, so the whole graph must be built with `-Zalways-encode-mir` and `-Zinline-mir=no`; a body the metadata does not carry is refused with that remedy.
+    /// Following stops at a function whose rustdoc has a `# Clause cost` section with a `- bound:` clause stating why a clause may call it on accumulated state. A heading without that clause is refused at the function. A trait method that resolves to no single body, a `dyn` call for instance, is refused unless its declaration states the bound. A bound crosses a crate only on an exported item, because rustc writes an item's rustdoc into its crate's metadata only then; a trait method another crate does not export is refused naming the method and its crate, and the fix is to export the trait or state the bound on the clause. Bodies from other crates are read from their metadata, so the whole graph must be built with `-Zalways-encode-mir` and `-Zinline-mir=no`; a body the metadata does not carry is refused with that remedy.
     ///
     /// ### What it does not decide
     ///
@@ -164,6 +165,13 @@ const UNRESOLVED_HELP: &str = concat!(
     "clause on the trait method, or call a combinator that states it"
 );
 
+/// Denial help for state handed to a trait method another crate does not
+/// export.
+const UNEXPORTED_HELP: &str = concat!(
+    "export the trait, or state the bound on the clause ",
+    "with `#[expect(spec_clause_traversal, reason = \"...\")]`"
+);
+
 /// Denial help for a body the dependency metadata does not carry.
 const UNREADABLE_HELP: &str = concat!(
     "build the whole dependency graph with `-Zalways-encode-mir -Zinline-mir=no`, ",
@@ -194,6 +202,32 @@ const COMPARES_TAIL: &str = "compares state reached through the receiver or a mu
 
 /// What a followed body does when it hands the state to an unresolved call.
 const UNRESOLVED_TAIL: &str = "hands state reached through the receiver or a mutable parameter to a call that resolves to no single body";
+
+/// Why a trait method of another crate carries no bound here: rustc writes an
+/// item's rustdoc into its crate's metadata only when the crate exports it.
+///
+/// # Specification
+/// - ensures: names `method` by its path and its crate by name, and states that
+///   its bound is not in that crate's metadata.
+/// - panics: none.
+/// - executable: none — the text is the compiler's paths, which a predicate
+///   could only format again.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the UI fixture's refusal of a trait method its crate does
+///   not export names the method and the crate.
+/// - witness: `tests::ui_spec_cost`
+fn unexported(
+    tcx: TyCtxt<'_>,
+    method: DefId,
+) -> String
+{
+    format!(
+        "`{}` is not exported from `{}`, so its `# Clause cost` bound is not in its metadata",
+        tcx.def_path_str(method),
+        tcx.crate_name(method.krate)
+    )
+}
 
 /// What a followed body does when it hands the state to an unreadable body.
 const UNREADABLE_TAIL: &str = "hands state reached through the receiver or a mutable parameter to a body this build cannot read";
@@ -418,15 +452,19 @@ impl<'tcx> LateLintPass<'tcx> for SpecClauseTraversal
                     return;
                 };
                 let tail = match witness.walk {
-                    Walk::Iterates => ITERATES_TAIL,
-                    Walk::Searches => SEARCHES_TAIL,
-                    Walk::Copies => COPIES_TAIL,
-                    Walk::Compares => COMPARES_TAIL,
-                    Walk::Unresolved => UNRESOLVED_TAIL,
-                    Walk::Unreadable => UNREADABLE_TAIL,
+                    Walk::Iterates => ITERATES_TAIL.to_owned(),
+                    Walk::Searches => SEARCHES_TAIL.to_owned(),
+                    Walk::Copies => COPIES_TAIL.to_owned(),
+                    Walk::Compares => COMPARES_TAIL.to_owned(),
+                    Walk::Unresolved => UNRESOLVED_TAIL.to_owned(),
+                    Walk::Unexported(method) => {
+                        format!("{UNRESOLVED_TAIL}: {}", unexported(cx.tcx, method))
+                    },
+                    Walk::Unreadable => UNREADABLE_TAIL.to_owned(),
                 };
                 let help = match witness.walk {
                     Walk::Unresolved => UNRESOLVED_HELP,
+                    Walk::Unexported(_) => UNEXPORTED_HELP,
                     Walk::Unreadable => UNREADABLE_HELP,
                     Walk::Iterates | Walk::Searches | Walk::Copies | Walk::Compares => {
                         TRAVERSAL_HELP
@@ -460,6 +498,26 @@ impl<'tcx> LateLintPass<'tcx> for SpecClauseTraversal
                         ),
                         None,
                         UNRESOLVED_HELP,
+                    );
+                }
+            },
+            Callee::Unexported(target) => {
+                if call
+                    .arguments
+                    .iter()
+                    .any(|argument| matches!(state_root(cx, argument), Maybe::Present(())))
+                {
+                    let path = cx.tcx.def_path_str(target);
+                    span_lint_and_help(
+                        cx,
+                        SPEC_CLAUSE_TRAVERSAL,
+                        site,
+                        format!(
+                            "this specification clause {HANDED_PREFIX} `{path}`, which resolves to no single body here: {}",
+                            unexported(cx.tcx, target)
+                        ),
+                        None,
+                        UNEXPORTED_HELP,
                     );
                 }
             },
@@ -598,7 +656,7 @@ fn report_direct<'tcx>(
         Walk::Iterates => ITERATES_TAIL,
         Walk::Searches => SEARCHES_TAIL,
         Walk::Copies => COPIES_TAIL,
-        Walk::Compares | Walk::Unresolved | Walk::Unreadable => COMPARES_TAIL,
+        Walk::Compares | Walk::Unresolved | Walk::Unexported(_) | Walk::Unreadable => COMPARES_TAIL,
     };
     span_lint_and_help(
         cx,
