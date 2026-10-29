@@ -10,8 +10,10 @@
 extern crate clause_helpers;
 
 use anodized::spec;
+use clause_helpers::Arena;
 use clause_helpers::Ledger;
 use clause_helpers::Recorded;
+use clause_helpers::Shelf;
 use clause_helpers::tally;
 
 /// State that holds a foreign ledger.
@@ -87,6 +89,22 @@ fn recorded<R: Recorded>(records: &mut R) -> usize
 fn latest<R: Recorded>(records: &mut R) -> Option<u32>
 {
     records.latest()
+}
+
+// Refused, naming the cause: the dependency does not export the trait whose
+// method states the bound, so its metadata carries no rustdoc for it (#114).
+#[spec(ensures: |ret| ret == arena.command(0_usize))]
+fn command(arena: &mut Arena) -> Option<u32>
+{
+    arena.command(0_usize)
+}
+
+// Accepted: the same shape with the trait exported, so the bound its method
+// states is in the dependency's metadata (#114).
+#[spec(ensures: |ret| ret == shelf.cell(0_usize))]
+fn cell(shelf: &mut Shelf) -> Option<u32>
+{
+    shelf.cell(0_usize)
 }
 
 fn main()

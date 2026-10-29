@@ -12,9 +12,11 @@
 //! Bodies from other crates are read from their metadata, which carries every
 //! function's MIR only when the whole graph is built with
 //! `-Zalways-encode-mir`; the gate's invocation adds `-Zinline-mir=no` so that
-//! standard-library calls survive as calls whatever the profile. The rustdoc
-//! that marks a bound crosses crates for exported items, which are the only
-//! foreign functions a clause can call.
+//! standard-library calls survive as calls whatever the profile. rustc writes
+//! an item's rustdoc into the metadata only when the item is exported, so a
+//! followed body that calls a trait method its crate does not export reaches
+//! the declaration without its `# Clause cost` section, and the refusal names
+//! that cause.
 
 use alloc::collections::BTreeMap;
 use alloc::collections::BTreeSet;
@@ -175,6 +177,10 @@ pub enum Walk
     Compares,
     /// The state is handed to a call that cannot be resolved to a body.
     Unresolved,
+    /// The state is handed to a trait method of another crate that resolves
+    /// to no single body and that the crate does not export, so no bound it
+    /// states is in that crate's metadata.
+    Unexported(DefId),
     /// The state is handed to a body that the dependency's metadata does not
     /// carry.
     Unreadable,
@@ -369,6 +375,9 @@ pub enum Callee
     Body(DefId),
     /// A trait method that resolves to no single body here.
     Unresolved(DefId),
+    /// A trait method that resolves to no single body here, of another crate
+    /// that does not export its trait.
+    Unexported(DefId),
     /// A function whose body the dependency's metadata does not carry.
     Unreadable(DefId),
     /// A shim, an intrinsic or a closure call, whose work is accounted where
@@ -384,9 +393,10 @@ pub enum Callee
 ///   [`Callee::Opaque`]; otherwise, by the target's crate and rustdoc, in this
 ///   order: [`Callee::Library`] for `core`, `alloc` and `std`;
 ///   [`Callee::Instrumentation`] for `anodized`; [`Callee::Bounded`] for a
-///   [`Section::Bounded`] target; [`Callee::Unresolved`] for a trait method
-///   without a single body; [`Callee::Body`] when the target's MIR is
-///   available; [`Callee::Unreadable`] otherwise.
+///   [`Section::Bounded`] target; for a trait method without a single body,
+///   [`Callee::Unexported`] when it is another crate's and [`exported`] reads
+///   `Absent`, [`Callee::Unresolved`] otherwise; [`Callee::Body`] when the
+///   target's MIR is available; [`Callee::Unreadable`] otherwise.
 /// - panics: none.
 /// - executable: none — the outcome is the compiler's instance resolution and
 ///   metadata queries, which a predicate could only repeat.
@@ -394,7 +404,8 @@ pub enum Callee
 /// # Adequacy
 /// - hypothesis: L3 — the UI fixture calls a local helper, a foreign helper, a
 ///   marked combinator, a trait method on a type parameter, a marked trait
-///   method and standard-library methods from clauses; each is reported or
+///   method, a foreign body calling a marked trait method the dependency does
+///   not export, and standard-library methods from clauses; each is reported or
 ///   accepted by its class.
 /// - witness: `tests::ui_spec_cost`
 pub fn classify<'tcx>(
@@ -436,6 +447,9 @@ pub fn classify<'tcx>(
         return Callee::Bounded;
     }
     if !resolved {
+        if !target.is_local() && matches!(exported(tcx, target), Maybe::Absent(_)) {
+            return Callee::Unexported(target);
+        }
         return Callee::Unresolved(target);
     }
     if tcx.is_mir_available(target) {
@@ -443,6 +457,49 @@ pub fn classify<'tcx>(
     }
     else {
         Callee::Unreadable(target)
+    }
+}
+
+quenchant_shape::reason_enum! {
+    /// A function of another crate can lack a public path.
+    pub mod export_reading {
+        /// Why the function's bound does not cross its crate.
+        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        pub enum Hidden {
+            /// Neither the function nor its trait has a public path, so rustc
+            /// writes none of its rustdoc into the crate's metadata.
+            NoPublicPath,
+        }
+    }
+}
+
+/// Whether another crate exports a trait method, so that the rustdoc stating
+/// its bound is in that crate's metadata.
+///
+/// # Specification
+/// - ensures: `Present` when the method's trait, or the function itself outside
+///   a trait, has a public path from its crate's root, as rustc's
+///   `visible_parent_map` records it; `Absent(NoPublicPath)` otherwise.
+/// - panics: none.
+/// - executable: none — the outcome is the compiler's map of public paths,
+///   which a predicate could only read again.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the UI fixture reaches a bounded trait method through a
+///   module its crate does not export and through one it does; only the first
+///   is refused, naming the crate.
+/// - witness: `tests::ui_spec_cost`
+pub fn exported(
+    tcx: TyCtxt<'_>,
+    function: DefId,
+) -> Maybe<(), export_reading::Hidden>
+{
+    let owner = tcx.trait_of_assoc(function).unwrap_or(function);
+    if tcx.visible_parent_map(()).contains_key(&owner) {
+        Maybe::Present(())
+    }
+    else {
+        Maybe::Absent(export_reading::Hidden::NoPublicPath)
     }
 }
 
@@ -887,6 +944,14 @@ fn read_body(
                 for argument in &**args {
                     charge(at(argument), Witness {
                         walk: Walk::Unresolved,
+                        span: fn_span,
+                    });
+                }
+            },
+            Callee::Unexported(target) => {
+                for argument in &**args {
+                    charge(at(argument), Witness {
+                        walk: Walk::Unexported(target),
                         span: fn_span,
                     });
                 }

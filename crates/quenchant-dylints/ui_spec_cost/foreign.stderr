@@ -1,5 +1,5 @@
 error: this specification clause calls `clause_helpers::Ledger::total`, which iterates over state reached through the receiver or a mutable parameter
-  --> $DIR/foreign.rs:29:34
+  --> $DIR/foreign.rs:31:34
    |
 LL |     #[spec(ensures: |ret| ret == self.ledger.total())]
    |                                  ^^^^^^^^^^^^^^^^^^^
@@ -17,7 +17,7 @@ LL | #![cfg_attr(dylint_lib = "quenchant_dylints", deny(spec_clause_traversal))]
    |                                                    ^^^^^^^^^^^^^^^^^^^^^
 
 error: this specification clause calls `clause_helpers::Ledger::size`, which iterates over state reached through the receiver or a mutable parameter
-  --> $DIR/foreign.rs:35:34
+  --> $DIR/foreign.rs:37:34
    |
 LL |     #[spec(ensures: |ret| ret == self.ledger.size())]
    |                                  ^^^^^^^^^^^^^^^^^^
@@ -30,7 +30,7 @@ LL |     entries.iter().count()
    = help: check the claim once where the state is built, check only what the call returns, or call a combinator whose `# Clause cost` section states its bound; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
 
 error: this specification clause calls `clause_helpers::tally`, which iterates over state reached through the receiver or a mutable parameter
-  --> $DIR/foreign.rs:41:34
+  --> $DIR/foreign.rs:43:34
    |
 LL |     #[spec(ensures: |ret| ret == tally(&self.pages))]
    |                                  ^^^^^^^^^^^^^^^^^^
@@ -43,7 +43,7 @@ LL |     entries.iter().count()
    = help: check the claim once where the state is built, check only what the call returns, or call a combinator whose `# Clause cost` section states its bound; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
 
 error: this specification clause calls `<clause_helpers::Ledger as clause_helpers::Recorded>::recorded`, which iterates over state reached through the receiver or a mutable parameter
-  --> $DIR/foreign.rs:47:34
+  --> $DIR/foreign.rs:49:34
    |
 LL |     #[spec(ensures: |ret| ret == self.ledger.recorded())]
    |                                  ^^^^^^^^^^^^^^^^^^^^^^
@@ -56,12 +56,25 @@ LL |         self.entries.iter().count()
    = help: check the claim once where the state is built, check only what the call returns, or call a combinator whose `# Clause cost` section states its bound; an exception is `#[expect(spec_clause_traversal, reason = "...")]`
 
 error: this specification clause hands state reached through the receiver or a mutable parameter to `clause_helpers::Recorded::recorded`, which resolves to no single body here
-  --> $DIR/foreign.rs:79:30
+  --> $DIR/foreign.rs:81:30
    |
 LL | #[spec(ensures: |ret| ret == records.recorded())]
    |                              ^^^^^^^^^^^^^^^^^^
    |
    = help: state the bound every implementation keeps in a `# Clause cost` section with a `- bound:` clause on the trait method, or call a combinator that states it
 
-error: aborting due to 5 previous errors
+error: this specification clause calls `clause_helpers::Arena::command`, which hands state reached through the receiver or a mutable parameter to a call that resolves to no single body: `clause_helpers::nodes::Nodes::node_at` is not exported from `clause_helpers`, so its `# Clause cost` bound is not in its metadata
+  --> $DIR/foreign.rs:96:30
+   |
+LL | #[spec(ensures: |ret| ret == arena.command(0_usize))]
+   |                              ^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the walk is here
+  --> $DIR/auxiliary/clause_helpers.rs:117:16
+   |
+LL |         family.node_at(offset)
+   |                ^^^^^^^^^^^^^^^
+   = help: export the trait, or state the bound on the clause with `#[expect(spec_clause_traversal, reason = "...")]`
+
+error: aborting due to 6 previous errors
 
