@@ -151,9 +151,9 @@ jobs:
   prepare:
     name: prepare the run
     # Dependency updates land through a maintainer's pull request, so a
-    # dependabot pull request runs nothing: this job skips, every job that
+    # Renovate pull request runs nothing: this job skips, every job that
     # needs it skips with it, and a skipped required check passes.
-    if: &not-dependabot ${{ github.actor != 'dependabot[bot]' }}
+    if: &not-renovate ${{ github.actor != 'renovate[bot]' }}
     runs-on: *linux
     outputs:
       rust: ${{ github.event_name == 'merge_group' || steps.fetch.outcome != 'success' || steps.filter.outcome != 'success' || steps.filter.outputs.rust == 'true' }}
@@ -382,7 +382,7 @@ jobs:
 
   workflow-lint:
     name: check workflow lints (zizmor)
-    if: *not-dependabot
+    if: *not-renovate
     runs-on: *linux
     env:
       CI_TOOLS: CI_TOOLS_ZIZMOR

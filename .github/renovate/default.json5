@@ -1,0 +1,99 @@
+// The dependency-update policy every gandr-lang repository shares. Each
+// repository's `.github/renovate.json5` extends this file and adds only what
+// is its own.
+//
+// Renovate proposes; it never lands. CI skips its pull requests, and a
+// maintainer makes each update by hand in a pull request of the repository's
+// own (`mise upgrade --bump`, `cargo update`, `mise run toolchain:bump`), so a
+// proposal needs no passing artifact update to be useful.
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: [
+    "config:recommended",
+    // Actions stay pinned to a full commit, with the release it names
+    // written beside it.
+    "helpers:pinGitHubActionDigestsToSemver",
+  ],
+  timezone: "UTC",
+  // One batch a week, before the working day starts anywhere.
+  schedule: ["* 0-5 * * 1"],
+  // A release a week old: the cooldown Dependabot held.
+  minimumReleaseAge: "7 days",
+  internalChecksFilter: "strict",
+  prHourlyLimit: 0,
+  prConcurrentLimit: 6,
+  // The header passes every repository's commitlint: `build` is a type
+  // everywhere, `repo` and `ci` are scopes everywhere.
+  semanticCommits: "enabled",
+  semanticCommitType: "build",
+  semanticCommitScope: "repo",
+  // A pull request's labels name no triage kind; the issue is the record.
+  labels: [],
+  // The dashboard indexes what Renovate sees, so it carries the labels the
+  // triage workflow reads.
+  dependencyDashboard: true,
+  dependencyDashboardTitle: "Dependency updates",
+  dependencyDashboardLabels: ["kind:ci", "area:workflow"],
+  // Lock files refreshed in the same weekly window: `cargo update` and
+  // `mise lock`.
+  lockFileMaintenance: {
+    enabled: true,
+    schedule: ["* 0-5 * * 1"],
+  },
+  // Advisories skip the schedule and the release age, from both GitHub's
+  // advisories (Dependabot alerts) and OSV, which carries the RustSec
+  // informational advisories GitHub does not.
+  osvVulnerabilityAlerts: true,
+  vulnerabilityAlerts: {
+    enabled: true,
+    labels: [],
+    schedule: ["at any time"],
+    minimumReleaseAge: null,
+  },
+  packageRules: [
+    {
+      description: "Workspace manifests pin the newest release they need.",
+      matchManagers: ["cargo"],
+      rangeStrategy: "bump",
+    },
+    {
+      matchManagers: ["cargo"],
+      matchUpdateTypes: ["minor", "patch"],
+      groupName: "rust crates",
+    },
+    {
+      matchManagers: ["mise"],
+      groupName: "mise tools",
+    },
+    {
+      matchManagers: ["github-actions", "dockerfile"],
+      semanticCommitScope: "ci",
+    },
+    {
+      matchManagers: ["github-actions"],
+      groupName: "github actions",
+    },
+    {
+      description: "The Dylint library, its UI harness, its driver and its linker share one version.",
+      matchPackageNames: ["/dylint/"],
+      groupName: "dylint",
+      prBodyNotes: ["Dylint's version is compiler-coupled: move it with the toolchain and run the whole gate wall."],
+    },
+    {
+      description: "A git dependency on another gandr-lang repository tracks that repository's main branch.",
+      matchDatasources: ["git-refs"],
+      matchPackageNames: ["/^https://github\\.com/gandr-lang//"],
+      groupName: "gandr-lang revisions",
+    },
+  ],
+  customManagers: [
+    {
+      customType: "regex",
+      description: "Git revisions of gandr-lang repositories in Cargo manifests, including the Dylint library metadata.",
+      managerFilePatterns: ["/(^|/)Cargo\\.toml$/"],
+      matchStrings: ['git = "(?<packageName>https://github\\.com/gandr-lang/(?<depName>[\\w.-]+))"\\s+rev = "(?<currentDigest>[0-9a-f]{40})"'],
+      datasourceTemplate: "git-refs",
+      currentValueTemplate: "main",
+    },
+  ],
+}
