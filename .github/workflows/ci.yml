@@ -264,10 +264,16 @@ jobs:
       - *restore-dylint-library
       - *install-tools
       - *install-policy-tools
-      - name: test Dylint package
+      # One test builds a missing driver alone: parallel builds race, and
+      # Linux refuses to execute a driver another process still writes.
+      - name: build the Dylint driver
         working-directory: &dylint-package crates/quenchant-dylints
-        env:
+        env: &dylint-package-env
           CARGO_TARGET_DIR: ${{ github.workspace }}/target
+        run: cargo nextest run --profile ci -E 'test(=tests::ui_config)'
+      - name: test Dylint package
+        working-directory: *dylint-package
+        env: *dylint-package-env
         run: cargo nextest run --profile ci
       - *upload-test-report
       - name: exercise enforcing specification exits
