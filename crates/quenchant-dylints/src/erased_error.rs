@@ -283,11 +283,14 @@ fn returns_erased_error<'tcx>(
                         return ErasedError(true);
                     }
                 },
-                ty::Alias(ty::AliasTy {
-                    kind: ty::Opaque { def_id },
-                    args,
-                    ..
-                }) if !opened.contains(&def_id) => {
+                ty::Alias(
+                    _,
+                    ty::AliasTy {
+                        kind: ty::Opaque { def_id },
+                        args,
+                        ..
+                    },
+                ) if !opened.contains(&def_id) => {
                     opened.insert(def_id);
                     for (clause, _) in cx
                         .tcx

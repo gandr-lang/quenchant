@@ -251,7 +251,7 @@ pub fn check_fn_decl<'tcx>(
                             }
                         }
                     },
-                    TyKind::Pat(inner, _) | TyKind::FieldOf(inner, _) => {
+                    TyKind::Pat(inner, _) | TyKind::FieldOf(inner, _) | TyKind::View(inner, _) => {
                         work.push(PrimitiveWork::SemanticTy(inner, semantic_ty));
                     },
                     TyKind::OpaqueDef(opaque) => {
@@ -278,7 +278,8 @@ pub fn check_fn_decl<'tcx>(
                 TyKind::Slice(inner)
                 | TyKind::Array(inner, _)
                 | TyKind::Pat(inner, _)
-                | TyKind::FieldOf(inner, _) => {
+                | TyKind::FieldOf(inner, _)
+                | TyKind::View(inner, _) => {
                     work.push(PrimitiveWork::HirTy(inner));
                 },
                 TyKind::Ptr(mut_ty) | TyKind::Ref(_, mut_ty) => {
@@ -330,7 +331,8 @@ pub fn check_fn_decl<'tcx>(
                 TyKind::Slice(inner)
                 | TyKind::Array(inner, _)
                 | TyKind::Pat(inner, _)
-                | TyKind::FieldOf(inner, _) => {
+                | TyKind::FieldOf(inner, _)
+                | TyKind::View(inner, _) => {
                     work.push(PrimitiveWork::OpaqueOutputTy(inner));
                 },
                 TyKind::Ptr(mut_ty) | TyKind::Ref(_, mut_ty) => {

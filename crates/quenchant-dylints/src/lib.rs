@@ -445,103 +445,105 @@ pub fn register_lints(
         LintId::of(doc_shape::MODULE_DOC_BUDGET),
         LintId::of(doc_shape::MODULE_DOC_DUPLICATION),
     ]);
-    lint_store.register_pre_expansion_pass(Box::new(|| {
+    lint_store.register_pre_expansion_lint_pass(Box::new(|| {
         Box::new(safety::SafetyDocumentation::default())
     }));
-    lint_store.register_pre_expansion_pass(Box::new(move || {
+    lint_store.register_pre_expansion_lint_pass(Box::new(move || {
         Box::new(AttributeCollector::new(collected.clone()))
     }));
-    lint_store.register_pre_expansion_pass(Box::new(move || Box::new(collected_spelling.clone())));
-    lint_store.register_pre_expansion_pass(Box::new(move || {
+    lint_store
+        .register_pre_expansion_lint_pass(Box::new(move || Box::new(collected_spelling.clone())));
+    lint_store.register_pre_expansion_lint_pass(Box::new(move || {
         Box::new(clause_cost::ClauseCollector::new(collected_regions.clone()))
     }));
-    lint_store.register_late_pass(Box::new(move |_| Box::new(spelling.clone())));
-    lint_store.register_late_pass(Box::new(move |_| {
+    lint_store.register_late_lint_pass(Box::new(move |_| Box::new(spelling.clone())));
+    lint_store.register_late_lint_pass(Box::new(move |_| {
         Box::new(clause_cost::SpecClauseTraversal::new(
             clause_regions.clone(),
         ))
     }));
-    lint_store.register_late_pass(Box::new(move |_| {
+    lint_store.register_late_lint_pass(Box::new(move |_| {
         Box::new(WorkflowBoundaries::new(allow_list.clone()))
     }));
-    lint_store.register_late_pass(Box::new(|_| Box::new(WorkflowAdequacy)));
-    lint_store.register_late_pass(Box::new(|_| Box::new(WorkflowJudgement)));
-    lint_store.register_late_pass(Box::new(move |_| {
+    lint_store.register_late_lint_pass(Box::new(|_| Box::new(WorkflowAdequacy)));
+    lint_store.register_late_lint_pass(Box::new(|_| Box::new(WorkflowJudgement)));
+    lint_store.register_late_lint_pass(Box::new(move |_| {
         Box::new(WorkflowSpecification::new(attributes.clone()))
     }));
-    lint_store.register_late_pass(Box::new(|_| Box::new(arithmetic::PrimitiveArithmetic)));
-    lint_store.register_late_pass(Box::new(|_| Box::new(option_signature::OptionSignature)));
-    lint_store.register_late_pass(Box::new(|_| Box::new(option_field::OptionField::default())));
-    lint_store.register_late_pass(Box::new(|_| Box::new(maybe_shape::MaybeShape)));
-    lint_store.register_late_pass(Box::new(|_| {
+    lint_store.register_late_lint_pass(Box::new(|_| Box::new(arithmetic::PrimitiveArithmetic)));
+    lint_store.register_late_lint_pass(Box::new(|_| Box::new(option_signature::OptionSignature)));
+    lint_store
+        .register_late_lint_pass(Box::new(|_| Box::new(option_field::OptionField::default())));
+    lint_store.register_late_lint_pass(Box::new(|_| Box::new(maybe_shape::MaybeShape)));
+    lint_store.register_late_lint_pass(Box::new(|_| {
         Box::new(erased_error::ErasedErrorSignature::default())
     }));
-    lint_store.register_late_pass(Box::new(|_| {
+    lint_store.register_late_lint_pass(Box::new(|_| {
         Box::new(raw_pointer::RawPointerThroughReference)
     }));
-    lint_store.register_late_pass(Box::new(|tcx| {
+    lint_store.register_late_lint_pass(Box::new(|tcx| {
         Box::new(dishonest_answer::DishonestAnswer::configured(tcx))
     }));
-    lint_store.register_late_pass(Box::new(|tcx| {
+    lint_store.register_late_lint_pass(Box::new(|tcx| {
         Box::new(presenter_coverage::PresenterCoverage::configured(tcx))
     }));
-    lint_store.register_late_pass(Box::new(|tcx| {
+    lint_store.register_late_lint_pass(Box::new(|tcx| {
         Box::new(mold_coverage::MoldCoverage::configured(tcx))
     }));
-    lint_store.register_late_pass(Box::new(|tcx| {
+    lint_store.register_late_lint_pass(Box::new(|tcx| {
         Box::new(doc_shape::DocShape::configured(tcx))
     }));
     let allocated = cost_regions.clone();
-    lint_store.register_late_pass(Box::new(move |_| {
+    lint_store.register_late_lint_pass(Box::new(move |_| {
         Box::new(allocation_in_repeated_body::AllocationInRepeatedBody::new(
             allocated.clone(),
         ))
     }));
-    lint_store.register_late_pass(Box::new(|_| {
+    lint_store.register_late_lint_pass(Box::new(|_| {
         Box::<allocation_free_region::AllocationFreeRegion<'_>>::default()
     }));
     let cloned = cost_regions.clone();
-    lint_store.register_late_pass(Box::new(move |_| {
+    lint_store.register_late_lint_pass(Box::new(move |_| {
         Box::new(clone_in_loop::CloneInLoop::new(cloned.clone()))
     }));
     let bucketed = cost_regions.clone();
-    lint_store.register_late_pass(Box::new(move |_| {
+    lint_store.register_late_lint_pass(Box::new(move |_| {
         Box::new(bucket_per_key::BucketPerKey::new(bucketed.clone()))
     }));
     let read_once = cost_regions.clone();
-    lint_store.register_late_pass(Box::new(move |_| {
+    lint_store.register_late_lint_pass(Box::new(move |_| {
         Box::new(collect_read_once::CollectReadOnce::new(read_once.clone()))
     }));
     let counted = cost_regions.clone();
-    lint_store.register_late_pass(Box::new(move |_| {
+    lint_store.register_late_lint_pass(Box::new(move |_| {
         Box::new(count_comparison::CountAgainstConstant::new(counted.clone()))
     }));
     let shifted = cost_regions.clone();
-    lint_store.register_late_pass(Box::new(move |_| {
+    lint_store.register_late_lint_pass(Box::new(move |_| {
         Box::new(front_shift::FrontShiftInLoop::new(shifted.clone()))
     }));
     let searched = cost_regions.clone();
-    lint_store.register_late_pass(Box::new(move |_| {
+    lint_store.register_late_lint_pass(Box::new(move |_| {
         Box::new(linear_search::LinearSearchInLoop::new(searched.clone()))
     }));
-    lint_store.register_late_pass(Box::new(move |_| {
+    lint_store.register_late_lint_pass(Box::new(move |_| {
         Box::new(reverse_after_build::ReverseAfterBuild::new(
             cost_regions.clone(),
         ))
     }));
-    lint_store.register_late_pass(Box::new(|_| Box::new(pool_only_threads::PoolOnlyThreads)));
+    lint_store.register_late_lint_pass(Box::new(|_| Box::new(pool_only_threads::PoolOnlyThreads)));
     if let Maybe::Present(directory) = evidence::evidence_directory() {
         let clause_index = evidence::ClauseIndex::default();
         let attribute_index = evidence::AttributeIndex::default();
         let recorded_clauses = clause_index.clone();
         let recorded_attributes = attribute_index.clone();
-        lint_store.register_pre_expansion_pass(Box::new(move || {
+        lint_store.register_pre_expansion_lint_pass(Box::new(move || {
             Box::new(evidence::ClauseRecorder::new(
                 recorded_clauses.clone(),
                 recorded_attributes.clone(),
             ))
         }));
-        lint_store.register_late_pass(Box::new(move |_| {
+        lint_store.register_late_lint_pass(Box::new(move |_| {
             Box::new(evidence::SpecificationEdges::new(
                 clause_index.clone(),
                 attribute_index.clone(),
@@ -1095,13 +1097,13 @@ non_owning_generics = [
     #[test]
     fn ui()
     {
-        dylint_testing::ui_test(env!("CARGO_PKG_NAME"), "ui");
+        dylint_testing::ui_test(env!("CARGO_CRATE_NAME"), "ui");
     }
 
     #[test]
     fn ui_config()
     {
-        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_config")
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_config")
             .dylint_toml(ALLOW_LIST)
             .run();
     }
@@ -1161,7 +1163,7 @@ unproduced = [
     #[test]
     fn ui_answer_totality()
     {
-        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_answer_totality")
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_answer_totality")
             .rustc_flags(["--edition=2024", "-Dunknown-lints"])
             .dylint_toml(ACCEPTED_TABLES)
             .run();
@@ -1170,7 +1172,7 @@ unproduced = [
     #[test]
     fn ui_answer_totality_refused()
     {
-        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_answer_totality_refused")
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_answer_totality_refused")
             .rustc_flags(["--edition=2024", "-Dunknown-lints"])
             .dylint_toml(REFUSED_TABLES)
             .run();
@@ -1188,7 +1190,7 @@ unproduced = [
             "-Aspecification_present".to_owned(),
             "-Adead_code".to_owned(),
         ]);
-        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_arithmetic")
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_arithmetic")
             .rustc_flags(flags)
             .run();
     }
@@ -1236,7 +1238,7 @@ unproduced = [
                 format!("{alias}={}", library.display()),
             ]);
         }
-        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_options")
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_options")
             .rustc_flags(flags)
             .run();
     }
@@ -1251,7 +1253,7 @@ unproduced = [
             "-Aspecification_present".to_owned(),
             "-Adead_code".to_owned(),
         ]);
-        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_shapes")
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_shapes")
             .rustc_flags(flags)
             .run();
     }
@@ -1261,7 +1263,7 @@ unproduced = [
     {
         let mut flags = fixture_extern_flags();
         flags.push("-Dunknown-lints".to_owned());
-        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_spec_gates")
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_spec_gates")
             .rustc_flags(flags)
             .run();
     }
@@ -1275,7 +1277,7 @@ unproduced = [
         flags.extend(
             ["-Dunknown-lints", "-Zalways-encode-mir", "-Zinline-mir=no"].map(str::to_owned),
         );
-        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_spec_cost")
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_spec_cost")
             .rustc_flags(flags)
             .run();
     }
@@ -1296,7 +1298,7 @@ unproduced = [
         }
         let mut flags = fixture_extern_flags();
         flags.push("-Dunknown-lints".to_owned());
-        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_evidence")
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_evidence")
             .rustc_flags(flags)
             .dylint_toml(format!(
                 "[quenchant-dylints]\nevidence_directory = \"{}\"\n",
@@ -1347,7 +1349,7 @@ unproduced = [
             "-Dunknown-lints".to_owned(),
             format!("--emit=dep-info={}", dep_info.display()),
         ]);
-        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_tracking")
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_tracking")
             .rustc_flags(flags)
             .run();
         let written =
@@ -1361,7 +1363,7 @@ unproduced = [
     #[test]
     fn ui_specifications()
     {
-        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_specifications")
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_specifications")
             .rustc_flags(fixture_extern_flags())
             .run();
     }
@@ -1375,7 +1377,7 @@ unproduced = [
             "-Aspecification_present".to_owned(),
             "-Aprimitive_signature".to_owned(),
         ]);
-        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_safety")
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_safety")
             .rustc_flags(flags)
             .run();
     }
@@ -1391,7 +1393,7 @@ unproduced = [
             "-Aunsafe_safety_documentation".to_owned(),
             "-Asingle_field_struct_needs_transparent_repr".to_owned(),
         ]);
-        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_signatures")
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_signatures")
             .rustc_flags(flags)
             .run();
     }
@@ -1399,7 +1401,7 @@ unproduced = [
     #[test]
     fn ui_pointers()
     {
-        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_pointers")
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_pointers")
             .rustc_flags([
                 "--edition=2024",
                 "-Dunknown-lints",
@@ -1417,7 +1419,7 @@ unproduced = [
     #[test]
     fn ui_doc_shape()
     {
-        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_doc_shape")
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_doc_shape")
             .rustc_flags([
                 "--edition=2024",
                 "-Dunknown-lints",
@@ -1450,7 +1452,7 @@ unproduced = [
             ]
             .map(str::to_owned),
         );
-        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_cost_shape")
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_cost_shape")
             .rustc_flags(flags)
             .run();
     }
@@ -1489,7 +1491,7 @@ unproduced = [
     #[test]
     fn ui_pool_threads()
     {
-        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_pool_threads")
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_pool_threads")
             .rustc_flags(pool_threads_flags())
             .run();
     }
@@ -1499,7 +1501,7 @@ unproduced = [
     {
         let mut flags = pool_threads_flags();
         flags.push("--test".to_owned());
-        dylint_testing::ui::Test::src_base(env!("CARGO_PKG_NAME"), "ui_pool_threads_test_target")
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_pool_threads_test_target")
             .rustc_flags(flags)
             .run();
     }

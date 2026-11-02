@@ -1,0 +1,32 @@
+// Renovate for quenchant: the shared gandr-lang policy, plus the compiler
+// pin this repository produces.
+{
+  $schema: "https://docs.renovatebot.com/renovate-schema.json",
+  extends: ["github>gandr-lang/quenchant//.github/renovate/default.json5"],
+  packageRules: [
+    {
+      description: "clippy_utils moves only with the toolchain, through the rust-clippy tag below.",
+      matchManagers: ["cargo"],
+      matchPackageNames: ["clippy_utils"],
+      enabled: false,
+    },
+    {
+      matchDepNames: ["rust-clippy"],
+      groupName: "toolchain",
+      prBodyNotes: ["Make this update with `mise run toolchain:bump {{{newVersion}}}`: it moves the nightly channel, the `clippy_utils` tag and its version requirement together."],
+    },
+  ],
+  customManagers: [
+    {
+      customType: "regex",
+      description: "The rust-clippy release whose nightly the toolchain pins.",
+      managerFilePatterns: ["/^Cargo\\.toml$/"],
+      matchStrings: ['\\[workspace\\.dependencies\\.clippy_utils\\]\\s+git = "https://github\\.com/rust-lang/rust-clippy"\\s+tag = "rust-(?<currentValue>\\d+\\.\\d+\\.\\d+)"'],
+      depNameTemplate: "rust-clippy",
+      packageNameTemplate: "rust-lang/rust-clippy",
+      datasourceTemplate: "github-tags",
+      extractVersionTemplate: "^rust-(?<version>\\d+\\.\\d+\\.\\d+)$",
+      versioningTemplate: "semver",
+    },
+  ],
+}

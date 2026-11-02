@@ -423,17 +423,22 @@ pub fn check(
     }
 }
 
-/// Replace only the selected compiler channel and compiler-utilities tag.
+/// Replace only the selected compiler channel and the compiler-utilities tag,
+/// with the exact `clippy_utils` version requirement that tag publishes.
 ///
 /// # Specification
-/// - ensures: both replacements preserve unrelated TOML fields and comments.
+/// - ensures: the replacements preserve unrelated TOML fields and comments.
+/// - ensures: a declared `clippy_utils` version requirement becomes
+///   `=0.1.<minor>` for the `rust-1.<minor>.<patch>` tag, the version every
+///   rust-clippy release tag publishes.
 /// - ensures: refusal leaves both input documents unchanged.
 /// - provides: a missing pin or non-nightly upstream channel refuses the edit.
 /// - panics: none.
 ///
 /// # Adequacy
 /// - hypothesis: L3 unrelated tag fields and comments survive an exact pin
-///   update; absent keys refuse before mutation.
+///   update, the version requirement follows the tag's minor release; absent
+///   keys refuse before mutation.
 /// - witness: `repository::pins::tests::bump_preserves_unrelated_configuration`
 #[spec(
     captures: [before_manifest = manifest.to_string(), before_toolchain = toolchain.to_string()],
@@ -455,6 +460,16 @@ fn replace(
     if !channel.0.starts_with("nightly-") {
         return Maybe::Absent(refusal::Refused::Invalid(channel.0.into()));
     }
+    // A validated stable tag always has a minor release; the guard keeps the
+    // edit unwritten rather than assuming it.
+    let Some(minor) = tag
+        .0
+        .strip_prefix("rust-")
+        .and_then(|release| release.split('.').nth(1))
+    else {
+        return Maybe::Absent(refusal::Refused::Invalid(tag.0.into()));
+    };
+    let requirement = format!("=0.1.{minor}");
     let tag_item = manifest
         .get_mut("workspace")
         .and_then(|item| item.get_mut("dependencies"))
@@ -479,6 +494,17 @@ fn replace(
     let mut replacement = toml_edit::Value::from(channel.0);
     *replacement.decor_mut() = channel_item.decor().clone();
     *channel_item = replacement;
+    let version_item = manifest
+        .get_mut("workspace")
+        .and_then(|item| item.get_mut("dependencies"))
+        .and_then(|item| item.get_mut("clippy_utils"))
+        .and_then(|item| item.get_mut("version"))
+        .and_then(toml_edit::Item::as_value_mut);
+    if let Some(version_item) = version_item {
+        let mut replacement = toml_edit::Value::from(requirement);
+        *replacement.decor_mut() = version_item.decor().clone();
+        *version_item = replacement;
+    }
     Maybe::Present(Passed)
 }
 
@@ -486,8 +512,8 @@ fn replace(
 /// evidence.
 ///
 /// # Specification
-/// - ensures: successful completion writes only the compiler channel and
-///   `clippy_utils` tag values.
+/// - ensures: successful completion writes only the compiler channel, the
+///   `clippy_utils` tag and its declared version requirement.
 /// - provides: a sealed pin refusal before writing when the release or selected
 ///   fields are invalid.
 /// - fails: upstream, parsing, or write failures return `GateError`; a failed
@@ -774,5 +800,35 @@ tag = "keep" # unrelated
             Maybe::Absent(refusal::Refused::Missing(Pin::Channel))
         );
         assert_eq!(manifest.to_string(), before);
+        let mut versioned: toml_edit::DocumentMut = r#"
+[workspace.dependencies.clippy_utils]
+git = "https://github.com/rust-lang/rust-clippy"
+tag = "rust-1.98.0"
+version = "=0.1.98" # exact
+"#
+        .parse()
+        .unwrap();
+        assert_eq!(
+            replace(
+                &mut versioned,
+                &mut TOOLCHAIN.parse().unwrap(),
+                SourceText("rust-1.99.0"),
+                SourceText("nightly-2026-08-01")
+            ),
+            Maybe::Present(Passed)
+        );
+        let clippy_utils = versioned
+            .get("workspace")
+            .and_then(|item| item.get("dependencies"))
+            .and_then(|item| item.get("clippy_utils"))
+            .unwrap();
+        assert_eq!(
+            clippy_utils.get("version").unwrap().as_str(),
+            Some("=0.1.99")
+        );
+        assert!(
+            versioned.to_string().contains("# exact"),
+            "the requirement's comment must remain"
+        );
     }
 }

@@ -534,10 +534,6 @@ fn listing_runner(scope: &Path) -> Result<ListingRunner, GateError>
         .output();
     let selection = match selection {
         Ok(selection) => selection,
-        #[expect(
-            clippy::std_instead_of_core,
-            reason = "core::io is unstable on the supported compiler; process spawn errors use std"
-        )]
         Err(error) => {
             if error.kind() == std::io::ErrorKind::NotFound {
                 return Ok(ListingRunner::CargoTest { toolchain });

@@ -1,9 +1,5 @@
 //! Refuse private material in tracked content, messages, and commit identities.
 
-#![expect(
-    clippy::std_instead_of_core,
-    reason = "core::io is unstable on the supported compiler; filesystem errors use std"
-)]
 use std::io::ErrorKind;
 use std::path::Path;
 use std::process::Command;

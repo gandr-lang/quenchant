@@ -64,10 +64,17 @@ run = [
   ".config/mise/scope rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} {{ exec(command='mise which cargo-nextest') | quote }} nextest run --workspace --exclude quenchant-dylints --locked --features quenchant-arith/fast,quenchant-anodized/anodized",
 ]
 
+# Each UI test process builds the Dylint driver when the toolchain has none.
+# On Linux a process that executes the driver while another still holds its
+# fresh copy open for writing fails with "Text file busy", so one test builds
+# it alone before the suite runs in parallel.
 ["dylint:tests"]
 description = "Exercise the compiler plugin from its linker-configured directory"
 dir = "crates/quenchant-dylints"
-run = "{{ config_root }}/.config/mise/scope rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} {{ exec(command='mise which cargo-nextest') | quote }} nextest run --profile ci"
+run = [
+  "{{ config_root }}/.config/mise/scope rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} {{ exec(command='mise which cargo-nextest') | quote }} nextest run --profile ci -E 'test(=tests::ui_config)'",
+  "{{ config_root }}/.config/mise/scope rustup run {{ exec(command='mise exec -- rustup show active-toolchain') | split(pat=' ') | first | quote }} {{ exec(command='mise which cargo-nextest') | quote }} nextest run --profile ci",
+]
 
 ["check:miri"]
 description = "Interpret the valid-input fast precondition witnesses"
