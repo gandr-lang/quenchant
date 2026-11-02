@@ -126,8 +126,10 @@ impl<'tcx> LateLintPass<'tcx> for PrimitiveArithmetic
             },
             ExprKind::Path(_) => {
                 matches!(*cx.typeck_results().expr_ty(expr).kind(), ty::FnDef(method, arguments)
-                    if matches!(primitive_method(cx, method), ArithmeticIdentity::Primitive)
-                        || matches!(primitive_operator(cx, method, arguments), ArithmeticIdentity::Primitive))
+                if matches!(primitive_method(cx, method), ArithmeticIdentity::Primitive)
+                    || arguments.no_bound_vars().is_some_and(|arguments| {
+                        matches!(primitive_operator(cx, method, arguments), ArithmeticIdentity::Primitive)
+                    }))
             },
             _ => false,
         };

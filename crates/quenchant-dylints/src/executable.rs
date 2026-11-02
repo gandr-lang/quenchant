@@ -31,7 +31,6 @@ use quenchant_shape::shape::Maybe;
 use rustc_ast::AssocItem;
 use rustc_ast::AssocItemKind;
 use rustc_ast::AttrArgs;
-use rustc_ast::AttrItemKind;
 use rustc_ast::AttrKind;
 use rustc_ast::Attribute;
 use rustc_ast::ForeignItemKind;
@@ -272,8 +271,7 @@ impl EarlyLintPass for SpecificationSpelling
                 .segments
                 .first()
                 .is_some_and(|segment| segment.ident.name == rustc_span::sym::cfg_attr)
-            && let AttrItemKind::Unparsed(ref args) = normal.item.args
-            && let AttrArgs::Delimited(ref delimited) = *args
+            && let AttrArgs::Delimited(ref delimited) = normal.item.args
         {
             self.collect_conditional(&delimited.tokens);
         }
@@ -837,7 +835,8 @@ fn read_attributes(attrs: &[Attribute]) -> ExecutableAttribute
 /// Find the `spec` attributes an authored attribute writes.
 ///
 /// # Specification
-/// - ensures: a documentation attribute supplies no specification arguments.
+/// - ensures: a documentation or compiler-synthesized attribute supplies no
+///   specification arguments.
 /// - ensures: returns the attribute's own arguments when its path's last
 ///   segment is `spec`; for a `cfg_attr`, the arguments of each attribute it
 ///   applies whose path ends in `spec`; and nothing for any other attribute.
@@ -850,7 +849,7 @@ fn read_attributes(attrs: &[Attribute]) -> ExecutableAttribute
 ///   and conditional attributes and compare accepted forms with refused forms.
 /// - witness: `tests::ui_spec_gates`
 #[spec(ensures: |output| match attr.kind {
-    AttrKind::DocComment(..) => output.is_empty(),
+    AttrKind::DocComment(..) | AttrKind::Synthetic(_) => output.is_empty(),
     AttrKind::Normal(_) => true,
 })]
 pub fn spec_arguments(attr: &Attribute) -> Vec<SpecArguments<'_>>
@@ -863,10 +862,7 @@ pub fn spec_arguments(attr: &Attribute) -> Vec<SpecArguments<'_>>
     else {
         return Vec::new();
     };
-    let AttrItemKind::Unparsed(ref args) = normal.item.args
-    else {
-        return Vec::new();
-    };
+    let args = &normal.item.args;
     if segment.ident.name.as_str() == "spec" {
         return match *args {
             AttrArgs::Delimited(ref delimited) => {

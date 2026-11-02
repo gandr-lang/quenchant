@@ -55,6 +55,7 @@ use rustc_middle::ty::EarlyBinder;
 use rustc_middle::ty::GenericArgs;
 use rustc_middle::ty::Instance;
 use rustc_middle::ty::InstanceKind;
+use rustc_middle::ty::ShimKind;
 use rustc_middle::ty::Ty;
 use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::TypingEnv;
@@ -300,7 +301,7 @@ fn calls<'tcx>(
         let callee = instance.instantiate_mir_and_normalize_erasing_regions(
             tcx,
             typing_env,
-            EarlyBinder::bind(func.ty(&body.local_decls, tcx)),
+            EarlyBinder::bind(tcx, func.ty(&body.local_decls, tcx)),
         );
         let root = terminator
             .source_info
@@ -456,15 +457,19 @@ fn classify_call<'tcx>(
     {
         return Call::Allocates(Cause::Allocator);
     }
+    let Some(args) = args.no_bound_vars()
+    else {
+        return trait_call(tcx, def_id);
+    };
     let Ok(Some(instance)) = Instance::try_resolve(tcx, typing_env, def_id, args)
     else {
         return trait_call(tcx, def_id);
     };
     match instance.def {
         InstanceKind::Virtual(..) => trait_call(tcx, def_id),
-        InstanceKind::DropGlue(..)
-        | InstanceKind::AsyncDropGlue(..)
-        | InstanceKind::Intrinsic(_) => Call::Free,
+        InstanceKind::Shim(ShimKind::DropGlue(..) | ShimKind::AsyncDropGlue(..))
+        | InstanceKind::Intrinsic(_)
+        | InstanceKind::LlvmIntrinsic(_) => Call::Free,
         InstanceKind::Item(item)
             if in_core(tcx, item) == Allocation::Never
                 && instance.args.types().next().is_none() =>
@@ -473,16 +478,18 @@ fn classify_call<'tcx>(
         },
         InstanceKind::Item(item) if tcx.is_mir_available(item) => Call::Body(instance),
         InstanceKind::Item(item) => signature_allocates(tcx, typing_env, item),
-        InstanceKind::VTableShim(_)
-        | InstanceKind::ReifyShim(..)
-        | InstanceKind::FnPtrShim(..)
-        | InstanceKind::ClosureOnceShim { .. }
-        | InstanceKind::ConstructCoroutineInClosureShim { .. }
-        | InstanceKind::ThreadLocalShim(_)
-        | InstanceKind::FutureDropPollShim(..)
-        | InstanceKind::AsyncDropGlueCtorShim(..)
-        | InstanceKind::CloneShim(..)
-        | InstanceKind::FnPtrAddrShim(..) => Call::Body(instance),
+        InstanceKind::Shim(
+            ShimKind::VTable(_)
+            | ShimKind::Reify(..)
+            | ShimKind::FnPtr(..)
+            | ShimKind::ClosureOnce { .. }
+            | ShimKind::ConstructCoroutineInClosure { .. }
+            | ShimKind::ThreadLocal(_)
+            | ShimKind::FutureDropPoll(..)
+            | ShimKind::AsyncDropGlueCtor(..)
+            | ShimKind::Clone(..)
+            | ShimKind::FnPtrAddr(..),
+        ) => Call::Body(instance),
     }
 }
 

@@ -12,7 +12,7 @@
 # arithmetic preconditions. A component is dropped only when the gate that
 # needs it leaves the wall.
 [toolchain]
-channel = "nightly-2026-06-25"
+channel = "nightly-2026-08-07"
 components = ["clippy", "rustfmt", "miri", "rustc-dev", "llvm-tools"]
 targets = ["thumbv7em-none-eabi"]
 profile = "minimal"

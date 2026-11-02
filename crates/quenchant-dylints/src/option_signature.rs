@@ -311,11 +311,14 @@ pub fn exposure<'tcx>(
                     pending.push((actual, required));
                 }
             },
-            ty::Alias(ty::AliasTy {
-                kind: ty::Opaque { def_id },
-                args,
-                ..
-            }) => {
+            ty::Alias(
+                _,
+                ty::AliasTy {
+                    kind: ty::Opaque { def_id },
+                    args,
+                    ..
+                },
+            ) => {
                 for (clause, _) in cx
                     .tcx
                     .explicit_item_bounds(def_id)
@@ -400,11 +403,14 @@ fn required_projection<'tcx>(
                 }
             }
         },
-        ty::Alias(ty::AliasTy {
-            kind: ty::Opaque { def_id } | ty::Projection { def_id },
-            args,
-            ..
-        }) => {
+        ty::Alias(
+            _,
+            ty::AliasTy {
+                kind: ty::Opaque { def_id } | ty::Projection { def_id },
+                args,
+                ..
+            },
+        ) => {
             for (clause, _) in cx
                 .tcx
                 .explicit_item_bounds(def_id)
@@ -518,11 +524,14 @@ fn required_trait<'tcx>(
                 }
             }
         },
-        ty::Alias(ty::AliasTy {
-            kind: ty::Opaque { def_id } | ty::Projection { def_id },
-            args,
-            ..
-        }) => {
+        ty::Alias(
+            _,
+            ty::AliasTy {
+                kind: ty::Opaque { def_id } | ty::Projection { def_id },
+                args,
+                ..
+            },
+        ) => {
             for (clause, _) in cx
                 .tcx
                 .explicit_item_bounds(def_id)

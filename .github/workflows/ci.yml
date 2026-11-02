@@ -30,8 +30,8 @@ env:
   # Match local content fingerprints; Cargo still checks changed inputs and flags.
   CARGO_UNSTABLE_CHECKSUM_FRESHNESS: "true"
   CARGO_BUILD_FINGERPRINT: content
-  CARGO_NEXTEST_VERSION: "0.9.143"
-  DYLINT_VERSION: "6.0.4"
+  CARGO_NEXTEST_VERSION: "0.9.150"
+  DYLINT_VERSION: "6.3.2"
   MISE_CARGO_BINSTALL_QUICKINSTALL: "true"
   MISE_CARGO_BINSTALL_NATIVE: "true"
   # These tools have no CI consumer. The Dockerfile checks this same list.
@@ -77,7 +77,7 @@ jobs:
       - &install-tools
         name: install job tools
         if: ${{ env.CI_INSTALL_TOOLS != 'false' }}
-        uses: taiki-e/install-action@8cca0918f8471c33515202b73f56ab27f2bed283 # v2.87.29
+        uses: taiki-e/install-action@1e29709c0ec63babbe8f266397a465f29a825f91 # v2.87.31
         # Tool sets resolve here: job-level env cannot reference workflow env.
         env:
           CI_TOOLS_NEXTEST: cargo-nextest@${{ env.CARGO_NEXTEST_VERSION }}
@@ -90,7 +90,7 @@ jobs:
       - &install-policy-tools
         name: install mise-managed policy tools
         if: *without-image
-        uses: jdx/mise-action@9b200bcecbfd6303e69a4a261b2e09e3757440a7 # v5.2.0
+        uses: jdx/mise-action@82a612c5ab8bcda7cc5db6b7e81a8e7584c3dc6e # v5.2.3
         with:
           version: 2026.8.15
           # Keep Rustup proxies supplying RUSTUP_TOOLCHAIN to compiler plugins.

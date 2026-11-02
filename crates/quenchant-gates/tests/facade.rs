@@ -25,6 +25,9 @@ edition = "2024"
 [workspace]
 [dependencies]
 quenchant-anodized = {{ path = {facade:?}, default-features = false }}
+[features]
+# A statement attribute survives into the expansion only with the backend.
+backend = ["quenchant-anodized/anodized"]
 [lints.rust]
 unexpected_cfgs = {{ level = "deny", check-cfg = ['cfg(anodized_panic)', 'cfg(anodized_print)'] }}
 "#
@@ -241,7 +244,7 @@ fn main() {
 
     std::fs::write(
         root.join("src/bin/helpers.rs"),
-        r#"#![feature(proc_macro_hygiene)]
+        r#"#![cfg_attr(feature = "backend", feature(proc_macro_hygiene))]
 use anodized::{spec, spec_helper};
 use core::sync::atomic::{AtomicUsize, Ordering};
 
@@ -295,9 +298,9 @@ fn main() {
     .unwrap();
     for (features, flags) in [
         ("", ""),
-        ("quenchant-anodized/anodized", ""),
-        ("quenchant-anodized/anodized", "--cfg anodized_panic"),
-        ("quenchant-anodized/anodized", "--cfg anodized_print"),
+        ("backend", ""),
+        ("backend", "--cfg anodized_panic"),
+        ("backend", "--cfg anodized_print"),
     ] {
         let mut command = std::process::Command::new(env!("CARGO"));
         command
