@@ -180,9 +180,20 @@ jobs:
           git diff --no-renames --name-only -z "$CI_BASE_SHA" HEAD |
           jq -rRs '"rust=" + (split("\u0000") | any(length > 0 and ((endswith(".md") or startswith("docs/") or startswith("LICENSE") or . == ".gitignore") | not)) | tostring)'
           >> "$GITHUB_OUTPUT"
+      # The image's tag is the hash of the pin files it was built from. A tree
+      # whose pins differ (a toolchain or tool bump) runs without it, since
+      # the image's tools would shadow the tree's.
       - id: image
         name: resolve the image reference
-        run: echo "ref=${QUENCHANT_CI_IMAGE:+ghcr.io/gandr-lang/quenchant-ci:${QUENCHANT_CI_IMAGE}}" >> "$GITHUB_OUTPUT"
+        shell: bash
+        run: |
+          tag=$(cat mise.toml mise.lock rust-toolchain.toml | sha256sum)
+          tag=${tag%% *}
+          if [[ -n $QUENCHANT_CI_IMAGE && $QUENCHANT_CI_IMAGE != "$tag" ]]; then
+            echo "::notice::the CI image ${QUENCHANT_CI_IMAGE} carries other pins than this tree (${tag}); the lanes run without it"
+            QUENCHANT_CI_IMAGE=
+          fi
+          echo "ref=${QUENCHANT_CI_IMAGE:+ghcr.io/gandr-lang/quenchant-ci:${QUENCHANT_CI_IMAGE}}" >> "$GITHUB_OUTPUT"
 
   # Rust, test, and workflow changes exercise the full gate before review;
   # merge groups still check their complete merge result. A stacked member,

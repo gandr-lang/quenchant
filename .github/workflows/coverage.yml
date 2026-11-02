@@ -60,10 +60,20 @@ jobs:
       - &trust-workspace
         name: trust the workspace for git
         run: git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      # The image's tag is the hash of the pin files it was built from; a tree
+      # whose pins differ runs without it (ci.yml's `prepare`).
       - &resolve-image
         id: resolve
         name: resolve the image reference
-        run: echo "ref=${QUENCHANT_CI_IMAGE:+ghcr.io/gandr-lang/quenchant-ci:${QUENCHANT_CI_IMAGE}}" >> "$GITHUB_OUTPUT"
+        shell: bash
+        run: |
+          tag=$(cat mise.toml mise.lock rust-toolchain.toml | sha256sum)
+          tag=${tag%% *}
+          if [[ -n $QUENCHANT_CI_IMAGE && $QUENCHANT_CI_IMAGE != "$tag" ]]; then
+            echo "::notice::the CI image ${QUENCHANT_CI_IMAGE} carries other pins than this tree (${tag}); the lanes run without it"
+            QUENCHANT_CI_IMAGE=
+          fi
+          echo "ref=${QUENCHANT_CI_IMAGE:+ghcr.io/gandr-lang/quenchant-ci:${QUENCHANT_CI_IMAGE}}" >> "$GITHUB_OUTPUT"
       - &setup-rust
         name: setup rust
         uses: ./.github/actions/setup-rust # zizmor: ignore[self-repository]
