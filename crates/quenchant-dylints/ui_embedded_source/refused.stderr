@@ -1,0 +1,142 @@
+error: this source of more than one line is spelled as a Rust literal
+  --> $DIR/refused.rs:16:28
+   |
+LL |     parse(SourceText::from("def b =/n  2/n"));
+   |                            ^^^^^^^^^^^^^^^^
+   |
+note: the source reaches the type a parser reads here
+  --> $DIR/refused.rs:16:11
+   |
+LL |     parse(SourceText::from("def b =/n  2/n"));
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: write the source in a `.gandr` file beside the test, and read it with `include_str!`
+   = note: `#[deny(embedded_source)]` on by default
+
+error: this source of more than one line is spelled as a Rust literal
+  --> $DIR/refused.rs:12:22
+   |
+LL | const SOURCE: &str = "def a =/n  1/n";
+   |                      ^^^^^^^^^^^^^^^^
+   |
+note: the source reaches the type a parser reads here
+  --> $DIR/refused.rs:21:11
+   |
+LL |     parse(SourceText::from(SOURCE));
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: write the source in a `.gandr` file beside the test, and read it with `include_str!`
+
+error: this source of more than one line is spelled as a Rust literal
+  --> $DIR/refused.rs:36:12
+   |
+LL |     helper("def c =/n  3/n");
+   |            ^^^^^^^^^^^^^^^^
+   |
+note: the source reaches the type a parser reads here
+  --> $DIR/refused.rs:31:18
+   |
+LL |     parse(source.into());
+   |                  ^^^^^^
+   = help: write the source in a `.gandr` file beside the test, and read it with `include_str!`
+
+error: this source of more than one line is spelled as a Rust literal
+  --> $DIR/refused.rs:41:10
+   |
+LL |     read("def d =/n  4/n");
+   |          ^^^^^^^^^^^^^^^^
+   |
+   = note: the source reaches the type a parser reads in `sources::read`
+   = help: write the source in a `.gandr` file beside the test, and read it with `include_str!`
+
+error: this source of more than one line is spelled as a Rust literal
+  --> $DIR/refused.rs:46:24
+   |
+LL |     let text = format!("def {name} =/n  5/n");
+   |                        ^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the source reaches the type a parser reads here
+  --> $DIR/refused.rs:47:11
+   |
+LL |     parse(SourceText::from(text.as_str()));
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: write the source in a `.gandr` file beside the test, and read it with `include_str!`
+
+error: this source of more than one line is spelled as a Rust literal
+  --> $DIR/refused.rs:52:28
+   |
+LL |     parse(SourceText::from(concat!("def f =/n", "  6/n")));
+   |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the source reaches the type a parser reads here
+  --> $DIR/refused.rs:52:11
+   |
+LL |     parse(SourceText::from(concat!("def f =/n", "  6/n")));
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: write the source in a `.gandr` file beside the test, and read it with `include_str!`
+
+error: this source of more than one line is spelled as a Rust literal
+  --> $DIR/refused.rs:58:10
+   |
+LL |         ("def g =/n  7/n", "def g = 7/nas laid out"),
+   |          ^^^^^^^^^^^^^^^^
+   |
+note: the source reaches the type a parser reads here
+  --> $DIR/refused.rs:62:15
+   |
+LL |         parse(SourceText::from(source));
+   |               ^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: write the source in a `.gandr` file beside the test, and read it with `include_str!`
+
+error: this source of more than one line is spelled as a Rust literal
+  --> $DIR/refused.rs:70:12
+   |
+LL |     reader("def i =/n  9/n");
+   |            ^^^^^^^^^^^^^^^^
+   |
+note: the source reaches the type a parser reads here
+  --> $DIR/refused.rs:69:37
+   |
+LL |     let reader = |text: &str| parse(SourceText::from(text));
+   |                                     ^^^^^^^^^^^^^^^^^^^^^^
+   = help: write the source in a `.gandr` file beside the test, and read it with `include_str!`
+
+error: this source of more than one line is spelled as a Rust literal
+  --> $DIR/refused.rs:76:19
+   |
+LL |     text.push_str("def j =/n  10/n");
+   |                   ^^^^^^^^^^^^^^^^^
+   |
+note: the source reaches the type a parser reads here
+  --> $DIR/refused.rs:77:11
+   |
+LL |     parse(SourceText::from(text.as_str()));
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: write the source in a `.gandr` file beside the test, and read it with `include_str!`
+
+error: this source of more than one line is spelled as a Rust literal
+  --> $DIR/refused.rs:82:31
+   |
+LL |     let parsed: Vec<usize> = ["def k =/n  11/n"]
+   |                               ^^^^^^^^^^^^^^^^^
+   |
+note: the source reaches the type a parser reads here
+  --> $DIR/refused.rs:84:27
+   |
+LL |         .map(|text| parse(SourceText::from(*text)))
+   |                           ^^^^^^^^^^^^^^^^^^^^^^^
+   = help: write the source in a `.gandr` file beside the test, and read it with `include_str!`
+
+error: this source is read from `fixture.txt`, which is no `.gandr` file
+  --> $DIR/refused.rs:90:28
+   |
+LL |     parse(SourceText::from(include_str!("fixture.txt")));
+   |                            ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the source reaches the type a parser reads here
+  --> $DIR/refused.rs:90:11
+   |
+LL |     parse(SourceText::from(include_str!("fixture.txt")));
+   |           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: write the source in a `.gandr` file beside the test, and read it with `include_str!`
+
+error: aborting due to 11 previous errors
+

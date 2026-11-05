@@ -1,0 +1,3 @@
+{"column":28,"end":439,"file":"ui_embedded_source/accepted.rs","line":19,"start":428,"text":"def a = 1"}
+{"column":28,"end":483,"file":"ui_embedded_source/accepted.rs","line":20,"start":470,"text":"def b = 2\n"}
+{"column":33,"end":642,"file":"ui_embedded_source/accepted.rs","line":30,"start":631,"text":"def c = 3"}

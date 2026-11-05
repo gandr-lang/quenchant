@@ -33,6 +33,9 @@
 //! ([`allocation_free_region`]). `pool_only_threads`, opted into per consumer,
 //! refuses a thread or a pool started outside the consumer's work pool, unless
 //! the site states why it owns its thread ([`pool_only_threads`]).
+//! `embedded_source`, configured by the consumer, refuses a multi-line literal
+//! that reaches the type a parser reads, so the source lives in a file
+//! ([`embedded_source`]).
 //!
 //! # Boundaries
 //!
@@ -79,6 +82,7 @@ mod cost_shape;
 mod count_comparison;
 mod dishonest_answer;
 mod doc_shape;
+mod embedded_source;
 mod erased_error;
 mod evidence;
 mod executable;
@@ -432,6 +436,7 @@ pub fn register_lints(
         linear_search::LINEAR_SEARCH_IN_LOOP,
         reverse_after_build::REVERSE_AFTER_BUILD,
         pool_only_threads::POOL_ONLY_THREADS,
+        embedded_source::EMBEDDED_SOURCE,
     ]);
     lint_store.register_group(true, answer_totality::GROUP, None, vec![
         LintId::of(dishonest_answer::DISHONEST_ANSWER),
@@ -532,6 +537,9 @@ pub fn register_lints(
         ))
     }));
     lint_store.register_late_lint_pass(Box::new(|_| Box::new(pool_only_threads::PoolOnlyThreads)));
+    lint_store.register_late_lint_pass(Box::new(|tcx| {
+        Box::new(embedded_source::EmbeddedSource::configured(tcx))
+    }));
     if let Maybe::Present(directory) = evidence::evidence_directory() {
         let clause_index = evidence::ClauseIndex::default();
         let attribute_index = evidence::AttributeIndex::default();
@@ -1326,6 +1334,64 @@ unproduced = [
             assert_eq!(
                 actual, expected,
                 "the {fixture} fixture's record matches its pinned expectation"
+            );
+        }
+    }
+
+    /// The refused fixture's literals are reported, the accepted fixture's
+    /// are not, and the list each unit writes names the inline sources that
+    /// reach the configured type and no source read from a file.
+    #[test]
+    fn ui_embedded_source()
+    {
+        let lists = std::env::current_exe()
+            .expect("the running test binary has a path on disk")
+            .parent()
+            .and_then(std::path::Path::parent)
+            .and_then(std::path::Path::parent)
+            .expect("the test binary lives in a Cargo target directory")
+            .join("ui-embedded-sources");
+        if lists.exists() {
+            std::fs::remove_dir_all(&lists).expect("a stale list directory can be removed");
+        }
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_embedded_source")
+            .rustc_flags(
+                [
+                    "--edition=2024",
+                    "-Dunknown-lints",
+                    "-Zalways-encode-mir",
+                    "-Zinline-mir=no",
+                    "-Aprimitive_signature",
+                    "-Aspecification_present",
+                ]
+                .map(str::to_owned),
+            )
+            .dylint_toml(format!(
+                "[quenchant-dylints.embedded_source]\ntypes = [\"sources::SourceText\"]\nextension = \"gandr\"\ndirectory = \"{}\"\n",
+                lists.display()
+            ))
+            .run();
+        let fixtures = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("ui_embedded_source");
+        let written: Vec<std::path::PathBuf> = std::fs::read_dir(&lists)
+            .expect("the rule wrote its list directory")
+            .map(|entry| entry.expect("a list entry is readable").path())
+            .collect();
+        for fixture in ["accepted", "refused"] {
+            let marker = format!("ui_embedded_source_{fixture}_rs.");
+            let matching: Vec<&std::path::PathBuf> = written
+                .iter()
+                .filter(|path| path.to_string_lossy().contains(&marker))
+                .collect();
+            let &[list] = matching.as_slice()
+            else {
+                panic!("one list names the {fixture} fixture: {written:?}");
+            };
+            let actual = std::fs::read_to_string(list).expect("the list is readable");
+            let expected = std::fs::read_to_string(fixtures.join(format!("{fixture}.jsonl")))
+                .expect("the pinned list is readable");
+            assert_eq!(
+                actual, expected,
+                "the {fixture} fixture's list matches its pinned expectation"
             );
         }
     }

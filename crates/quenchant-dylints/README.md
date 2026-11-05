@@ -102,6 +102,7 @@ For normal work, prefer the repository's `mise run check:tests` task, which sele
 | `clone_in_loop` | A loop or per-element closure does not deep-copy, through `clone`, `cloned`, `to_vec` or `to_owned`, a value owning a heap allocation only to drop the copy before the next pass; a copy that leaves the pass, a diverging path, and `Copy`, plain-data, `Rc` and `Arc` values are accepted |
 | `allocation_free_region` | A function whose rustdoc `# Cost` section carries `- allocation: none in steady state` reaches no allocation through any call the build can read, follows into `std` and other crates' MIR, and refuses a trait object, a function pointer or an unmarked trait method of a type parameter; a marked trait declaration holds every implementation to it |
 | `pool_only_threads` | Opt-in, `allow` by default. No call outside the tests starts a thread or a pool beside the consumer's work pool: `std::thread::spawn`, `scope` and `Builder`'s spawns, rayon's `ThreadPoolBuilder::new`, `scope`, `in_place_scope`, `spawn`, `join`, their FIFO forms and broadcasts; a site that owns its thread states why with `#[expect(pool_only_threads, reason = "...")]` at the site, and an inherited, unreasoned or `allow` exception is refused |
+| `embedded_source` | A string literal of two or more lines does not reach a configured type a parser reads, directly, through a helper in this crate or a dependency, or through the tuples, arrays and calls between; `include_str!` of a file with the configured extension and a one-line literal are accepted; configured |
 
 The plugin is a policy floor, not a proof of totality or complete semantics. Call edges erased by function-pointer coercion, compiler-generated drop behavior, and unresolved type relationships require the corresponding review or evidence boundary. The ownership and call analyses address different mechanisms; neither subsumes the other.
 
@@ -298,6 +299,25 @@ Consumers may use module-scoped lint levels during a rollout. After the backlog 
 The README's budget sends detail into rustdoc; the `rustdoc_shape` group holds that rustdoc in turn. A module's `//!` documentation is a lead paragraph, then sections from one vocabulary, each within a byte budget; documentation states what the code does, so it carries no decision record and cites no issue, and a paragraph is never copied between the README and the crate's documentation. [`src/doc_shape.rs`](src/doc_shape.rs) states each rule, its vocabulary and its caps. A test compilation is not read.
 
 Every rule is `allow` by default. A consumer denies the group in its `DYLINT_RUSTFLAGS` (`-D rustdoc_shape`), selects the history report beside it (`--force-warn doc_history_prose`, which denied warnings cannot turn into a refusal), and carries an `allow` per crate, under `cfg_attr(dylint_lib = "quenchant_dylints", …)`, where its documentation does not yet meet the shape. `-W module_doc_measure` prints the sizes of every documented module.
+
+## Sources read from files
+
+A test that spells a multi-line source of another language as a Rust literal hides the source from that language's formatter and from a codemod that respells its sources. `embedded_source` reads where a literal goes: it follows each string constant forward through the body's MIR to a conversion into a type the consumer names, and refuses a literal of two or more lines that reaches one. A source read with `include_str!` from a file of the configured extension passes, and so does a one-line literal. [`src/embedded_source.rs`](src/embedded_source.rs) states the trace and its limits.
+
+```toml
+[quenchant-dylints.embedded_source]
+types = ["parser::SourceText"]
+extension = "gandr"
+directory = "/absolute/path/to/target/embedded-sources"
+allowed = ["package-whose-sources-move-later"]
+```
+
+- `types` names the types a parser reads. A conversion into one is `From::from` with the type as `Self`, `Into::into` with the type as its target, or the type's constructor.
+- A function whose parameter reaches a conversion carries a summary, so a literal handed to a helper is followed into it, in this crate or in a dependency whose metadata holds its MIR.
+- `allowed` names the packages whose findings are not reported while their sources move to files.
+- `directory` receives one JSON-lines list for each compilation unit: every inline literal that reaches a conversion, one line or more, with its file, byte range, line, column and text, for a codemod to read.
+
+The rule is `deny` by default, and it reads nothing until its table is configured.
 
 ## Ownership exceptions
 
