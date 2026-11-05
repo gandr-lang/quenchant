@@ -1183,7 +1183,7 @@ fn unit_qualifier() -> Maybe<String, unit_paths::Unqualified>
 /// - hypothesis: L3 — the evidence fixture's record is found under the name its
 ///   root file gives.
 /// - witness: `tests::ui_evidence`
-fn record_name(tcx: TyCtxt<'_>) -> String
+pub fn record_name(tcx: TyCtxt<'_>) -> String
 {
     let root = tcx
         .sess
