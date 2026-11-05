@@ -15,7 +15,9 @@
 //! `Into::into` with the type as its target, and the type's own constructor.
 //! A function whose parameter reaches a sink carries a summary, so a literal
 //! handed to a helper is followed into it, in this crate or in a dependency
-//! whose metadata holds its MIR.
+//! whose metadata holds its MIR. A first pass over the call graph reads each
+//! callee's calls alone, and a callee that reaches no sink takes the empty
+//! summary without the dataflow.
 //!
 //! # Boundaries
 //!
@@ -34,6 +36,7 @@
 //! - [`EMBEDDED_SOURCE`]: the rule.
 //! - [`EmbeddedSource`]: the pass and its configuration.
 //! - [`Summaries`]: the parameters of each followed body that reach a sink.
+//! - [`Reaching`]: whether each followed body can reach a sink at all.
 
 use alloc::collections::BTreeMap;
 use alloc::collections::BTreeSet;
@@ -781,6 +784,168 @@ enum Scan
     Needs(Vec<DefId>),
 }
 
+/// Whether each followed body can reach a sink, directly or through the
+/// bodies it calls.
+///
+/// A body that reaches no sink has an empty summary, so no dataflow over it
+/// is needed. The reach reads each body once, its calls and its aggregates
+/// alone, where a summary settles every local of the body.
+#[derive(Default)]
+#[repr(transparent)]
+struct Reaching(HashMap<DefId, Sink>);
+
+impl Reaching
+{
+    /// Whether the body of `root` can reach a sink.
+    ///
+    /// # Specification
+    /// - ensures: [`Sink::Sink`] exactly when a body the call graph reaches
+    ///   from `root`, `root` included, constructs a configured type or calls a
+    ///   conversion into one; every body explored is decided afterwards.
+    /// - panics: none.
+    /// - economy: each body is read once in a compilation, for its calls and
+    ///   aggregates; the graph of the bodies not yet decided is held only while
+    ///   they are decided.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — the fixtures convert through a helper that hands its
+    ///   argument to another, in this crate and in a dependency: deciding the
+    ///   outer helper before the inner one drops the helper's summary.
+    /// - witness: `tests::ui_embedded_source`
+    #[spec(ensures: |ret| self.0.get(&root) == Some(&ret))]
+    fn reaches(
+        &mut self,
+        tcx: TyCtxt<'_>,
+        types: &HashSet<DefId>,
+        root: DefId,
+    ) -> Sink
+    {
+        if let Some(&known) = self.0.get(&root) {
+            return known;
+        }
+        // The bodies reachable from `root` that are not decided yet, each
+        // with the bodies it calls, in the order they are explored, and the
+        // ones that reach a sink directly.
+        let mut explored: HashSet<DefId> = HashSet::new();
+        let mut edges: Vec<(DefId, Vec<DefId>)> = Vec::new();
+        let mut reaching: Vec<DefId> = Vec::new();
+        let mut stack = vec![root];
+        while let Some(current) = stack.pop() {
+            if self.0.contains_key(&current) || !explored.insert(current) {
+                continue;
+            }
+            let (callees, sinks) = calls_of(tcx, types, current);
+            if sinks == Sink::Sink {
+                reaching.push(current);
+            }
+            stack.extend(
+                callees
+                    .iter()
+                    .copied()
+                    .filter(|callee| !self.0.contains_key(callee) && !explored.contains(callee)),
+            );
+            edges.push((current, callees));
+        }
+        let mut callers: HashMap<DefId, Vec<DefId>> = HashMap::new();
+        for &(caller, ref callees) in &edges {
+            for &callee in callees {
+                if self.0.get(&callee) == Some(&Sink::Sink) {
+                    reaching.push(caller);
+                }
+                callers.entry(callee).or_default().push(caller);
+            }
+        }
+        let mut reached: HashSet<DefId> = HashSet::new();
+        while let Some(body) = reaching.pop() {
+            if reached.insert(body)
+                && let Some(found) = callers.get(&body)
+            {
+                reaching.extend(found.iter().copied());
+            }
+        }
+        for &(body, _) in &edges {
+            let reach = if reached.contains(&body) {
+                Sink::Sink
+            }
+            else {
+                Sink::Other
+            };
+            self.0.insert(body, reach);
+        }
+        self.0.get(&root).copied().unwrap_or(Sink::Other)
+    }
+}
+
+/// The bodies a body's calls follow, and whether the body reaches a sink
+/// itself.
+///
+/// # Specification
+/// - ensures: the followed callee of each call and each closure handed to a
+///   call, as [`scan`] looks them up; [`Sink::Sink`] when the body constructs a
+///   configured type or calls a conversion into one. A body whose MIR is not
+///   available calls nothing and reaches no sink.
+/// - panics: none.
+/// - executable: none — the outcome is a read of the body's MIR; a predicate
+///   could only repeat it.
+///
+/// # Adequacy
+/// - hypothesis: L3 — as [`Reaching::reaches`].
+/// - witness: `tests::ui_embedded_source`
+fn calls_of(
+    tcx: TyCtxt<'_>,
+    types: &HashSet<DefId>,
+    def_id: DefId,
+) -> (Vec<DefId>, Sink)
+{
+    let mut callees = Vec::new();
+    if !tcx.is_mir_available(def_id) {
+        return (callees, Sink::Other);
+    }
+    let body = tcx.optimized_mir(def_id);
+    let typing_env = TypingEnv::post_analysis(tcx, def_id);
+    let mut sinks = Sink::Other;
+    for block in body.basic_blocks.iter() {
+        for statement in &block.statements {
+            if let StatementKind::Assign(ref assignment) = statement.kind
+                && let Rvalue::Aggregate(ref kind, _) = assignment.1
+                && let AggregateKind::Adt(adt, ..) = **kind
+                && types.contains(&adt)
+            {
+                sinks = Sink::Sink;
+            }
+        }
+        let Some(terminator) = block.terminator.as_ref()
+        else {
+            continue;
+        };
+        let TerminatorKind::Call {
+            ref func, ref args, ..
+        } = terminator.kind
+        else {
+            continue;
+        };
+        let Some((callee, callee_args)) = func.const_fn_def()
+        else {
+            continue;
+        };
+        if sink_call(tcx, types, callee, callee_args) == Sink::Sink {
+            sinks = Sink::Sink;
+            continue;
+        }
+        for argument in args {
+            if let ty::Closure(closure, _) =
+                *argument.node.ty(&body.local_decls, tcx).peel_refs().kind()
+            {
+                callees.push(closure);
+            }
+        }
+        if let Maybe::Present(target) = followed(tcx, typing_env, callee, callee_args) {
+            callees.push(target);
+        }
+    }
+    (callees, sinks)
+}
+
 impl Summaries
 {
     /// Compute the summary of `def_id` and of every body it reaches.
@@ -788,7 +953,8 @@ impl Summaries
     /// # Specification
     /// - ensures: the summary of `def_id` is recorded afterwards; a body met
     ///   again while its own reading is pending reaches nothing, so a call
-    ///   cycle ends.
+    ///   cycle ends; a body that `reaching` finds reaches no sink takes the
+    ///   empty summary without a reading.
     /// - panics: none.
     ///
     /// # Adequacy
@@ -800,6 +966,7 @@ impl Summaries
         &mut self,
         tcx: TyCtxt<'_>,
         types: &HashSet<DefId>,
+        reaching: &mut Reaching,
         def_id: DefId,
     )
     {
@@ -809,6 +976,11 @@ impl Summaries
             if self.0.contains_key(&current) {
                 pending.pop();
                 reading.remove(&current);
+                continue;
+            }
+            if reaching.reaches(tcx, types, current) == Sink::Other {
+                self.0.insert(current, Summary::default());
+                pending.pop();
                 continue;
             }
             let body = tcx.optimized_mir(current);
@@ -2305,6 +2477,7 @@ impl<'tcx> LateLintPass<'tcx> for EmbeddedSource
         }
         let tcx = cx.tcx;
         let types = &configured.types;
+        let mut reaching = Reaching::default();
         let mut seeds = Seeds::default();
         let mut summaries = Summaries::default();
         let mut reached: BTreeMap<SeedId, Witness> = BTreeMap::new();
@@ -2333,7 +2506,7 @@ impl<'tcx> LateLintPass<'tcx> for EmbeddedSource
                     Scan::Ready(hits) => break hits,
                     Scan::Needs(callees) => {
                         for callee in callees {
-                            summaries.compute(tcx, types, callee);
+                            summaries.compute(tcx, types, &mut reaching, callee);
                         }
                     },
                 }
