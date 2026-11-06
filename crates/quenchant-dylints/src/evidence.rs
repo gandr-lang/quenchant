@@ -1,4 +1,5 @@
-//! Specification dependency records: the items each executable clause names.
+//! Dependency records: the items each executable clause names, and the items
+//! each item names.
 //!
 //! When an item changes, every specification that names it owes
 //! re-verification. A specification names an item in two ways: an executable
@@ -6,6 +7,11 @@
 //! clause links it. This pass records the first kind and indexes every item a
 //! record can name; `quenchant-gates` reads the second kind from rustdoc's JSON
 //! output and joins both on this index.
+//!
+//! A reader of a workspace also asks the converse question: which items does
+//! no other item name? The pass records the names of every item's body and
+//! signature too. With them, a reader finds an item that only tests name, and
+//! an exported item that no other crate names.
 //!
 //! Clauses are located by source, as [`crate::clause_cost`] locates them: a
 //! pre-expansion pass records each clause's key and the source range of its
@@ -30,6 +36,16 @@
 //! specification on a change to the core; the named set is what the clause
 //! states a claim about.
 //!
+//! **An item names what its clauses would name, wherever the name stands.**
+//! The pass reads every expression and pattern of an item's body as it reads a
+//! clause's. It also reads the paths of the item's signature, of its bounds
+//! and of an implementation's header. A closure's names belong to the item that
+//! holds the closure. An implementation block holds the names of its header.
+//! An import and a re-export name nothing. An item that names itself, as a
+//! recursive function does, gets no name of its own. An inherent
+//! implementation block prints as its type's path, so the type in its header
+//! is no name of the block either.
+//!
 //! # Items
 //!
 //! **Records, not diagnostics.** The pass runs only when the Dylint
@@ -42,9 +58,14 @@
 //!   position, which is how the gate binary joins the two), the lines it spans
 //!   with its attributes and documentation, the lines its documentation spans,
 //!   and a revision: the fingerprint of its source text, which changes when any
-//!   byte of the item does;
+//!   byte of the item does. The field `exported` states whether the crate's
+//!   public paths reach the item, as the compiler's effective visibilities
+//!   decide. An executable has no other crate, so a reader reads the field of a
+//!   library's record;
 //! - a `clause` record per specified item and clause key: the item's path and
-//!   revision, the key, and the sorted paths of the items the clause names.
+//!   revision, the key, and the sorted paths of the items the clause names;
+//! - a `use` record per item that names another item: the item's path and the
+//!   sorted paths of the items its body and signature name.
 //!
 //! # Dependencies
 //!
@@ -502,8 +523,8 @@ impl EarlyLintPass for ClauseRecorder
     }
 }
 
-/// Late reader of the names inside authored clauses, and writer of the
-/// records.
+/// Late reader of the names inside authored clauses and item bodies, and
+/// writer of the records.
 pub struct SpecificationEdges
 {
     /// The clauses the pre-expansion pass recorded.
@@ -517,6 +538,8 @@ pub struct SpecificationEdges
     qualifier: Maybe<String, unit_paths::Unqualified>,
     /// Per specified item and clause key, the definitions the clause names.
     named: FxIndexMap<LocalDefId, BTreeMap<Symbol, FxIndexSet<DefId>>>,
+    /// Per item, the definitions its body and signature name, itself left out.
+    used: FxIndexMap<LocalDefId, FxIndexSet<DefId>>,
 }
 
 impl SpecificationEdges
@@ -540,6 +563,7 @@ impl SpecificationEdges
             directory,
             qualifier: unit_qualifier(),
             named: FxIndexMap::default(),
+            used: FxIndexMap::default(),
         }
     }
 
@@ -570,20 +594,44 @@ impl SpecificationEdges
             .or_default()
             .insert(target);
     }
+
+    /// Note that the body or signature of `owner` names `target`.
+    ///
+    /// # Specification
+    /// - ensures: `target` is among the definitions recorded for `owner`,
+    ///   unless `target` is `owner` itself; recording it again changes nothing.
+    /// - panics: none.
+    /// - executable: none — the outcome is the pass's own accumulated map,
+    ///   observed through the records written at the end of the crate.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — the uses fixture's recursive function calls itself
+    ///   and another function; its record names only the other.
+    /// - witness: `tests::ui_evidence`
+    fn note_use(
+        &mut self,
+        owner: LocalDefId,
+        target: DefId,
+    )
+    {
+        if target != owner.to_def_id() {
+            self.used.entry(owner).or_default().insert(target);
+        }
+    }
 }
 
 impl_lint_pass!(SpecificationEdges => []);
 
 impl<'tcx> LateLintPass<'tcx> for SpecificationEdges
 {
-    /// Note the item an expression inside a clause names.
+    /// Note the item an expression names.
     ///
     /// # Specification
-    /// - ensures: when `expr`'s call site lies inside a recorded clause, notes
-    ///   under that clause of `expr`'s owner the item [`named_item`] resolves
-    ///   for a path or struct literal, the method [`resolved_method`] resolves
-    ///   for a method call, and the field [`field_item`] resolves for a field
-    ///   read; notes nothing for any other expression or position.
+    /// - ensures: notes the item [`named_item`] resolves for a path or struct
+    ///   literal, the method [`resolved_method`] resolves for a method call,
+    ///   and the field [`field_item`] resolves for a field read: as a use of
+    ///   `expr`'s owner, and under a clause of that owner when `expr`'s call
+    ///   site lies inside the clause; notes nothing for any other expression.
     /// - panics: none.
     /// - executable: none — the outcome is the pass's accumulated map, which
     ///   the records written at the end of the crate expose.
@@ -591,7 +639,9 @@ impl<'tcx> LateLintPass<'tcx> for SpecificationEdges
     /// # Adequacy
     /// - hypothesis: L3 — the evidence fixture's clause calls a function,
     ///   compares with a constant, reads a field and calls a method; the
-    ///   function's body calls a fourth item, which is not named.
+    ///   function's body calls a fourth item, which is not named. The uses
+    ///   fixture calls functions, reads a field and calls methods outside every
+    ///   clause, and each of them is a use.
     /// - witness: `tests::ui_evidence`
     fn check_expr(
         &mut self,
@@ -599,10 +649,7 @@ impl<'tcx> LateLintPass<'tcx> for SpecificationEdges
         expr: &'tcx Expr<'tcx>,
     )
     {
-        let Maybe::Present(clause) = self.index.locate(expr.span.source_callsite())
-        else {
-            return;
-        };
+        let owner = expr.hir_id.owner.def_id;
         #[expect(
             clippy::wildcard_enum_match_arm,
             reason = "`ExprKind` is rustc's HIR expression kind, whose variants move with the \
@@ -623,25 +670,31 @@ impl<'tcx> LateLintPass<'tcx> for SpecificationEdges
             ExprKind::Field(base, _) => field_item(cx, base, expr.hir_id),
             _ => return,
         };
-        if let Maybe::Present(target) = named {
-            self.note(expr.hir_id.owner.def_id, clause, target);
+        let Maybe::Present(target) = named
+        else {
+            return;
+        };
+        self.note_use(owner, target);
+        if let Maybe::Present(clause) = self.index.locate(expr.span.source_callsite()) {
+            self.note(owner, clause, target);
         }
     }
 
-    /// Note the item a pattern inside a clause names.
+    /// Note the item a pattern names.
     ///
     /// # Specification
-    /// - ensures: when `pat`'s call site lies inside a recorded clause, notes
-    ///   under that clause of `pat`'s owner the struct, variant or constant a
-    ///   tuple-struct, struct or path pattern resolves to; notes nothing for
-    ///   any other pattern or position.
+    /// - ensures: notes the struct, variant or constant a tuple-struct, struct
+    ///   or path pattern resolves to: as a use of `pat`'s owner, and under a
+    ///   clause of that owner when `pat`'s call site lies inside the clause;
+    ///   notes nothing for any other pattern.
     /// - panics: none.
     /// - executable: none — the outcome is the pass's accumulated map, which
     ///   the records written at the end of the crate expose.
     ///
     /// # Adequacy
     /// - hypothesis: L3 — the evidence fixture's `ensures` clause matches a
-    ///   variant and a constant in a pattern; both are named.
+    ///   variant and a constant in a pattern; both are named. The uses fixture
+    ///   matches a variant outside every clause, and it is a use.
     /// - witness: `tests::ui_evidence`
     fn check_pat(
         &mut self,
@@ -649,10 +702,7 @@ impl<'tcx> LateLintPass<'tcx> for SpecificationEdges
         pat: &'tcx Pat<'tcx>,
     )
     {
-        let Maybe::Present(clause) = self.index.locate(pat.span.source_callsite())
-        else {
-            return;
-        };
+        let owner = pat.hir_id.owner.def_id;
         #[expect(
             clippy::wildcard_enum_match_arm,
             reason = "`PatKind` is rustc's HIR pattern kind, whose variants move with the pinned \
@@ -671,8 +721,51 @@ impl<'tcx> LateLintPass<'tcx> for SpecificationEdges
             },
             _ => return,
         };
-        if let Maybe::Present(target) = named {
-            self.note(pat.hir_id.owner.def_id, clause, target);
+        let Maybe::Present(target) = named
+        else {
+            return;
+        };
+        self.note_use(owner, target);
+        if let Maybe::Present(clause) = self.index.locate(pat.span.source_callsite()) {
+            self.note(owner, clause, target);
+        }
+    }
+
+    /// Note the item a path names, in a signature, a bound, an
+    /// implementation's header or a body.
+    ///
+    /// # Specification
+    /// - ensures: notes as a use of `hir_id`'s owner the item [`named_item`]
+    ///   resolves for `path`. It notes nothing for an associated function,
+    ///   whose expression's typing resolves it in
+    ///   [`check_expr`](Self::check_expr), and nothing for a path of an import
+    ///   or a crate import, which names no use.
+    /// - panics: none.
+    /// - executable: none — the outcome is the pass's accumulated map, which
+    ///   the records written at the end of the crate expose.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — the uses fixture names a type in a signature, a trait
+    ///   in a bound, and both in an implementation's header; each is a use. It
+    ///   imports one function and re-exports another, and neither import is a
+    ///   use.
+    /// - witness: `tests::ui_evidence`
+    fn check_path(
+        &mut self,
+        cx: &LateContext<'tcx>,
+        path: &rustc_hir::Path<'tcx>,
+        hir_id: HirId,
+    )
+    {
+        if matches!(path.res, Res::Def(DefKind::AssocFn, _)) {
+            return;
+        }
+        let owner = hir_id.owner.def_id;
+        if matches!(cx.tcx.def_kind(owner), DefKind::Use | DefKind::ExternCrate) {
+            return;
+        }
+        if let Maybe::Present(target) = named_item(cx, path.res, hir_id) {
+            self.note_use(owner, target);
         }
     }
 
@@ -683,7 +776,10 @@ impl<'tcx> LateLintPass<'tcx> for SpecificationEdges
     ///   [`record_name`] gives, one `item` record per definition
     ///   [`item_record`] indexes, then one `clause` record per specified item
     ///   and clause key with the sorted, deduplicated paths of the items noted
-    ///   for it; replaces any earlier record of the same unit.
+    ///   for it, then one `use` record per item noted with a use, with the
+    ///   sorted, deduplicated paths of the items it names other than its own
+    ///   path, and none where no other path remains; replaces any earlier
+    ///   record of the same unit.
     /// - fails: reports a compilation error naming the file when the directory
     ///   cannot be created or the file cannot be written, and one when a record
     ///   cannot be rendered, writing nothing.
@@ -693,7 +789,7 @@ impl<'tcx> LateLintPass<'tcx> for SpecificationEdges
     ///
     /// # Adequacy
     /// - hypothesis: L3 — the evidence fixture's record is compared whole
-    ///   against its pinned expectation, item records and clause records alike.
+    ///   against its pinned expectation, item, clause and use records alike.
     /// - witness: `tests::ui_evidence`
     fn check_crate_post(
         &mut self,
@@ -740,6 +836,40 @@ impl<'tcx> LateLintPass<'tcx> for SpecificationEdges
                 });
                 rendered = rendered.and_then(|()| writeln!(contents, "{record}"));
             }
+        }
+        // Each named definition's path, printed once for every item that names
+        // it.
+        let mut paths: FxHashMap<DefId, String> = FxHashMap::default();
+        for targets in self.used.values() {
+            for &target in targets {
+                paths
+                    .entry(target)
+                    .or_insert_with(|| canonical_path(tcx, &self.qualifier, target));
+            }
+        }
+        // One item's names, borrowed from the printed paths. An inherent
+        // implementation block prints as its self type, so its header's name of
+        // that type is the block's own path and no use.
+        let mut used: BTreeSet<&str> = BTreeSet::new();
+        for (&owner, targets) in &self.used {
+            let item = canonical_path(tcx, &self.qualifier, owner.to_def_id());
+            used.clear();
+            used.extend(
+                targets
+                    .iter()
+                    .filter_map(|target| paths.get(target))
+                    .map(String::as_str)
+                    .filter(|&name| name != item),
+            );
+            if used.is_empty() {
+                continue;
+            }
+            let record = serde_json::json!({
+                "record": "use",
+                "item": item,
+                "names": used,
+            });
+            rendered = rendered.and_then(|()| writeln!(contents, "{record}"));
         }
         if rendered.is_err() {
             tcx.dcx()
@@ -1015,8 +1145,9 @@ fn indexed_definitions(tcx: TyCtxt<'_>) -> Vec<LocalDefId>
 ///   field with authored source yields its path, file, the line and one-based
 ///   column where its definition starts, the first and last line of its extent
 ///   from its first authored attribute or documentation line, the lines its
-///   documentation spans or `null`, and the fingerprint of the extent's source
-///   text as 32 hexadecimal digits.
+///   documentation spans or `null`, the fingerprint of the extent's source text
+///   as 32 hexadecimal digits, and whether the crate's effective visibilities
+///   export the definition.
 /// - provides: `indexing::Unindexed::OtherKind` for every other definition and
 ///   `NoSource` for one whose span is generated or lies in no local file.
 /// - panics: none.
@@ -1026,7 +1157,8 @@ fn indexed_definitions(tcx: TyCtxt<'_>) -> Vec<LocalDefId>
 /// # Adequacy
 /// - hypothesis: L3 — the evidence fixture's record pins each item's position,
 ///   extent, documentation lines and revision; the same position is where
-///   rustdoc's JSON places the item.
+///   rustdoc's JSON places the item. The uses fixture's public, re-exported and
+///   crate-visible items differ in `exported`.
 /// - witness: `tests::ui_evidence`
 fn item_record(
     tcx: TyCtxt<'_>,
@@ -1104,6 +1236,7 @@ fn item_record(
         "end": line(body.hi()),
         "docs": docs.map(|(lo, hi)| [line(lo), line(hi)]),
         "revision": format!("{:016x}{:016x}", high.as_u64(), low.as_u64()),
+        "exported": tcx.effective_visibilities(()).is_exported(def_id),
     }))
 }
 
