@@ -53,19 +53,21 @@
 //! file per compilation unit:
 //!
 //! - an `item` record for every function, method, constant, static, type,
-//!   trait, variant and field of the unit: its path, its file, the line and
-//!   one-based column where its definition starts (rustdoc's JSON uses the same
-//!   position, which is how the gate binary joins the two), the lines it spans
-//!   with its attributes and documentation, the lines its documentation spans,
-//!   and a revision: the fingerprint of its source text, which changes when any
-//!   byte of the item does. The field `exported` states whether the crate's
-//!   public paths reach the item, as the compiler's effective visibilities
-//!   decide. An executable has no other crate, so a reader reads the field of a
-//!   library's record;
+//!   trait, variant and field of the unit: its path, its kind, its file, the
+//!   line and one-based column where its definition starts (rustdoc's JSON uses
+//!   the same position, which is how the gate binary joins the two), the lines
+//!   it spans with its attributes and documentation, the lines its
+//!   documentation spans, and a revision: the fingerprint of its source text,
+//!   which changes when any byte of the item does. The field `exported` states
+//!   whether the crate's public paths reach the item, as the compiler's
+//!   effective visibilities decide. An executable has no other crate, so a
+//!   reader reads the field of a library's record;
 //! - a `clause` record per specified item and clause key: the item's path and
 //!   revision, the key, and the sorted paths of the items the clause names;
 //! - a `use` record per item that names another item: the item's path and the
-//!   sorted paths of the items its body and signature name.
+//!   sorted paths of the items its body and signature name. A struct or
+//!   tuple-struct pattern names each field it binds, and a field it skips with
+//!   `_` or a rest is no name.
 //!
 //! # Dependencies
 //!
@@ -680,13 +682,14 @@ impl<'tcx> LateLintPass<'tcx> for SpecificationEdges
         }
     }
 
-    /// Note the item a pattern names.
+    /// Note the items a pattern names.
     ///
     /// # Specification
     /// - ensures: notes the struct, variant or constant a tuple-struct, struct
-    ///   or path pattern resolves to: as a use of `pat`'s owner, and under a
-    ///   clause of that owner when `pat`'s call site lies inside the clause;
-    ///   notes nothing for any other pattern.
+    ///   or path pattern resolves to, and each field [`pattern_fields`] finds
+    ///   the pattern reads: as uses of `pat`'s owner, and under a clause of
+    ///   that owner when `pat`'s call site lies inside the clause; notes
+    ///   nothing for any other pattern.
     /// - panics: none.
     /// - executable: none — the outcome is the pass's accumulated map, which
     ///   the records written at the end of the crate expose.
@@ -694,7 +697,10 @@ impl<'tcx> LateLintPass<'tcx> for SpecificationEdges
     /// # Adequacy
     /// - hypothesis: L3 — the evidence fixture's `ensures` clause matches a
     ///   variant and a constant in a pattern; both are named. The uses fixture
-    ///   matches a variant outside every clause, and it is a use.
+    ///   matches a variant outside every clause, and it is a use. It binds a
+    ///   struct's field by name beside a rest, and a tuple struct's fields by
+    ///   position before and after a rest beside a wildcard: each bound field
+    ///   is a use, and the skipped fields are not.
     /// - witness: `tests::ui_evidence`
     fn check_pat(
         &mut self,
@@ -725,9 +731,12 @@ impl<'tcx> LateLintPass<'tcx> for SpecificationEdges
         else {
             return;
         };
-        self.note_use(owner, target);
-        if let Maybe::Present(clause) = self.index.locate(pat.span.source_callsite()) {
-            self.note(owner, clause, target);
+        let clause = self.index.locate(pat.span.source_callsite());
+        for target in core::iter::once(target).chain(pattern_fields(cx, pat)) {
+            self.note_use(owner, target);
+            if let Maybe::Present(clause) = clause {
+                self.note(owner, clause, target);
+            }
         }
     }
 
@@ -1095,6 +1104,80 @@ fn field_item(
     named_item(cx, Res::Def(DefKind::Field, field.did), hir_id)
 }
 
+/// The fields a struct or tuple-struct pattern reads.
+///
+/// # Specification
+/// - requires: `pat` lies inside the body whose typeck results `cx` holds.
+/// - ensures: a struct pattern reads each field it lists with a pattern other
+///   than `_`; a tuple-struct pattern reads the field at each position whose
+///   pattern is not `_`, a position after a rest counted from the variant's
+///   last field. Each field passes the library exclusion [`named_item`]
+///   applies. Any other pattern, and a pattern whose type is no struct, union
+///   or enum, reads no field.
+/// - panics: none.
+/// - executable: none — the outcome is the typeck results' field indices and
+///   the variant's own fields, which a predicate could only read again.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the uses fixture binds a struct's field by name beside a
+///   rest, and a tuple struct's fields by position before and after a rest
+///   beside a wildcard; each bound field is recorded, and no skipped one is.
+/// - witness: `tests::ui_evidence`
+fn pattern_fields(
+    cx: &LateContext<'_>,
+    pat: &Pat<'_>,
+) -> Vec<DefId>
+{
+    let typeck = cx.typeck_results();
+    let ty::Adt(adt, _) = *typeck.pat_ty(pat).peel_refs().kind()
+    else {
+        return Vec::new();
+    };
+    let read = |field: Option<&ty::FieldDef>, part: &Pat<'_>| {
+        let field = field.filter(|_| !matches!(part.kind, PatKind::Wild))?;
+        match named_item(cx, Res::Def(DefKind::Field, field.did), pat.hir_id) {
+            Maybe::Present(target) => Some(target),
+            Maybe::Absent(_) => None,
+        }
+    };
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "`PatKind` is rustc's HIR pattern kind, whose variants move with the pinned \
+                  nightly; only a struct or tuple-struct pattern binds fields"
+    )]
+    match pat.kind {
+        PatKind::Struct(ref qpath, fields, _) => {
+            let variant = adt.variant_of_res(cx.qpath_res(qpath, pat.hir_id));
+            fields
+                .iter()
+                .filter_map(|field| {
+                    let index = typeck.opt_field_index(field.hir_id)?;
+                    read(variant.fields.get(index), field.pat)
+                })
+                .collect()
+        },
+        PatKind::TupleStruct(ref qpath, parts, rest) => {
+            let variant = adt.variant_of_res(cx.qpath_res(qpath, pat.hir_id));
+            let skipped = variant.fields.len().saturating_sub(parts.len());
+            let after = rest.as_opt_usize().unwrap_or(usize::MAX);
+            parts
+                .iter()
+                .enumerate()
+                .filter_map(|(position, part)| {
+                    let position = if position >= after {
+                        position.saturating_add(skipped)
+                    }
+                    else {
+                        position
+                    };
+                    read(variant.fields.raw.get(position), part)
+                })
+                .collect()
+        },
+        _ => Vec::new(),
+    }
+}
+
 /// Every local definition that can carry an item record, in definition order.
 ///
 /// # Specification
@@ -1142,12 +1225,15 @@ fn indexed_definitions(tcx: TyCtxt<'_>) -> Vec<LocalDefId>
 ///
 /// # Specification
 /// - ensures: a function, method, constant, static, type, trait, variant or
-///   field with authored source yields its path, file, the line and one-based
-///   column where its definition starts, the first and last line of its extent
-///   from its first authored attribute or documentation line, the lines its
-///   documentation spans or `null`, the fingerprint of the extent's source text
-///   as 32 hexadecimal digits, and whether the crate's effective visibilities
-///   export the definition.
+///   field with authored source yields its path, its kind, file, the line and
+///   one-based column where its definition starts, the first and last line of
+///   its extent from its first authored attribute or documentation line, the
+///   lines its documentation spans or `null`, the fingerprint of the extent's
+///   source text as 32 hexadecimal digits, and whether the crate's effective
+///   visibilities export the definition. The kind is one of `fn`, `assoc-fn`,
+///   `const`, `assoc-const`, `static`, `struct`, `union`, `enum`, `variant`,
+///   `field`, `trait`, `trait-alias`, `type-alias`, `foreign-type` and
+///   `assoc-type`.
 /// - provides: `indexing::Unindexed::OtherKind` for every other definition and
 ///   `NoSource` for one whose span is generated or lies in no local file.
 /// - panics: none.
@@ -1158,7 +1244,8 @@ fn indexed_definitions(tcx: TyCtxt<'_>) -> Vec<LocalDefId>
 /// - hypothesis: L3 — the evidence fixture's record pins each item's position,
 ///   extent, documentation lines and revision; the same position is where
 ///   rustdoc's JSON places the item. The uses fixture's public, re-exported and
-///   crate-visible items differ in `exported`.
+///   crate-visible items differ in `exported`, and its functions, methods,
+///   types, trait, variants and fields each state their kind.
 /// - witness: `tests::ui_evidence`
 fn item_record(
     tcx: TyCtxt<'_>,
@@ -1167,26 +1254,29 @@ fn item_record(
     def_id: LocalDefId,
 ) -> Maybe<serde_json::Value, indexing::Unindexed>
 {
-    if !matches!(
-        tcx.def_kind(def_id),
-        DefKind::Fn
-            | DefKind::AssocFn
-            | DefKind::Const { .. }
-            | DefKind::AssocConst { .. }
-            | DefKind::Static { .. }
-            | DefKind::Struct
-            | DefKind::Union
-            | DefKind::Enum
-            | DefKind::Variant
-            | DefKind::Field
-            | DefKind::Trait
-            | DefKind::TraitAlias
-            | DefKind::TyAlias
-            | DefKind::ForeignTy
-            | DefKind::AssocTy
-    ) {
-        return Maybe::Absent(indexing::Unindexed::OtherKind);
-    }
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "`DefKind` is rustc's definition kind, whose variants move with the pinned \
+                  nightly; only the named kinds are indexed"
+    )]
+    let kind = match tcx.def_kind(def_id) {
+        DefKind::Fn => "fn",
+        DefKind::AssocFn => "assoc-fn",
+        DefKind::Const { .. } => "const",
+        DefKind::AssocConst { .. } => "assoc-const",
+        DefKind::Static { .. } => "static",
+        DefKind::Struct => "struct",
+        DefKind::Union => "union",
+        DefKind::Enum => "enum",
+        DefKind::Variant => "variant",
+        DefKind::Field => "field",
+        DefKind::Trait => "trait",
+        DefKind::TraitAlias => "trait-alias",
+        DefKind::TyAlias => "type-alias",
+        DefKind::ForeignTy => "foreign-type",
+        DefKind::AssocTy => "assoc-type",
+        _ => return Maybe::Absent(indexing::Unindexed::OtherKind),
+    };
     let source_map = tcx.sess.source_map();
     let hir_id = tcx.local_def_id_to_hir_id(def_id);
     let body = tcx.hir_span_with_body(hir_id);
@@ -1229,6 +1319,7 @@ fn item_record(
     Maybe::Present(serde_json::json!({
         "record": "item",
         "path": canonical_path(tcx, qualifier, def_id.to_def_id()),
+        "kind": kind,
         "file": file,
         "line": head.line,
         "column": head.col.0.saturating_add(1_usize),
