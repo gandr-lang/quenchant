@@ -19,6 +19,10 @@
 //! callee's calls alone, and a callee that reaches no sink takes the empty
 //! summary without the dataflow.
 //!
+//! Each library unit writes a reach record of its bodies beside its
+//! metadata, and a later unit reads the reach of a dependency from it. The
+//! rule reads the literals of a body only when the body reaches a sink.
+//!
 //! # Boundaries
 //!
 //! - Positions inside tuples, arrays and structures are kept to a depth of
@@ -30,6 +34,8 @@
 //! - A closure handed to a call beside a value is taken to receive the value.
 //! - Each inline source a sink reaches, one line or more, is written to the
 //!   configured list directory, so a codemod reaches it.
+//! - A dependency that no unit of this configuration lints, such as a crate
+//!   from a registry, has no record, and the rule reads its bodies.
 //!
 //! # Items
 //!
@@ -37,6 +43,7 @@
 //! - [`EmbeddedSource`]: the pass and its configuration.
 //! - [`Summaries`]: the parameters of each followed body that reach a sink.
 //! - [`Reaching`]: whether each followed body can reach a sink at all.
+//! - [`Record`]: what a library unit's reach record states of its crate.
 
 use alloc::collections::BTreeMap;
 use alloc::collections::BTreeSet;
@@ -52,7 +59,9 @@ use rustc_hir::HirId;
 use rustc_hir::def::CtorKind;
 use rustc_hir::def::CtorOf;
 use rustc_hir::def::DefKind;
+use rustc_hir::def_id::CrateNum;
 use rustc_hir::def_id::DefId;
+use rustc_hir::def_id::DefIndex;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
 use rustc_middle::mir::AggregateKind;
@@ -74,6 +83,9 @@ use rustc_middle::ty::InstanceKind;
 use rustc_middle::ty::Ty;
 use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::TypingEnv;
+use rustc_session::config::CrateType;
+use rustc_session::config::OutFileName;
+use rustc_session::config::OutputType;
 use rustc_session::declare_lint;
 use rustc_session::impl_lint_pass;
 use rustc_span::ExpnKind;
@@ -127,6 +139,12 @@ const TABLE: &str = "embedded_source";
 /// The deepest position kept inside a value.
 const DEPTH: usize = 4;
 
+/// The extension of a library unit's reach record, beside its metadata.
+const RECORD_EXTENSION: &str = "embedded-reach";
+
+/// The first line of a reach record, which names its format.
+const RECORD_FORMAT: &str = "quenchant embedded_source reach 1";
+
 quenchant_shape::reason_enum! {
     /// The configuration can leave the rule off.
     mod setting {
@@ -179,6 +197,27 @@ quenchant_shape::reason_enum! {
             /// The callee resolves to no single body, or its MIR is not in the
             /// metadata.
             NoBody,
+        }
+    }
+}
+
+quenchant_shape::reason_enum! {
+    /// A dependency's body can have no reach its crate's record states.
+    mod recording {
+        /// Why a body's reach is not read from a record.
+        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        pub enum Unrecorded {
+            /// The body is in the crate being linted.
+            Local,
+            /// The definition is no function or closure, or its MIR is not in
+            /// the metadata.
+            NoBody,
+            /// The crate's metadata is in no file, so no record stands beside
+            /// it.
+            NoArtifact,
+            /// The crate's unit wrote no record, or its record is of another
+            /// build of the crate or of another configuration.
+            NoRecord,
         }
     }
 }
@@ -603,6 +642,9 @@ struct Configured
 {
     /// The types a sink converts into.
     types: HashSet<DefId>,
+    /// The configured type paths, sorted, as a reach record names them: a
+    /// unit reads only a record of the same paths.
+    heading: Heading,
     /// The extension of a file `include_str!` may read a source from.
     extension: String,
     /// Whether this package's findings are allowed while its sources move.
@@ -612,6 +654,12 @@ struct Configured
     /// The configuration's defects, reported in the crate it names.
     defects: Vec<String>,
 }
+
+/// The configured type paths, sorted and once each, after the word `types`:
+/// the line a reach record carries to name its configuration.
+#[derive(Clone)]
+#[repr(transparent)]
+struct Heading(String);
 
 /// Whether a package's findings are reported.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -642,8 +690,9 @@ impl EmbeddedSource
     ///   [`crate::register_lints`] guarantees by calling it first.
     /// - ensures: `Present` exactly when the `embedded_source` table exists;
     ///   its `types` resolve to their definitions, a type naming this crate and
-    ///   resolving to nothing becoming a defect; `extension` defaults to
-    ///   `gandr`; the package is allowed when `allowed` names `CARGO_PKG_NAME`.
+    ///   resolving to nothing becoming a defect; the heading names each path
+    ///   `types` spells, sorted and once; `extension` defaults to `gandr`; the
+    ///   package is allowed when `allowed` names `CARGO_PKG_NAME`.
     /// - panics: none.
     /// - executable: none — the configuration is read from outside the
     ///   compilation; reading it again is a distinct fallible operation.
@@ -668,6 +717,7 @@ impl EmbeddedSource
         };
         let mut defects = Vec::new();
         let mut types = HashSet::new();
+        let mut paths = BTreeSet::new();
         for entry in table
             .get("types")
             .and_then(|types| types.as_array())
@@ -681,6 +731,7 @@ impl EmbeddedSource
                 ));
                 continue;
             };
+            paths.insert(path);
             let found: Vec<DefId> = resolve(tcx, TypePath(path))
                 .into_iter()
                 .filter(|&def_id| matches!(tcx.def_kind(def_id), DefKind::Struct | DefKind::Enum))
@@ -710,9 +761,18 @@ impl EmbeddedSource
             .map_or(Maybe::Absent(listing::Unlisted::NoDirectory), |directory| {
                 Maybe::Present(PathBuf::from(directory))
             });
+        let heading = Heading(paths.into_iter().fold(
+            String::from("types"),
+            |mut heading, path| {
+                heading.push(' ');
+                heading.push_str(path);
+                heading
+            },
+        ));
         Self {
             configured: Maybe::Present(Configured {
                 types,
+                heading,
                 extension,
                 allowance: if allowed {
                     Allowance::Allowed
@@ -784,18 +844,56 @@ enum Scan
     Needs(Vec<DefId>),
 }
 
+/// What a library unit's reach record states of its crate's bodies.
+///
+/// Each library unit writes its record beside its metadata. A later unit
+/// decides the body of a dependency from that record and does not read the
+/// body. So the unit of each crate reads the call graph of the crate once in
+/// a workspace.
+#[derive(Debug)]
+enum Record
+{
+    /// No configured type resolves in the crate's graph, so no body of the
+    /// crate can reach a sink.
+    Blind,
+    /// The indices of the crate's bodies that reach a sink; every other
+    /// function and closure body of the crate reaches none.
+    Sinking(HashSet<DefIndex>),
+}
+
 /// Whether each followed body can reach a sink, directly or through the
 /// bodies it calls.
 ///
 /// A body that reaches no sink has an empty summary, so no dataflow over it
 /// is needed. The reach reads each body once, its calls and its aggregates
-/// alone, where a summary settles every local of the body.
-#[derive(Default)]
-#[repr(transparent)]
-struct Reaching(HashMap<DefId, Sink>);
+/// alone, where a summary settles every local of the body. When a
+/// dependency's library unit wrote a record of this configuration, the record
+/// decides the dependency's bodies, and the reach reads none of them.
+struct Reaching
+{
+    /// The answer for each body decided so far.
+    decided: HashMap<DefId, Sink>,
+    /// The record of each dependency met so far, or why it has none.
+    records: HashMap<CrateNum, Maybe<Record, recording::Unrecorded>>,
+    /// The heading a record carries when it is of this configuration.
+    heading: Heading,
+}
 
 impl Reaching
 {
+    /// No body decided yet, and records read only under `heading`.
+    ///
+    /// # Specification
+    /// trivial.
+    fn new(heading: Heading) -> Self
+    {
+        Self {
+            decided: HashMap::new(),
+            records: HashMap::new(),
+            heading,
+        }
+    }
+
     /// Whether the body of `root` can reach a sink.
     ///
     /// # Specification
@@ -804,7 +902,8 @@ impl Reaching
     ///   conversion into one; every body explored is decided afterwards.
     /// - panics: none.
     /// - economy: each body is read once in a compilation, for its calls and
-    ///   aggregates; the graph of the bodies not yet decided is held only while
+    ///   aggregates, and a dependency's body that [`Self::recorded`] answers is
+    ///   not read; the graph of the bodies not yet decided is held only while
     ///   they are decided.
     ///
     /// # Adequacy
@@ -812,7 +911,7 @@ impl Reaching
     ///   argument to another, in this crate and in a dependency: deciding the
     ///   outer helper before the inner one drops the helper's summary.
     /// - witness: `tests::ui_embedded_source`
-    #[spec(ensures: |ret| self.0.get(&root) == Some(&ret))]
+    #[spec(ensures: |ret| self.decided.get(&root) == Some(&ret))]
     fn reaches(
         &mut self,
         tcx: TyCtxt<'_>,
@@ -820,7 +919,7 @@ impl Reaching
         root: DefId,
     ) -> Sink
     {
-        if let Some(&known) = self.0.get(&root) {
+        if let Some(&known) = self.decided.get(&root) {
             return known;
         }
         // The bodies reachable from `root` that are not decided yet, each
@@ -831,7 +930,11 @@ impl Reaching
         let mut reaching: Vec<DefId> = Vec::new();
         let mut stack = vec![root];
         while let Some(current) = stack.pop() {
-            if self.0.contains_key(&current) || !explored.insert(current) {
+            if self.decided.contains_key(&current) || !explored.insert(current) {
+                continue;
+            }
+            if let Maybe::Present(recorded) = self.recorded(tcx, current) {
+                self.decided.insert(current, recorded);
                 continue;
             }
             let (callees, sinks) = calls_of(tcx, types, current);
@@ -839,17 +942,16 @@ impl Reaching
                 reaching.push(current);
             }
             stack.extend(
-                callees
-                    .iter()
-                    .copied()
-                    .filter(|callee| !self.0.contains_key(callee) && !explored.contains(callee)),
+                callees.iter().copied().filter(|callee| {
+                    !self.decided.contains_key(callee) && !explored.contains(callee)
+                }),
             );
             edges.push((current, callees));
         }
         let mut callers: HashMap<DefId, Vec<DefId>> = HashMap::new();
         for &(caller, ref callees) in &edges {
             for &callee in callees {
-                if self.0.get(&callee) == Some(&Sink::Sink) {
+                if self.decided.get(&callee) == Some(&Sink::Sink) {
                     reaching.push(caller);
                 }
                 callers.entry(callee).or_default().push(caller);
@@ -870,9 +972,120 @@ impl Reaching
             else {
                 Sink::Other
             };
-            self.0.insert(body, reach);
+            self.decided.insert(body, reach);
         }
-        self.0.get(&root).copied().unwrap_or(Sink::Other)
+        self.decided.get(&root).copied().unwrap_or(Sink::Other)
+    }
+
+    /// The reach of a dependency's body, as its crate's record states it.
+    ///
+    /// # Specification
+    /// - ensures: `Present` for a function or closure of a dependency whose MIR
+    ///   is in the metadata, when [`read_record`] finds the crate's record:
+    ///   [`Sink::Other`] for a blind crate, and [`Sink::Sink`] exactly when the
+    ///   record lists the body otherwise; `Absent` for any other body. The
+    ///   reach reads each crate's record at most once.
+    /// - panics: none.
+    /// - executable: none — the outcome is a file another compilation wrote; a
+    ///   predicate could only read it again.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — the fixtures convert through a dependency's helper,
+    ///   which its own unit records as reaching a sink: a record that leaves
+    ///   the helper out loses the refusal.
+    /// - witness: `tests::ui_embedded_source`
+    fn recorded(
+        &mut self,
+        tcx: TyCtxt<'_>,
+        def_id: DefId,
+    ) -> Maybe<Sink, recording::Unrecorded>
+    {
+        if def_id.is_local() {
+            return Maybe::Absent(recording::Unrecorded::Local);
+        }
+        if !matches!(
+            tcx.def_kind(def_id),
+            DefKind::Fn | DefKind::AssocFn | DefKind::Closure
+        ) || !tcx.is_mir_available(def_id)
+        {
+            return Maybe::Absent(recording::Unrecorded::NoBody);
+        }
+        let heading = &self.heading;
+        let record = self
+            .records
+            .entry(def_id.krate)
+            .or_insert_with(|| read_record(tcx, def_id.krate, heading));
+        match *record {
+            Maybe::Present(Record::Blind) => Maybe::Present(Sink::Other),
+            Maybe::Present(Record::Sinking(ref indices)) => {
+                Maybe::Present(if indices.contains(&def_id.index) {
+                    Sink::Sink
+                }
+                else {
+                    Sink::Other
+                })
+            },
+            Maybe::Absent(reason) => Maybe::Absent(reason),
+        }
+    }
+}
+
+/// The reach record a dependency's library unit wrote beside its metadata.
+///
+/// # Specification
+/// - ensures: `Present` when the file beside the crate's metadata, rlib or
+///   dylib holds the record format, the crate's hash and `heading`, one on a
+///   line, then `blind`, or `sinking` and one body index on each line after it;
+///   `Absent` otherwise, as for a crate no unit linted.
+/// - panics: none.
+/// - executable: none — the outcome is a file another compilation wrote; a
+///   predicate could only read it again.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures' dependency is linted before them and writes
+///   the record they read.
+/// - witness: `tests::ui_embedded_source`
+fn read_record(
+    tcx: TyCtxt<'_>,
+    krate: CrateNum,
+    heading: &Heading,
+) -> Maybe<Record, recording::Unrecorded>
+{
+    let source = tcx.used_crate_source(krate);
+    let Some(artifact) = source
+        .rmeta
+        .as_ref()
+        .or(source.rlib.as_ref())
+        .or(source.dylib.as_ref())
+    else {
+        return Maybe::Absent(recording::Unrecorded::NoArtifact);
+    };
+    let Ok(text) = std::fs::read_to_string(artifact.with_extension(RECORD_EXTENSION))
+    else {
+        return Maybe::Absent(recording::Unrecorded::NoRecord);
+    };
+    let built = format!("crate {:032x}", tcx.crate_hash(krate).as_u128());
+    let mut lines = text.lines();
+    if lines.next() != Some(RECORD_FORMAT)
+        || lines.next() != Some(built.as_str())
+        || lines.next() != Some(heading.0.as_str())
+    {
+        return Maybe::Absent(recording::Unrecorded::NoRecord);
+    }
+    match lines.next() {
+        Some("blind") => Maybe::Present(Record::Blind),
+        Some("sinking") => {
+            let mut indices = HashSet::new();
+            for line in lines {
+                let Ok(index) = line.parse::<u32>()
+                else {
+                    return Maybe::Absent(recording::Unrecorded::NoRecord);
+                };
+                indices.insert(DefIndex::from_u32(index));
+            }
+            Maybe::Present(Record::Sinking(indices))
+        },
+        _ => Maybe::Absent(recording::Unrecorded::NoRecord),
     }
 }
 
@@ -2443,24 +2656,27 @@ fn lines(text: &Seed) -> Lines
 
 impl<'tcx> LateLintPass<'tcx> for EmbeddedSource
 {
-    /// Refuse each multi-line literal that reaches a configured type, and list
-    /// every inline source that does.
+    /// Refuse each multi-line literal that reaches a configured type, list
+    /// every inline source that does, and record which bodies reach one.
     ///
     /// # Specification
     /// - ensures: when configured, reports the configuration's defects at the
-    ///   crate root; reads every function and closure body of the crate for its
-    ///   literals; refuses, once per literal, each literal of two or more lines
-    ///   and each `include_str!` of another extension that reaches a sink,
-    ///   unless the package is allowed; writes the reached inline literals to
-    ///   the list directory when one is configured.
+    ///   crate root; a unit another crate can depend on writes its reach
+    ///   record, blind when no configured type resolves; reads each function
+    ///   and closure body of the crate that reaches a sink for its literals,
+    ///   and the constants of every body; refuses, once per literal, each
+    ///   literal of two or more lines and each `include_str!` of another
+    ///   extension that reaches a sink, unless the package is allowed; writes
+    ///   the reached inline literals to the list directory when one is
+    ///   configured.
     /// - panics: none.
-    /// - executable: none — the outcome is emitted diagnostics and a written
-    ///   file.
+    /// - executable: none — the outcome is emitted diagnostics and written
+    ///   files.
     ///
     /// # Adequacy
     /// - hypothesis: L3 — the refused fixture holds each refused form, the
-    ///   accepted fixture each accepted form, and the list the accepted fixture
-    ///   writes is read back.
+    ///   accepted fixture each accepted form, the list the accepted fixture
+    ///   writes is read back, and the fixtures read their dependency's record.
     /// - witness: `tests::ui_embedded_source`
     fn check_crate_post(
         &mut self,
@@ -2472,12 +2688,23 @@ impl<'tcx> LateLintPass<'tcx> for EmbeddedSource
             return;
         };
         report_defects(cx, EMBEDDED_SOURCE, &configured.defects);
+        let tcx = cx.tcx;
+        let library = !tcx.sess.is_test_crate()
+            && tcx
+                .crate_types()
+                .iter()
+                .any(|kind| matches!(*kind, CrateType::Rlib | CrateType::Dylib));
         if configured.types.is_empty() {
+            // No body of a crate that cannot name a configured type reaches
+            // one, and its calls go only to crates that cannot name one.
+            if library {
+                write_record(tcx, &configured.heading, &Record::Blind);
+            }
             return;
         }
-        let tcx = cx.tcx;
         let types = &configured.types;
-        let mut reaching = Reaching::default();
+        let mut reaching = Reaching::new(configured.heading.clone());
+        let mut sinking: HashSet<DefIndex> = HashSet::new();
         let mut seeds = Seeds::default();
         let mut summaries = Summaries::default();
         let mut reached: BTreeMap<SeedId, Witness> = BTreeMap::new();
@@ -2490,8 +2717,18 @@ impl<'tcx> LateLintPass<'tcx> for EmbeddedSource
                 continue;
             }
             let def_id = owner.to_def_id();
+            let reach = reaching.reaches(tcx, types, def_id);
+            if library && reach == Sink::Sink {
+                sinking.insert(def_id.index);
+            }
             let body = tcx.optimized_mir(def_id);
+            // The pass reads the constants of every body, so each constant
+            // takes its seed in the order the bodies name it.
             read_constants(tcx, types, body, &mut seeds);
+            // A body that reaches no sink holds no literal that reaches one.
+            if reach == Sink::Other {
+                continue;
+            }
             let facts = settle(tcx, types, body, Reading::Literals, &mut seeds);
             let hits = loop {
                 match scan(
@@ -2516,6 +2753,9 @@ impl<'tcx> LateLintPass<'tcx> for EmbeddedSource
                     reached.entry(seed).or_insert(witness);
                 }
             }
+        }
+        if library {
+            write_record(tcx, &configured.heading, &Record::Sinking(sinking));
         }
         if let Maybe::Present(ref directory) = configured.directory {
             write_list(tcx, directory, &seeds, &reached);
@@ -2643,6 +2883,70 @@ fn write_list(
     if let Err(error) = written {
         tcx.dcx().err(format!(
             "the list of inline sources cannot be written to `{}`: {error}",
+            path.display()
+        ));
+    }
+}
+
+/// Write the unit's reach record beside its metadata, so a later unit decides
+/// the reach of this crate's bodies without reading them.
+///
+/// # Specification
+/// - ensures: the record format, the crate's hash and `heading`, one on a line,
+///   then `blind` for [`Record::Blind`], or `sinking` and each listed body
+///   index in ascending order, one on a line; written whole to a temporary name
+///   and renamed beside the unit's metadata, so a reader never meets half a
+///   record; a unit whose metadata goes to standard output writes none; a
+///   failure is reported as a compiler error.
+/// - panics: none.
+/// - executable: none — the outcome is a written file.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures' dependency writes the record the fixtures
+///   read, and a record that leaves its helper out loses a refusal.
+/// - witness: `tests::ui_embedded_source`
+fn write_record(
+    tcx: TyCtxt<'_>,
+    heading: &Heading,
+    record: &Record,
+)
+{
+    let OutFileName::Real(metadata) = tcx.output_filenames(()).path(OutputType::Metadata)
+    else {
+        return;
+    };
+    let path = metadata.with_extension(RECORD_EXTENSION);
+    let mut contents = Vec::new();
+    let mut written = writeln!(
+        contents,
+        "{RECORD_FORMAT}\ncrate {:032x}\n{}",
+        tcx.crate_hash(rustc_hir::def_id::LOCAL_CRATE).as_u128(),
+        heading.0
+    );
+    match *record {
+        Record::Blind => {
+            written = written.and_then(|()| writeln!(contents, "blind"));
+        },
+        Record::Sinking(ref indices) => {
+            written = written.and_then(|()| writeln!(contents, "sinking"));
+            let mut sorted: Vec<u32> = indices.iter().map(|index| index.as_u32()).collect();
+            sorted.sort_unstable();
+            for index in sorted {
+                written = written.and_then(|()| writeln!(contents, "{index}"));
+            }
+        },
+    }
+    if written.is_err() {
+        return;
+    }
+    // Two compilations of one unit stage under names of their own, so neither
+    // renames the other's.
+    let staged =
+        metadata.with_extension(format!("{RECORD_EXTENSION}.{}.partial", std::process::id()));
+    let renamed = std::fs::write(&staged, &contents).and_then(|()| std::fs::rename(&staged, &path));
+    if let Err(error) = renamed {
+        tcx.dcx().err(format!(
+            "the reach record cannot be written to `{}`: {error}",
             path.display()
         ));
     }

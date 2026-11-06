@@ -314,6 +314,7 @@ allowed = ["package-whose-sources-move-later"]
 
 - `types` names the types a parser reads. A conversion into one is `From::from` with the type as `Self`, `Into::into` with the type as its target, or the type's constructor.
 - A function whose parameter reaches a conversion carries a summary, so a literal handed to a helper is followed into it, in this crate or in a dependency whose metadata holds its MIR.
+- Each library unit writes a reach record beside its metadata, `lib<crate>-<hash>.embedded-reach`. The record lists the bodies of the crate that reach a conversion. When no configured type resolves in the crate's dependencies, the record states that no body can. A later unit decides a dependency's body from that record and does not read the body. The rule ignores a record of another build of the crate or of other `types`. A crate that no unit lints, such as one from a registry, has no record, so the rule reads its bodies.
 - `allowed` names the packages whose findings are not reported while their sources move to files.
 - `directory` receives one JSON-lines list for each compilation unit: every inline literal that reaches a conversion, one line or more, with its file, byte range, line, column and text, for a codemod to read.
 
