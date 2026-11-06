@@ -109,6 +109,50 @@ pub fn is_empty(size: &Size) -> bool
     matches!(size, Size::Empty)
 }
 
+/// Two parts: a struct pattern reads the left, and no pattern reads the right.
+pub struct Pair
+{
+    /// Read by the struct pattern.
+    pub left: u32,
+    /// Skipped by the struct pattern's rest.
+    pub right: u32,
+}
+
+/// Three parts: tuple patterns read the first and the last, and a wildcard and
+/// a rest skip the middle.
+pub struct Triple(pub u32, pub u32, pub u32);
+
+/// The left part: the struct pattern reads `left` and its rest skips `right`.
+///
+/// # Specification
+/// trivial.
+pub fn left_of(pair: &Pair) -> u32
+{
+    let Pair { left, .. } = pair;
+    *left
+}
+
+/// The first part: the pattern reads the first position, its wildcard and its
+/// rest read none.
+///
+/// # Specification
+/// trivial.
+pub fn first_of(triple: &Triple) -> u32
+{
+    let Triple(first, _, ..) = triple;
+    *first
+}
+
+/// The last part: a position after the rest counts from the last field.
+///
+/// # Specification
+/// trivial.
+pub fn last_of(triple: &Triple) -> u32
+{
+    let Triple(.., last) = triple;
+    *last
+}
+
 /// The fixture compiles as a program.
 ///
 /// # Specification
