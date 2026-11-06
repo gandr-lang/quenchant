@@ -1,0 +1,21 @@
+{"column":5,"docs":[12,15],"end":19,"exported":true,"file":"ui_evidence/uses.rs","line":16,"path":"uses::inner::helper","record":"item","revision":"b9096b1f92328d8a3b677444551f2d70","start":12}
+{"column":5,"docs":[21,24],"end":28,"exported":false,"file":"ui_evidence/uses.rs","line":25,"path":"uses::inner::hidden","record":"item","revision":"3cddb850517475786810b2d3fbf7ad42","start":21}
+{"column":1,"docs":[35,35],"end":40,"exported":true,"file":"ui_evidence/uses.rs","line":36,"path":"uses::Count","record":"item","revision":"959ffca184d4d2ed6d6e894f1b33ecdb","start":34}
+{"column":5,"docs":[38,38],"end":39,"exported":true,"file":"ui_evidence/uses.rs","line":39,"path":"uses::Count::value","record":"item","revision":"4e94bf6cb4b595fba278c47fb4092184","start":38}
+{"column":1,"docs":[42,42],"end":49,"exported":true,"file":"ui_evidence/uses.rs","line":43,"path":"uses::Size","record":"item","revision":"6a0020d5aa7bb4d73cd8919ae923fe54","start":42}
+{"column":5,"docs":[45,45],"end":46,"exported":true,"file":"ui_evidence/uses.rs","line":46,"path":"uses::Size::Empty","record":"item","revision":"35dad96a900d0d3dbf0f3f85378b3df9","start":45}
+{"column":5,"docs":[47,47],"end":48,"exported":true,"file":"ui_evidence/uses.rs","line":48,"path":"uses::Size::Some","record":"item","revision":"9484a3279710cd3201fa374d12834856","start":47}
+{"column":1,"docs":[51,51],"end":59,"exported":true,"file":"ui_evidence/uses.rs","line":52,"path":"uses::Measured","record":"item","revision":"9771c0132f16367e349056274f06dd9c","start":51}
+{"column":1,"docs":[73,76],"end":80,"exported":true,"file":"ui_evidence/uses.rs","line":77,"path":"uses::measure_of","record":"item","revision":"1961a26c8c2ac370bf64148e69031056","start":73}
+{"column":1,"docs":[82,86],"end":90,"exported":true,"file":"ui_evidence/uses.rs","line":87,"path":"uses::countdown","record":"item","revision":"35c7fde0f1601e7c7784cb90624c05e4","start":82}
+{"column":1,"docs":[92,96],"end":101,"exported":true,"file":"ui_evidence/uses.rs","line":97,"path":"uses::total","record":"item","revision":"c3caa62535184f32c6a81276ed9ff2cd","start":92}
+{"column":1,"docs":[103,106],"end":110,"exported":true,"file":"ui_evidence/uses.rs","line":107,"path":"uses::is_empty","record":"item","revision":"33638ce7bdeb1f72e3363bb189ac5630","start":103}
+{"column":1,"docs":[112,115],"end":118,"exported":false,"file":"ui_evidence/uses.rs","line":116,"path":"uses::main","record":"item","revision":"eeb942cf4613d957fd2975158adc9735","start":112}
+{"column":5,"docs":[54,57],"end":58,"exported":true,"file":"ui_evidence/uses.rs","line":58,"path":"uses::Measured::measure","record":"item","revision":"1aec257a11a0ea48799eda99d62efb1f","start":54}
+{"column":5,"docs":[63,66],"end":70,"exported":true,"file":"ui_evidence/uses.rs","line":67,"path":"<uses::Count as uses::Measured>::measure","record":"item","revision":"79131d483339a5d72201be82b33062c4","start":63}
+{"item":"<uses::Count as uses::Measured>","names":["uses::Count","uses::Measured"],"record":"use"}
+{"item":"<uses::Count as uses::Measured>::measure","names":["uses::Count::value"],"record":"use"}
+{"item":"uses::measure_of","names":["uses::Measured","uses::Measured::measure"],"record":"use"}
+{"item":"uses::countdown","names":["uses::inner::hidden"],"record":"use"}
+{"item":"uses::total","names":["<uses::Count as uses::Measured>::measure","uses::Count","uses::inner::helper"],"record":"use"}
+{"item":"uses::is_empty","names":["uses::Size","uses::Size::Empty"],"record":"use"}

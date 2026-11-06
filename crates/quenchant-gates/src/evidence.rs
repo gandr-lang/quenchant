@@ -249,7 +249,8 @@ impl Graph
 /// - ensures: every `item` record of every `.jsonl` file becomes an item, keyed
 ///   by path, the first record of a path winning; its file is made relative to
 ///   `root` when it lies inside it. Every `clause` record yields one executable
-///   edge per name it lists.
+///   edge per name it lists. A `use` record adds nothing: it states what an
+///   item's body and signature name, and no obligation reads that.
 /// - fails: [`GateError::Io`] when the directory or a file cannot be read,
 ///   [`GateError::Parse`] when a line is not a record.
 /// - panics: none.
@@ -304,10 +305,11 @@ pub fn read_records(
                         });
                     }
                 },
+                Some("use") => {},
                 _ => {
                     return Err(GateError::parse(
                         &path,
-                        "a record is neither an `item` nor a `clause` record".into(),
+                        "a record is not an `item`, a `clause` or a `use` record".into(),
                     ));
                 },
             }

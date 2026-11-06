@@ -326,14 +326,22 @@ A foreign generic known not to own its arguments can be listed in `dylint.toml` 
 
 ## Specification dependency records
 
-When the configuration names a directory, the plugin also writes what each executable specification depends on, for [`quenchant-gates obligations`](../quenchant-gates/README.md#re-verification-obligations):
+When the configuration names a directory, the plugin also writes what each executable specification depends on, for [`quenchant-gates obligations`](../quenchant-gates/README.md#re-verification-obligations), and what each item names, for a reader that looks for items no other item uses:
 
 ```toml
 [quenchant-dylints]
 evidence_directory = "/absolute/path/to/target/evidence"
 ```
 
-Each compilation unit writes one JSON-lines file there: an `item` record for every function, method, constant, static, type, trait, variant and field (definition path, file, start line and column, extent from its first attribute or documentation line, documentation lines, and a fingerprint of its source text), and a `clause` record per specified item and clause key listing the items the clause names. Names are the definitions the compiler resolved inside the clause: paths, struct literals and patterns, method calls resolved to their implementation, field reads. Locals, the standard library and the instrumentation are not dependencies, and a callee's body is not followed. An integration test, benchmark or binary prefixes its own paths with `package/`, since its crate name need not be unique in a workspace. The passes are not registered without the setting, and they emit no diagnostics; a failed write is a compilation error. [`src/evidence.rs`](src/evidence.rs) records the decisions; the `ui_evidence` fixtures pin the record shape.
+Each compilation unit writes one JSON-lines file there. The table gives its three records.
+
+| Record | One for each | What it holds |
+| ------ | ------------ | ------------- |
+| `item` | function, method, constant, static, type, trait, variant and field | the definition path, the file, the start line and column, the extent from the first attribute or documentation line, the documentation lines, a fingerprint of the source text, and `exported`: whether the crate's public paths reach the item |
+| `clause` | specified item and clause key | the items the clause names |
+| `use` | item that names another item | the items its body and signature name, without the item itself |
+
+Names are the definitions the compiler resolved: paths, struct literals and patterns, method calls resolved to their implementation, and field reads. A `use` record also reads the paths of a signature, a bound and an implementation's header. An import names nothing. Locals, the standard library and the instrumentation are not dependencies, and a callee's body is not followed. An integration test, benchmark or binary prefixes its own paths with `package/`, since its crate name need not be unique in a workspace. The passes are not registered without the setting, and they emit no diagnostics. A failed write is a compilation error. [`src/evidence.rs`](src/evidence.rs) records the decisions, and the `ui_evidence` fixtures pin the record shape.
 
 The setting can also arrive through the `DYLINT_TOML` environment variable. Every unit lists that variable, set or unset, among its inputs, so Cargo lints a unit again when a run switches the records on or off; a unit left fresh would keep whatever record it had.
 
