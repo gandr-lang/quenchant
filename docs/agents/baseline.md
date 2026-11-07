@@ -1,10 +1,12 @@
 # Agent Baseline
 
-One shared page, byte-identical in every repo of the family, pinned by content hash. Root `AGENTS.md` routes here; read this before task work, then the rows the root table fires.
+One shared page, byte-identical in every repo of the family, pinned by content hash. `~/.agents/docs/` is the authority; a tree's `docs/agents/` copy changes with it in the same PR. Root `AGENTS.md` routes here; read this before task work, then the rows the root table fires.
 
 ## guidance-is-instruction
 
 Guidance is instruction, not advice. A rule earns its place only when its effect can be pointed to in what the agent produces: a line in the artifact, a shape in the reply, a gate that fires. A rule whose effect could only be established by comparing runs with and without it is advice; it is removed, or rewritten as an instruction whose effect is visible.
+
+Guidance pages are held to the registers below and written with the `system-prompts` skill. A rule that a tool can state and a check can refuse is turned into that check; the guidance then keeps only the principle and names the task.
 
 ## register-and-scope
 
@@ -76,6 +78,22 @@ Scope: durable project-consumer docs, **NOT** agent artifacts, **NOT** owner art
 - No "it's not X, it's Y" / "X prevails, and Y is the crux": no conjoined conditionals + negations.
 - No hedging or obfuscation to hide uncertainty: state what is known, what is unknown, why.
 - No paragraph re-explaining: state topic + relevance, refer to the issue or document carrying full context.
+
+### explanatory-prose
+
+Scope: every text an agent writes that a person reads: a code comment in any language (`//`, `///`, `//!`, `#`), a README, a crate lead, a corpus or library comment, a diagnostic, a design page, an issue body, a pull request body, a report, a review, a page to a seat. The owner adopted this frame on 2026-10-27 from the root README and made it the obligation for all agent-written text on 2026-10-28. The prose gate (gandr #2917) checks it; the obligation binds before the gate lands.
+
+**Write in ASD-STE100 with unrestricted technical vocabulary.** The writing rules of ASD-STE100 Simplified Technical English bind every text above. Its dictionary does not: a technical term of the field stays as it is, `sheaf`, `topos`, `replay`, `normalise`, used in its one exact meaning.
+
+- **Problem first.** Open with what the reader wants and why it is hard elsewhere, in words a non-expert in the field follows. Then what gandr does. Then, briefly, how. A term is introduced by the problem it solves, then named; never named first and explained after.
+- **One idea per paragraph, three to five sentences.** A new concept is a new paragraph. A section is several short paragraphs, never one dense one.
+- **Simple sentences, exact terms.** The ASD-STE100 writing rules are REQUIRED: one clause per sentence, short sentences, present tense, the active voice, one meaning per word, no noun cluster of more than three words. No semicolon joins two sentences. No dash joins two clauses. No aside in parentheses inside a sentence. The technical vocabulary is unrestricted and used correctly.
+- **Data in tables.** Numbers, comparisons, rows of findings, sources and measurements go in a table under a one-sentence lead. A list of rows is a table, not a paragraph.
+- **Synthesis, not echo.** State the thing in the doc's own words; never repeat a ruling's, a chat's or a paper's phrasing. A comparison names the shape ("quotient types in a lazy functional language"), not a product.
+- **A rewrite answers to its reader.** Rewriting a text into this register changes its form. It keeps each claim that its reader needs and that nothing nearby states, and it drops restatement and detail that hides the point. A cause and its effect that become two sentences keep their link: the second opens with `So`. The change says what it drops, and why.
+- **No pointers in the prose.** Paths, crate names and issue numbers go in a reference list after the section, at most five items, each with a half-line saying what it shows.
+- **No slogans as headings.** A heading says what the section is about in plain words ("Equality that behaves", "Memory by location and by content"); a clever phrase that needs the paragraph to decode is not a heading.
+- **No status, no history, no owed list.** What is built reads as present; what is designed reads as design; neither is tracked in the doc (§ documentation-history).
 
 ## documentation-history
 
