@@ -11,6 +11,11 @@
 //! Every heading level terminates the section. Otherwise a short authored block
 //! could be completed accidentally by unrelated or macro-injected prose that
 //! follows it. Counting a fixed number of lines has the same defect.
+//!
+//! The check reads one item's section, by design, with the edges of the local
+//! call graph that close its recursion. The claim is about the item's own
+//! recursion. A callee outside the recursive component cannot make the item
+//! recur, so the check follows no call past that component.
 
 use std::collections::HashMap;
 

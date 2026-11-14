@@ -30,11 +30,11 @@ use rustc_lint::LateLintPass;
 use rustc_lint::declare_lint;
 use rustc_lint::impl_lint_pass;
 
-use crate::clause_cost::ClauseRegions;
 use crate::cost_shape::Inspection;
+use crate::cost_shape::Machinery;
 use crate::cost_shape::Method;
 use crate::cost_shape::Owner;
-use crate::cost_shape::Repeated;
+use crate::cost_shape::Repetition;
 use crate::cost_shape::inspection;
 use crate::cost_shape::repeated_read;
 use crate::cost_shape::std_method;
@@ -101,8 +101,8 @@ pub struct Shift<'tcx>
 {
     /// The buffer whose front moves.
     pub buffer: &'tcx Expr<'tcx>,
-    /// The repetition that shifts it again on every pass.
-    pub repeated: Repeated<'tcx>,
+    /// What shifts it again on every pass.
+    pub repeated: Repetition<'tcx>,
 }
 
 /// Repeated-front-shift policy; specification clauses are left to
@@ -110,20 +110,20 @@ pub struct Shift<'tcx>
 #[repr(transparent)]
 pub struct FrontShiftInLoop
 {
-    /// The authored `spec` attribute ranges, whose clauses are not inspected.
-    regions: ClauseRegions,
+    /// The machinery every cost-shape pass takes.
+    machinery: Machinery,
 }
 
 impl FrontShiftInLoop
 {
-    /// The pass reads the ranges the pre-expansion clause collector records.
+    /// The pass over the shared machinery.
     ///
     /// # Specification
     /// trivial.
     #[must_use]
-    pub const fn new(regions: ClauseRegions) -> Self
+    pub const fn new(machinery: Machinery) -> Self
     {
-        Self { regions }
+        Self { machinery }
     }
 }
 
@@ -135,7 +135,7 @@ impl<'tcx> LateLintPass<'tcx> for FrontShiftInLoop
     ///
     /// # Specification
     /// - ensures: reports every expression [`shift`] answers `Present` for,
-    ///   labelling the buffer, with a note at the loop that repeats it.
+    ///   labelling the buffer, with the note of what repeats it.
     /// - ensures: expressions from macro expansions and inside `spec`
     ///   attributes are not inspected ([`inspection`]).
     /// - panics: none.
@@ -152,10 +152,10 @@ impl<'tcx> LateLintPass<'tcx> for FrontShiftInLoop
         expr: &'tcx Expr<'tcx>,
     )
     {
-        if inspection(&self.regions, expr) == Inspection::Skipped {
+        if inspection(&self.machinery.regions, expr) == Inspection::Skipped {
             return;
         }
-        let Maybe::Present(found) = shift(cx, expr)
+        let Maybe::Present(found) = shift(cx, &self.machinery, expr)
         else {
             return;
         };
@@ -167,7 +167,7 @@ impl<'tcx> LateLintPass<'tcx> for FrontShiftInLoop
              buffer that outlives it",
             |diagnostic| {
                 diagnostic.span_label(found.buffer.span, "shifted again on every pass");
-                diagnostic.span_note(found.repeated.scope.span, "the loop that repeats it");
+                found.repeated.note(cx.tcx, diagnostic);
                 diagnostic.help(
                     "use a `VecDeque` and its `pop_front` or `push_front`, build the sequence in \
                      reverse and use its back, or remove the whole prefix once with `drain(..k)`",
@@ -199,6 +199,7 @@ impl<'tcx> LateLintPass<'tcx> for FrontShiftInLoop
 })]
 pub fn shift<'tcx>(
     cx: &LateContext<'tcx>,
+    machinery: &Machinery,
     expr: &'tcx Expr<'tcx>,
 ) -> Maybe<Shift<'tcx>, shift_reading::Bounded>
 {
@@ -222,7 +223,7 @@ pub fn shift<'tcx>(
     if !front {
         return Maybe::Absent(shift_reading::Bounded::NotAShift);
     }
-    match repeated_read(cx, expr, buffer) {
+    match repeated_read(cx, machinery, expr, buffer) {
         Maybe::Present(repeated) => Maybe::Present(Shift { buffer, repeated }),
         Maybe::Absent(reason) => Maybe::Absent(shift_reading::Bounded::Unrepeated(reason)),
     }

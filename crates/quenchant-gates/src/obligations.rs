@@ -716,6 +716,13 @@ pub fn acknowledgements(previous: DocText<'_>) -> BTreeMap<String, Discharge>
 ///   witness, and the unrelated change contributes none.
 /// - witness: `gates::obligations::changing_a_named_item_obligates_the_specification`
 /// - witness: `gates::obligations::changing_an_item_reached_only_through_a_call_obligates_nothing`
+#[cfg_attr(
+    dylint_lib = "quenchant_dylints",
+    expect(
+        clone_in_loop,
+        reason = "each rerun owns its names; gandr-lang/gandr#7673 shares them"
+    )
+)]
 #[inline]
 #[spec(ensures: |ref output| output.is_ok() || matches!(output, &Err(GateError::Io { .. } | GateError::Parse { .. })))]
 pub fn reruns(

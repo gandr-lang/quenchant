@@ -2147,6 +2147,13 @@ fn referents(body: &Body<'_>) -> HashMap<Local, Vec<(Local, Path)>>
 /// - hypothesis: L3 — the fixtures carry literals through locals, loops,
 ///   tuples, arrays, iterators, `format!` and `push_str` before a conversion.
 /// - witness: `tests::ui_embedded_source`
+#[cfg_attr(
+    dylint_lib = "quenchant_dylints",
+    expect(
+        clone_in_loop,
+        reason = "each target owns its facts; gandr-lang/gandr#7673 shares them"
+    )
+)]
 fn settle<'tcx>(
     tcx: TyCtxt<'tcx>,
     types: &HashSet<DefId>,

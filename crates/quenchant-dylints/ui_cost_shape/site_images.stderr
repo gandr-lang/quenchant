@@ -1,0 +1,27 @@
+error: this allocates on every pass of a loop, and the value is dropped before the next pass
+  --> $DIR/site_images.rs:33:22
+   |
+LL |         let images = images_from(assignment, sources);
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the loop that repeats it
+  --> $DIR/site_images.rs:32:5
+   |
+LL | /     for assignment in assignments {
+LL | |         let images = images_from(assignment, sources);
+LL | |         if !plausible(&images) {
+LL | |             continue;
+LL | |         }
+LL | |         found += 1;
+LL | |     }
+   | |_____^
+note: `images_from` allocates the value it returns here
+  --> $DIR/site_images.rs:12:22
+   |
+LL |     let mut images = vec![0_u64; sources];
+   |                      ^^^^^^^^^^^^^^^^^^^^
+   = help: make the buffer once before the loop and `clear()` it each pass, write into one reused buffer, or borrow what the pass reads
+   = note: requested on the command line with `-D allocation-in-repeated-body`
+
+error: aborting due to 1 previous error
+

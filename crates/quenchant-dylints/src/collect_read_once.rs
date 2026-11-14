@@ -66,8 +66,8 @@ use rustc_middle::ty::adjustment::DerefAdjustKind;
 use rustc_span::Span;
 use rustc_span::Symbol;
 
-use crate::clause_cost::ClauseRegions;
 use crate::cost_shape::Inspection;
+use crate::cost_shape::Machinery;
 use crate::cost_shape::Method;
 use crate::cost_shape::Owner;
 use crate::cost_shape::Placement;
@@ -182,20 +182,20 @@ pub struct ReadOnce
 #[repr(transparent)]
 pub struct CollectReadOnce
 {
-    /// The authored `spec` attribute ranges, whose clauses are not inspected.
-    regions: ClauseRegions,
+    /// The machinery every cost-shape pass takes.
+    machinery: Machinery,
 }
 
 impl CollectReadOnce
 {
-    /// The pass reads the ranges the pre-expansion clause collector records.
+    /// The pass over the shared machinery.
     ///
     /// # Specification
     /// trivial.
     #[must_use]
-    pub const fn new(regions: ClauseRegions) -> Self
+    pub const fn new(machinery: Machinery) -> Self
     {
-        Self { regions }
+        Self { machinery }
     }
 }
 
@@ -224,7 +224,7 @@ impl<'tcx> LateLintPass<'tcx> for CollectReadOnce
         expr: &'tcx Expr<'tcx>,
     )
     {
-        if inspection(&self.regions, expr) == Inspection::Skipped {
+        if inspection(&self.machinery.regions, expr) == Inspection::Skipped {
             return;
         }
         let Maybe::Present(found) = read_once(cx, expr)

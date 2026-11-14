@@ -66,10 +66,19 @@ use rustc_lint::LateLintPass;
 use rustc_lint::Level;
 use rustc_lint::declare_lint;
 use rustc_lint::impl_lint_pass;
+use rustc_middle::mir::AggregateKind;
+use rustc_middle::mir::BorrowKind;
+use rustc_middle::mir::Local;
+use rustc_middle::mir::Operand;
+use rustc_middle::mir::Place;
+use rustc_middle::mir::RETURN_PLACE;
+use rustc_middle::mir::Rvalue;
+use rustc_middle::mir::StatementKind;
 use rustc_middle::mir::TerminatorKind;
 use rustc_middle::ty;
 use rustc_middle::ty::EarlyBinder;
 use rustc_middle::ty::GenericArgs;
+use rustc_middle::ty::GenericArgsRef;
 use rustc_middle::ty::Instance;
 use rustc_middle::ty::InstanceKind;
 use rustc_middle::ty::ShimKind;
@@ -77,12 +86,16 @@ use rustc_middle::ty::Ty;
 use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::TypingEnv;
 use rustc_span::Span;
+use rustc_span::Symbol;
+use rustc_span::sym;
 
 use crate::answer_totality::CONFIGURATION_TABLE;
 use crate::answer_totality::ExceptionRefusals;
 use crate::answer_totality::report_defects;
 use crate::answer_totality::report_refusing;
+use crate::cost_shape::ErrorArm;
 use crate::cost_shape::Ownership;
+use crate::cost_shape::error_arm;
 use crate::cost_shape::heap_ownership;
 use crate::crate_list;
 use crate::crate_list::CratePattern;
@@ -429,6 +442,27 @@ fn read_settings() -> Settings
     settings
 }
 
+/// The crates whose functions answer for their own allocations, by the
+/// configuration of the default.
+///
+/// # Specification
+/// - requires: as [`read_settings`].
+/// - ensures: the patterns of `allocation_default_crates`, as [`read_settings`]
+///   reads them.
+/// - panics: none.
+/// - executable: none — the configuration read outcome is not retained.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the cost-shape fixtures name no crate, so only the crate
+///   under the lint answers; the repeated-body fixtures refuse a call of a
+///   local function that allocates its result.
+/// - witness: `tests::ui_cost_shape`
+#[must_use]
+pub fn default_crates() -> Vec<CratePattern>
+{
+    read_settings().crates
+}
+
 /// The body hashes of the functions of one unit's base record, when the record
 /// holds hashes of this library's scheme.
 ///
@@ -576,10 +610,6 @@ enum Mode<'crates>
 {
     /// A marked region: every call is followed.
     Every,
-    /// A repeated body's callee: every call is followed, and a call that
-    /// reaches the allocator or an allocating signature is named before one
-    /// whose implementation the build cannot name.
-    Definite,
     /// The default: a call of a function that the default holds is free, and
     /// so is a type parameter's trait method.
     Origin(&'crates [CratePattern]),
@@ -716,101 +746,513 @@ impl<'tcx> Summaries<'tcx>
     }
 }
 
-/// The reach of a callee that a repeated body calls, read over MIR as a
-/// marked region reads each of its calls.
-///
-/// # Specification
-/// - requires: `summaries` serves this reading alone, as [`Summaries::of`]
-///   asks.
-/// - ensures: `Free` when [`classify_call`] finds the call free; `Allocates`
-///   with the call's own cause at `site` in `owner` when the call allocates by
-///   itself; else the reach of the callee's body, every call in it followed and
-///   a definite allocation named before one the build cannot name.
-/// - panics: none.
-/// - executable: none — the outcome is the summary of the callee's MIR, which a
-///   predicate could only compute again.
-///
-/// # Adequacy
-/// - hypothesis: L3 — the loop fixtures call a helper that allocates a value
-///   the pass drops, one that allocates nothing, and one two calls deep.
-/// - witness: `tests::ui_repeated_call`
-pub fn callee_reach<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    typing_env: TypingEnv<'tcx>,
-    summaries: &mut Summaries<'tcx>,
-    callee: Ty<'tcx>,
-    site: Span,
-    owner: DefId,
-) -> Reach
+/// The reach summaries, with the return-place reading of each body of a crate
+/// that answers for its own allocations.
+#[derive(Default)]
+pub struct Returns<'tcx>
 {
-    match classify_call(tcx, typing_env, callee) {
-        Call::Free => Reach::Free,
-        Call::Allocates(cause) => Reach::Allocates(Witness {
-            cause,
-            span: site,
-            owner,
-        }),
-        Call::Body(instance) => summaries.of(tcx, typing_env, instance, Mode::Definite),
-    }
+    /// The reach of each body read, by instance.
+    reach: Summaries<'tcx>,
+    /// The return-place reading of each body read, by instance.
+    returned: HashMap<Instance<'tcx>, Maybe<Span, fresh_reading::Unmade>>,
 }
 
-/// The functions that a callee's allocation passes through, from the callee
-/// down to the body that makes it.
-///
-/// # Specification
-/// - requires: `summaries` holds the reach of the callee's body in
-///   [`Mode::Definite`], as [`callee_reach`] leaves it.
-/// - ensures: empty when [`classify_call`] finds no body for `callee`;
-///   otherwise the callee's function first, then, while the first call of the
-///   last body in block order whose reach is definite is a body, that body's
-///   function. No instance stands twice, so a cycle ends.
-/// - panics: none.
-/// - executable: none — the outcome is a walk of the recorded summaries.
-///
-/// # Adequacy
-/// - hypothesis: L3 — the call fixture's refusals name the path to the
-///   allocation one call down, two calls down and through a clone.
-/// - witness: `tests::ui_repeated_call`
-pub fn allocation_path<'tcx>(
-    tcx: TyCtxt<'tcx>,
-    typing_env: TypingEnv<'tcx>,
-    summaries: &Summaries<'tcx>,
-    callee: Ty<'tcx>,
-) -> Vec<DefId>
+/// The outcome of reading the return place of one body.
+enum ReturnReading<'tcx>
 {
-    let Call::Body(mut instance) = classify_call(tcx, typing_env, callee)
-    else {
-        return Vec::new();
-    };
-    let mut path = vec![instance.def_id()];
-    let mut seen = HashSet::from([instance]);
-    'walk: loop {
-        for (_, _, call) in calls(tcx, typing_env, instance) {
-            match call {
-                Call::Allocates(Cause::Allocator | Cause::Signature) => break 'walk,
-                Call::Body(inner)
-                    if matches!(
-                        summaries.0.get(&inner),
-                        Some(Reach::Allocates(Witness {
-                            cause: Cause::Allocator | Cause::Signature,
-                            ..
-                        }))
-                    ) =>
-                {
-                    if !seen.insert(inner) {
-                        break 'walk;
-                    }
-                    path.push(inner.def_id());
-                    instance = inner;
-                    continue 'walk;
+    /// Every body the reading depends on was read.
+    Ready(Maybe<Span, fresh_reading::Unmade>),
+    /// These bodies must be read first.
+    Needs(Vec<Instance<'tcx>>),
+}
+
+/// Whether the value that a call returns holds an allocation the call makes.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Returned
+{
+    /// The call returns a value that it allocates, or may.
+    Allocated,
+    /// It returns no value that it allocates.
+    Other,
+}
+
+impl<'tcx> Returns<'tcx>
+{
+    /// The call in a callee's own body that allocates the heap value the
+    /// callee returns.
+    ///
+    /// # Specification
+    /// - ensures: `Present` when `callee` under `args` resolves to an item that
+    ///   [`answers`] for its own allocations under `crates`, whose MIR the
+    ///   build holds, its output owns a heap allocation ([`heap_ownership`]),
+    ///   and the value of an allocating call reaches its return place
+    ///   ([`Returns::read_return`]): that call, with the item.
+    /// - ensures: `Absent(Unresolved)` when no item resolves, `Absent(Foreign)`
+    ///   for an item that does not answer, `Absent(NoBody)` without MIR,
+    ///   `Absent(Plain)` for an output that owns no heap allocation and
+    ///   `Absent(Unallocated)` when no allocation reaches the return place.
+    /// - panics: none.
+    /// - executable: none — the outcome is the compiler's resolution and the
+    ///   readings of the bodies reached, which a predicate could only compute
+    ///   again.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — the fixtures call, in a loop, a function that returns
+    ///   a `vec!`, a method that returns a clone of a field and an iterator
+    ///   whose `next` returns a clone; and a function that returns an empty
+    ///   vector, one that returns a count, and one that allocates only the
+    ///   error it returns. The crate's own dylint wall calls a dependency's
+    ///   function that allocates its result, which does not answer.
+    /// - witness: `tests::ui_cost_shape`
+    pub fn fresh(
+        &mut self,
+        tcx: TyCtxt<'tcx>,
+        typing_env: TypingEnv<'tcx>,
+        crates: &[CratePattern],
+        callee: DefId,
+        args: GenericArgsRef<'tcx>,
+    ) -> Maybe<Fresh, fresh_reading::Unmade>
+    {
+        let args = tcx.erase_and_anonymize_regions(args);
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`InstanceKind` is rustc's instance kind, whose variants move with the \
+                      pinned nightly; only an item names a body of its own"
+        )]
+        let instance = match Instance::try_resolve(tcx, typing_env, callee, args) {
+            Ok(Some(instance)) => match instance.def {
+                InstanceKind::Item(_) => instance,
+                _ => return Maybe::Absent(fresh_reading::Unmade::Unresolved),
+            },
+            Ok(None) | Err(_) => return Maybe::Absent(fresh_reading::Unmade::Unresolved),
+        };
+        let item = instance.def_id();
+        if !answers(tcx, crates, item).0 {
+            return Maybe::Absent(fresh_reading::Unmade::Foreign);
+        }
+        if !tcx.is_mir_available(item) {
+            return Maybe::Absent(fresh_reading::Unmade::NoBody);
+        }
+        let output = tcx
+            .instantiate_bound_regions_with_erased(
+                tcx.fn_sig(item)
+                    .instantiate(tcx, instance.args)
+                    .skip_norm_wip(),
+            )
+            .output();
+        if heap_ownership(tcx, typing_env, output) != Ownership::Owning {
+            return Maybe::Absent(fresh_reading::Unmade::Plain);
+        }
+        match self.returned(tcx, typing_env, crates, instance) {
+            Maybe::Present(at) => Maybe::Present(Fresh { item, at }),
+            Maybe::Absent(reason) => Maybe::Absent(reason),
+        }
+    }
+
+    /// The return-place reading of `instance`, reading first each body of a
+    /// crate that answers and that it calls.
+    ///
+    /// # Specification
+    /// - ensures: the reading of `instance` is recorded afterwards, with that
+    ///   of every answering body it calls; a body called again while its own
+    ///   reading is pending returns no allocated value, so a call cycle ends.
+    /// - panics: none.
+    /// - executable: none — the outcome is the readings of the bodies reached,
+    ///   which a predicate could only compute again.
+    ///
+    /// # Termination
+    /// - reason: no recursion; the reading is a loop over a work list.
+    /// - measure: the bodies not yet recorded.
+    /// - boundedness: a body that waits on others is marked as read, so each
+    ///   body enters the work list at most once for each body that waits on it,
+    ///   and each wait ends with a record.
+    /// - input recursion: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — the fixtures call, in a loop, a function that returns
+    ///   the result of another that allocates it, and one that returns the
+    ///   result of another that allocates only an error.
+    /// - witness: `tests::ui_cost_shape`
+    fn returned(
+        &mut self,
+        tcx: TyCtxt<'tcx>,
+        typing_env: TypingEnv<'tcx>,
+        crates: &[CratePattern],
+        instance: Instance<'tcx>,
+    ) -> Maybe<Span, fresh_reading::Unmade>
+    {
+        let mut pending = vec![instance];
+        let mut reading = HashSet::new();
+        while let Some(&current) = pending.last() {
+            if self.returned.contains_key(&current) {
+                pending.pop();
+                reading.remove(&current);
+                continue;
+            }
+            match self.read_return(tcx, typing_env, crates, current, &reading) {
+                ReturnReading::Ready(answer) => {
+                    self.returned.insert(current, answer);
+                    pending.pop();
+                    reading.remove(&current);
                 },
-                Call::Free | Call::Allocates(Cause::Dynamic | Cause::Parameter) | Call::Body(_) => {
+                ReturnReading::Needs(callees) => {
+                    reading.insert(current);
+                    pending.extend(callees);
                 },
             }
         }
-        break;
+        self.returned
+            .get(&instance)
+            .copied()
+            .unwrap_or(Maybe::Absent(fresh_reading::Unmade::Unallocated))
     }
-    path
+
+    /// Read whether the return place of one body holds the value of a call
+    /// that allocates it.
+    ///
+    /// # Specification
+    /// - ensures: `Needs` lists the bodies of answering crates that `instance`
+    ///   calls, that are not recorded and that are not being read.
+    /// - ensures: otherwise `Ready(Present)` with the site of a call whose
+    ///   returned value is allocated and reaches the return place of
+    ///   `instance`'s MIR, else `Ready(Absent(Unallocated))`. A call of an
+    ///   answering body returns an allocated value when that body's record is
+    ///   `Present`; any other call does when it, or its callee's reach summary,
+    ///   reaches the allocator or an allocating signature. A call through a
+    ///   trait object or of a type parameter's method is one the build cannot
+    ///   name, and returns no allocated value. A call that only builds an error
+    ///   arm ([`error_arm`]) neither allocates nor returns an allocated value.
+    /// - ensures: a value reaches a local by a move, a copy or a cast; by an
+    ///   aggregate that is not an error arm ([`arm`]); and by a call that takes
+    ///   it and returns a value that owns a heap allocation. A call that
+    ///   reaches the allocator or an allocating signature reaches each local
+    ///   that it takes by a `&mut` borrow. A value reaches only a local whose
+    ///   type can own a heap allocation ([`heap_ownership`] is not `Plain`).
+    /// - panics: none.
+    /// - executable: none — the outcome is a fixed point over the MIR and the
+    ///   records, which a predicate could only compute again.
+    ///
+    /// # Termination
+    /// - reason: no recursion; the reading is a loop to a fixed point.
+    /// - measure: the locals not yet marked as made or lent.
+    /// - boundedness: each pass that does not stop marks one more local, and a
+    ///   body has finitely many locals; a chain of borrows is followed at most
+    ///   as many steps as there are borrows.
+    /// - input recursion: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — the fixtures return a `vec!`, a clone of a field and
+    ///   a string grown through `push_str`, which are fresh; a value whose only
+    ///   allocation is the error it returns, directly or through a call, and a
+    ///   type parameter's clone, which are not.
+    /// - witness: `tests::ui_cost_shape`
+    /// - witness: `tests::ui_repeated_call`
+    fn read_return(
+        &mut self,
+        tcx: TyCtxt<'tcx>,
+        typing_env: TypingEnv<'tcx>,
+        crates: &[CratePattern],
+        instance: Instance<'tcx>,
+        reading: &HashSet<Instance<'tcx>>,
+    ) -> ReturnReading<'tcx>
+    {
+        let body = tcx.instance_mir(instance.def);
+        let localize = |held: Ty<'tcx>| {
+            instance.instantiate_mir_and_normalize_erasing_regions(
+                tcx,
+                typing_env,
+                EarlyBinder::bind(tcx, held),
+            )
+        };
+        let local_of = |operand: &Operand<'tcx>| match *operand {
+            Operand::Move(Place { local, .. }) | Operand::Copy(Place { local, .. }) => Some(local),
+            Operand::Constant(_) | Operand::RuntimeChecks(_) => None,
+        };
+        let mut needs = Vec::new();
+        let mut sites = Vec::new();
+        for block in body.basic_blocks.iter() {
+            let Some(terminator) = block.terminator.as_ref()
+            else {
+                continue;
+            };
+            let TerminatorKind::Call {
+                ref func,
+                ref args,
+                destination,
+                fn_span,
+                ..
+            } = terminator.kind
+            else {
+                continue;
+            };
+            let callee = localize(func.ty(&body.local_decls, tcx));
+            let error_only = matches!(
+                *callee.kind(),
+                ty::FnDef(method, _) if error_arm(tcx, method) == ErrorArm::Builds
+            );
+            let call = classify_call(tcx, typing_env, callee);
+            let reach = match call {
+                Call::Free => Reach::Free,
+                Call::Allocates(_) | Call::Body(_) if error_only => Reach::Free,
+                Call::Allocates(cause) => Reach::Allocates(Witness {
+                    cause,
+                    span: fn_span,
+                    owner: instance.def_id(),
+                }),
+                Call::Body(inner) => self.reach.of(tcx, typing_env, inner, Mode::Every),
+            };
+            let returns = match call {
+                Call::Free | Call::Allocates(_) | Call::Body(_) if error_only => Returned::Other,
+                Call::Body(inner) if answers(tcx, crates, inner.def_id()).0 => {
+                    match self.returned.get(&inner) {
+                        Some(&Maybe::Present(_)) => Returned::Allocated,
+                        Some(&Maybe::Absent(_)) => Returned::Other,
+                        None => {
+                            if !reading.contains(&inner) {
+                                needs.push(inner);
+                            }
+                            Returned::Other
+                        },
+                    }
+                },
+                Call::Free | Call::Allocates(_) | Call::Body(_) => match reach {
+                    Reach::Allocates(Witness {
+                        cause: Cause::Allocator | Cause::Signature,
+                        ..
+                    }) => Returned::Allocated,
+                    Reach::Allocates(Witness {
+                        cause: Cause::Dynamic | Cause::Parameter,
+                        ..
+                    })
+                    | Reach::Free => Returned::Other,
+                },
+            };
+            let Place { local: written, .. } = destination;
+            sites.push(CallSite {
+                reach,
+                returns,
+                output: heap_ownership(
+                    tcx,
+                    typing_env,
+                    localize(destination.ty(&body.local_decls, tcx).ty),
+                ),
+                destination: written,
+                arguments: args
+                    .iter()
+                    .filter_map(|argument| local_of(&argument.node))
+                    .collect(),
+                at: fn_span,
+            });
+        }
+        if !needs.is_empty() {
+            return ReturnReading::Needs(needs);
+        }
+        let holding: Vec<Ownership> = body
+            .local_decls
+            .iter()
+            .map(|declaration| heap_ownership(tcx, typing_env, localize(declaration.ty)))
+            .collect();
+        let holds = |local: Local| {
+            holding
+                .get(local.as_usize())
+                .is_some_and(|found| *found != Ownership::Plain)
+        };
+        let mut made: HashMap<Local, Span> = HashMap::new();
+        let mut lent: HashMap<Local, Local> = HashMap::new();
+        loop {
+            let before = (made.len(), lent.len());
+            for statement in body
+                .basic_blocks
+                .iter()
+                .flat_map(|block| block.statements.iter())
+            {
+                let StatementKind::Assign(ref assignment) = statement.kind
+                else {
+                    continue;
+                };
+                let (
+                    Place {
+                        local: assigned, ..
+                    },
+                    ref value,
+                ) = **assignment;
+                #[expect(
+                    clippy::wildcard_enum_match_arm,
+                    reason = "`Rvalue` is rustc's, its variants moving with the pinned nightly; \
+                              only a move, a copy, a cast, an aggregate and a mutable borrow \
+                              carry a value or a place onward"
+                )]
+                let origin = match *value {
+                    Rvalue::Use(ref operand, _) | Rvalue::Cast(_, ref operand, _) => {
+                        local_of(operand).and_then(|local| made.get(&local).copied())
+                    },
+                    Rvalue::Aggregate(ref kind, ref operands) => match arm(tcx, kind) {
+                        Arm::Failure => None,
+                        Arm::Value => operands
+                            .iter()
+                            .filter_map(local_of)
+                            .find_map(|local| made.get(&local).copied()),
+                    },
+                    Rvalue::Ref(_, BorrowKind::Mut { .. }, Place { local: lender, .. }) => {
+                        lent.entry(assigned).or_insert(lender);
+                        None
+                    },
+                    _ => None,
+                };
+                if let Some(at) = origin
+                    && holds(assigned)
+                {
+                    made.entry(assigned).or_insert(at);
+                }
+            }
+            for site in &sites {
+                if let Reach::Allocates(Witness {
+                    cause: Cause::Allocator | Cause::Signature,
+                    ..
+                }) = site.reach
+                {
+                    for &argument in &site.arguments {
+                        let mut target = argument;
+                        for _ in 0 ..= lent.len() {
+                            match lent.get(&target) {
+                                Some(&next) => target = next,
+                                None => break,
+                            }
+                        }
+                        if target != argument && holds(target) {
+                            made.entry(target).or_insert(site.at);
+                        }
+                    }
+                }
+                let origin = match site.returns {
+                    Returned::Allocated => Some(site.at),
+                    Returned::Other if site.output == Ownership::Owning => site
+                        .arguments
+                        .iter()
+                        .find_map(|argument| made.get(argument).copied()),
+                    Returned::Other => None,
+                };
+                if let Some(at) = origin
+                    && holds(site.destination)
+                {
+                    made.entry(site.destination).or_insert(at);
+                }
+            }
+            if (made.len(), lent.len()) == before {
+                break;
+            }
+        }
+        ReturnReading::Ready(made.get(&RETURN_PLACE).copied().map_or(
+            Maybe::Absent(fresh_reading::Unmade::Unallocated),
+            Maybe::Present,
+        ))
+    }
+}
+
+/// One call of a body, as [`Returns::read_return`] reads it.
+struct CallSite
+{
+    /// Whether the call allocates, or its callee's summary does.
+    reach: Reach,
+    /// Whether the value that the call returns holds an allocation it makes.
+    returns: Returned,
+    /// How the result of the call owns the heap.
+    output: Ownership,
+    /// The local that the call writes its result to.
+    destination: Local,
+    /// The locals that the call takes by move or by copy.
+    arguments: Vec<Local>,
+    /// The site of the call.
+    at: Span,
+}
+
+/// Which arm of its type an aggregate builds.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Arm
+{
+    /// The `Err` arm of `Result`, or the `Absent` arm of `quenchant_shape`'s
+    /// `Maybe`: the value of an error path.
+    Failure,
+    /// Any other aggregate.
+    Value,
+}
+
+/// Classify the arm that an aggregate builds.
+///
+/// # Specification
+/// - ensures: `Failure` exactly when `kind` builds the `Err` variant of
+///   `Result` or the `Absent` variant of `quenchant_shape`'s `Maybe`; `Value`
+///   otherwise.
+/// - panics: none.
+/// - executable: none — the outcome is the compiler's definition table.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures call, in a loop, a function that allocates
+///   only the error it returns, which is not fresh.
+/// - witness: `tests::ui_cost_shape`
+fn arm(
+    tcx: TyCtxt<'_>,
+    kind: &AggregateKind<'_>,
+) -> Arm
+{
+    let AggregateKind::Adt(def_id, variant, ..) = *kind
+    else {
+        return Arm::Value;
+    };
+    let Some(name) = tcx
+        .adt_def(def_id)
+        .variants()
+        .get(variant)
+        .map(|found| found.name)
+    else {
+        return Arm::Value;
+    };
+    let maybe = tcx.is_diagnostic_item(Symbol::intern("quenchant_maybe"), def_id)
+        || (tcx.crate_name(def_id.krate).as_str() == "quenchant_shape"
+            && tcx.item_name(def_id).as_str() == "Maybe");
+    if (tcx.is_diagnostic_item(sym::Result, def_id) && name == sym::Err)
+        || (maybe && name.as_str() == "Absent")
+    {
+        Arm::Failure
+    }
+    else {
+        Arm::Value
+    }
+}
+
+quenchant_shape::reason_enum! {
+    /// A call can return a value that it does not allocate.
+    pub mod fresh_reading {
+        /// Why the call makes no fresh heap value.
+        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        pub enum Unmade {
+            /// The crate under the lint is not one that
+            /// `repeated_call_crates` names, so no call is followed.
+            Unfollowed,
+            /// The callee resolves to no item with a body of its own.
+            Unresolved,
+            /// The callee does not answer for its own allocations. It
+            /// belongs to a different crate that the default does not name,
+            /// and the caller cannot change how it makes its result.
+            Foreign,
+            /// The build holds no MIR of the callee.
+            NoBody,
+            /// The callee's output owns no heap allocation.
+            Plain,
+            /// No call of the callee's body reaches an allocation.
+            Unallocated,
+        }
+    }
+}
+
+/// A call that returns a heap value its callee allocates.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Fresh
+{
+    /// The function that the call resolves to.
+    pub item: DefId,
+    /// The call in that function's body that reaches the allocation.
+    pub at: Span,
 }
 
 /// The calls of one body, each with what it reaches and its site.
@@ -873,8 +1315,6 @@ fn calls<'tcx>(
 ///   and not themselves being read; otherwise [`Reading::Ready`] holds the
 ///   first call, in block order, that allocates or whose callee's summary
 ///   allocates, each call taken as [`bounded`] gives it in `mode`, or `Free`.
-///   In [`Mode::Definite`] the first call that reaches the allocator or an
-///   allocating signature goes before an earlier one of another cause.
 /// - panics: none.
 /// - executable: none — the outcome is a scan over the body's calls against the
 ///   summaries; a predicate could only repeat it.
@@ -911,18 +1351,7 @@ fn read_body<'tcx>(
                 },
             },
         };
-        let definite = |held: Reach| {
-            matches!(
-                held,
-                Reach::Allocates(Witness {
-                    cause: Cause::Allocator | Cause::Signature,
-                    ..
-                })
-            )
-        };
-        if first == Reach::Free
-            || (matches!(mode, Mode::Definite) && !definite(first) && definite(reach))
-        {
+        if first == Reach::Free {
             first = reach;
         }
     }

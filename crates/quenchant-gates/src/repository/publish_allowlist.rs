@@ -199,6 +199,13 @@ mod tests
         ]})
     }
 
+    #[cfg_attr(
+        dylint_lib = "quenchant_dylints",
+        expect(
+            clone_in_loop,
+            reason = "each matched entry owns its value; gandr-lang/gandr#7673 moves it"
+        )
+    )]
     #[test]
     fn exact_publication_boundary()
     {

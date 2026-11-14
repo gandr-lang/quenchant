@@ -8,6 +8,12 @@
 //! loop; shifting a vector's front is one move of its tail once and a
 //! quadratic queue when a loop drains it.
 //!
+//! Every pass takes the one [`Machinery`]. Its [`repetition`] reads where an
+//! operation repeats: a loop or a per-element closure in its body, or, in a
+//! crate that `repeated_call_crates` names, the body itself when a loop, a
+//! role or a repeated caller reaches it ([`crate::repetition`]). A lint
+//! follows a call only through this machinery.
+//!
 //! # Items
 //!
 //! Eight lints refuse a shape whose cost is wrong for its receiver:
@@ -25,9 +31,10 @@
 //! - [`bucket_per_key`]: a map that allocates a growable bucket for each key
 //!   and only ever searches a bucket for one entry;
 //! - [`allocation_in_repeated_body`]: an allocation made on every pass of a
-//!   loop or a per-element closure and dropped before the next pass;
-//! - [`clone_in_loop`]: a deep copy of an owned value, made on every pass of
-//!   such a repetition, of a value the pass only reads.
+//!   repetition and dropped before the next pass;
+//! - [`clone_in_loop`]: a deep copy of an owned value, made on every pass of a
+//!   repetition, that the pass drops or that repeats a value the pass does not
+//!   change.
 //!
 //! Each lint is type-directed: the receiver's type decides whether the shape
 //! is a hazard, and the cheap receivers — arrays, sets and maps, exact-size
@@ -79,6 +86,7 @@
 //! [`allocation_in_repeated_body`]: crate::allocation_in_repeated_body::ALLOCATION_IN_REPEATED_BODY
 //! [`clone_in_loop`]: crate::clone_in_loop::CLONE_IN_LOOP
 
+use alloc::sync::Arc;
 use core::ops::ControlFlow;
 use std::collections::HashSet;
 
@@ -87,6 +95,7 @@ use clippy_utils::consts::ConstEvalCtxt;
 use clippy_utils::higher;
 use clippy_utils::visitors::for_each_expr_without_closures;
 use quenchant_shape::shape::Maybe;
+use rustc_errors::Diag;
 use rustc_hir::Block;
 use rustc_hir::Expr;
 use rustc_hir::ExprKind;
@@ -100,6 +109,7 @@ use rustc_hir::StmtKind;
 use rustc_hir::UnOp;
 use rustc_hir::def::DefKind;
 use rustc_hir::def::Res;
+use rustc_hir::def_id::DefId;
 use rustc_hir_typeck::expr_use_visitor::Delegate;
 use rustc_hir_typeck::expr_use_visitor::ExprUseVisitor;
 use rustc_hir_typeck::expr_use_visitor::PlaceBase;
@@ -116,6 +126,10 @@ use rustc_span::sym;
 
 use crate::clause_cost::ClauseRegions;
 use crate::clause_cost::Enclosure;
+use crate::repetition::Followed;
+use crate::repetition::Repeater;
+use crate::repetition::Repetitions;
+use crate::semantic::FollowsCalls;
 use crate::walk_summary::container;
 use crate::walk_summary::iterator;
 use crate::walk_summary::standard_name;
@@ -157,6 +171,53 @@ pub fn inspection(
     }
 }
 
+/// The one machinery every cost-shape pass takes: the clause regions it skips
+/// and the table of the functions that repeat.
+#[derive(Clone)]
+pub struct Machinery
+{
+    /// The authored `spec` attribute ranges, whose clauses are not inspected.
+    pub regions: ClauseRegions,
+    /// The functions of the crate that a loop, a role or a repeated caller
+    /// reaches.
+    pub repetitions: Repetitions,
+}
+
+impl Machinery
+{
+    /// The machinery over the ranges the pre-expansion clause collector
+    /// records, with a table that the first question computes in a crate
+    /// that `followed` names.
+    ///
+    /// # Specification
+    /// trivial.
+    #[must_use]
+    pub fn new(
+        regions: ClauseRegions,
+        followed: Arc<Followed>,
+    ) -> Self
+    {
+        Self {
+            regions,
+            repetitions: Repetitions::new(followed),
+        }
+    }
+
+    /// Whether the crate under the lint is one whose repetitions the
+    /// machinery follows over calls ([`Followed::follows`]).
+    ///
+    /// # Specification
+    /// trivial.
+    #[must_use]
+    pub fn follows(
+        &self,
+        tcx: TyCtxt<'_>,
+    ) -> FollowsCalls
+    {
+        self.repetitions.followed().follows(tcx)
+    }
+}
+
 quenchant_shape::reason_enum! {
     /// An operation can run against its receiver a number of times that does
     /// not grow with a loop.
@@ -184,6 +245,13 @@ quenchant_shape::reason_enum! {
             /// the operation in its own block or encloses it: each entry into
             /// the loop runs the operation at most once.
             Exits,
+            /// The operation only builds the error that a `?` returns at once.
+            /// It runs on an error path, which leaves the body and the
+            /// repetition of the body.
+            Fails,
+            /// The receiver is a parameter of a function that a loop or a
+            /// caller repeats: each call can hand it a different value.
+            Argument,
         }
     }
 }
@@ -328,14 +396,72 @@ pub fn std_method(
     Maybe::Present(Method { owner, name })
 }
 
-/// A repetition that reads one receiver again on every pass.
+/// What repeats an operation.
 #[derive(Clone, Copy, Debug)]
-#[repr(transparent)]
-pub struct Repeated<'tcx>
+pub enum Repetition<'tcx>
 {
-    /// The loop, or the closure called once per element, that repeats the
-    /// operation.
-    pub scope: &'tcx Expr<'tcx>,
+    /// A loop, or a closure called once per element, inside the operation's
+    /// own body.
+    Local(&'tcx Expr<'tcx>),
+    /// The value of the operation's function body, which a loop, a role or a
+    /// repeated caller outside it repeats.
+    Body(&'tcx Expr<'tcx>, Repeater),
+}
+
+impl<'tcx> Repetition<'tcx>
+{
+    /// The expression whose pass the operation's value lives in.
+    ///
+    /// # Specification
+    /// trivial.
+    #[must_use]
+    pub const fn scope(self) -> &'tcx Expr<'tcx>
+    {
+        match self {
+            Self::Local(scope) | Self::Body(scope, _) => scope,
+        }
+    }
+
+    /// Add to a refusal the note that names what repeats the operation.
+    ///
+    /// # Specification
+    /// - ensures: a note at the loop or closure for a local repetition, at the
+    ///   caller's call for a loop or a repeated caller, and a note that names
+    ///   the trait method for a role.
+    /// - panics: none.
+    /// - executable: none — the outcome is a diagnostic that rustc emits.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — the fixtures' refusals print each note.
+    /// - witness: `tests::ui_cost_shape`
+    pub fn note(
+        self,
+        tcx: TyCtxt<'_>,
+        diagnostic: &mut Diag<'_>,
+    )
+    {
+        match self {
+            Self::Local(scope) => {
+                diagnostic.span_note(scope.span, "the loop that repeats it");
+            },
+            Self::Body(_, Repeater::Loop(call)) => {
+                diagnostic.span_note(call, "a loop makes this call of the function that holds it");
+            },
+            Self::Body(_, Repeater::Caller(call)) => {
+                diagnostic.span_note(
+                    call,
+                    "a function that repeats makes this call of the function that holds it",
+                );
+            },
+            Self::Body(_, Repeater::Role(method)) => {
+                diagnostic.note(format!(
+                    "the function that holds it implements `{}`, which an iteration calls once \
+                     for each element",
+                    tcx.def_path_str(method)
+                ));
+            },
+        }
+    }
 }
 
 /// Whether a repetition's trip count is fixed by its iterated expression.
@@ -361,52 +487,182 @@ pub enum Binding
 /// The repetition that reads `receiver` again on every pass of `operation`.
 ///
 /// # Specification
-/// - ensures: `Present` with the innermost enclosing loop or per-element
-///   closure of `operation`, within its body, whose trip count is open, when
-///   `receiver` is rooted at a local bound outside that repetition.
-/// - ensures: `Absent(Straight)` when no repetition encloses `operation`;
-///   `Absent(FixedTrip)` when only fixed-trip repetitions do; `Absent(Exits)`
-///   when the operation leaves every loop that encloses it; otherwise
-///   `Absent(BoundInside)`, `Absent(Constant)` or `Absent(Temporary)` from the
-///   receiver's root.
+/// - ensures: `Present` with the repetition of `operation` ([`repetition`])
+///   when [`reread`] answers `Present` for `receiver` under it; `Absent` with
+///   the first reason otherwise.
 /// - provides: the repeated-read decision of [`linear_search_in_loop`] and
 ///   [`front_shift_in_loop`].
 /// - panics: none.
+/// - executable: none — the outcome is [`repetition`] and [`reread`], which a
+///   predicate could only repeat.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — each repeated-read lint's fixtures refuse a `for`, a
 ///   `while` and a per-element closure over an outliving receiver, and accept
 ///   the same operation outside any loop, inside a loop over an array, on a
-///   receiver bound inside the loop, on a constant and on a computed value.
+///   receiver bound inside the loop, on a constant and on a computed value. The
+///   repeated-body fixtures refuse a search of `self` in `Iterator::next` and
+///   accept one of a parameter of a function that a loop calls.
 /// - witness: `tests::ui_cost_shape`
 ///
 /// [`linear_search_in_loop`]: crate::linear_search::LINEAR_SEARCH_IN_LOOP
 /// [`front_shift_in_loop`]: crate::front_shift::FRONT_SHIFT_IN_LOOP
-#[spec(ensures: |output| match output {
-    Maybe::Present(found) => matches!(found.scope.kind, ExprKind::Loop(..) | ExprKind::Closure(..)),
-    Maybe::Absent(_) => true,
-})]
 pub fn repeated_read<'tcx>(
     cx: &LateContext<'tcx>,
+    machinery: &Machinery,
     operation: &Expr<'tcx>,
     receiver: &'tcx Expr<'tcx>,
-) -> Maybe<Repeated<'tcx>, repetition_reading::Unrepeated>
+) -> Maybe<Repetition<'tcx>, repetition_reading::Unrepeated>
 {
-    let scope = match repetition(cx, operation) {
-        Maybe::Present(scope) => scope,
+    let found = match repetition(cx, machinery, operation) {
+        Maybe::Present(found) => found,
         Maybe::Absent(reason) => return Maybe::Absent(reason),
     };
-    match place_root(cx, receiver) {
-        Maybe::Present(local) => match binding(cx, local, scope) {
-            Binding::Outside => Maybe::Present(Repeated { scope }),
-            Binding::Inside => Maybe::Absent(repetition_reading::Unrepeated::BoundInside),
-        },
+    match reread(cx, found, receiver) {
+        Maybe::Present(_) => Maybe::Present(found),
+        Maybe::Absent(reason) => Maybe::Absent(reason),
+    }
+}
+
+/// The local that a repetition reads again on every pass through `receiver`.
+///
+/// # Specification
+/// - ensures: `Present` with the local that `receiver` is rooted at, when it is
+///   bound outside `found`'s scope: for a local repetition, any such local; for
+///   a function that a role repeats, its receiver `self`.
+/// - ensures: `Absent(Argument)` for a parameter of a function that a loop or a
+///   caller repeats, or for a parameter other than `self` of one that a role
+///   repeats; otherwise `Absent(BoundInside)`, `Absent(Constant)` or
+///   `Absent(Temporary)` from the receiver's root.
+/// - provides: the receiver test of [`repeated_read`] and of the copy of an
+///   unchanged value that [`clone_in_loop`] refuses.
+/// - panics: none.
+/// - executable: none — the outcome is the compiler's resolution and the HIR
+///   parents, which a predicate could only read again.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures read a receiver bound outside a loop, inside
+///   it, a constant, a computed value, `self` in `Iterator::next` and a
+///   parameter of a function that a loop calls.
+/// - witness: `tests::ui_cost_shape`
+///
+/// [`clone_in_loop`]: crate::clone_in_loop::CLONE_IN_LOOP
+pub fn reread<'tcx>(
+    cx: &LateContext<'tcx>,
+    found: Repetition<'tcx>,
+    receiver: &'tcx Expr<'tcx>,
+) -> Maybe<HirId, repetition_reading::Unrepeated>
+{
+    let local = match place_root(cx, receiver) {
+        Maybe::Present(local) => local,
         Maybe::Absent(root_reading::Unrooted::Constant) => {
-            Maybe::Absent(repetition_reading::Unrepeated::Constant)
+            return Maybe::Absent(repetition_reading::Unrepeated::Constant);
         },
         Maybe::Absent(root_reading::Unrooted::Temporary) => {
-            Maybe::Absent(repetition_reading::Unrepeated::Temporary)
+            return Maybe::Absent(repetition_reading::Unrepeated::Temporary);
         },
+    };
+    if binding(cx, local, found.scope()) == Binding::Inside {
+        return Maybe::Absent(repetition_reading::Unrepeated::BoundInside);
+    }
+    match found {
+        Repetition::Local(_) => Maybe::Present(local),
+        Repetition::Body(_, Repeater::Role(_))
+            if receiver_parameter(cx, local) == Receiver::SelfParameter =>
+        {
+            Maybe::Present(local)
+        },
+        Repetition::Body(..) => Maybe::Absent(repetition_reading::Unrepeated::Argument),
+    }
+}
+
+/// Whether a local is the receiver `self` of the method that holds it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum Receiver
+{
+    /// The local is the method's `self` parameter.
+    SelfParameter,
+    /// The local is some other binding.
+    Other,
+}
+
+/// Decide whether a local is the `self` parameter of its method.
+///
+/// # Specification
+/// - ensures: `SelfParameter` exactly when the item that owns `local` is a
+///   method and `local` is the pattern of its first parameter.
+/// - panics: none.
+/// - executable: none — the outcome is the compiler's association table and the
+///   body's parameters, which a predicate could only read again.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures search `self` and a second parameter in an
+///   implementation of `Iterator::next`.
+/// - witness: `tests::ui_cost_shape`
+fn receiver_parameter(
+    cx: &LateContext<'_>,
+    local: HirId,
+) -> Receiver
+{
+    let function = local.owner.def_id;
+    let method = cx
+        .tcx
+        .opt_associated_item(function.to_def_id())
+        .is_some_and(|item| item.is_method());
+    let first = cx
+        .tcx
+        .hir_maybe_body_owned_by(function)
+        .and_then(|body| body.params.first())
+        .is_some_and(|parameter| parameter.pat.hir_id == local);
+    if method && first {
+        Receiver::SelfParameter
+    }
+    else {
+        Receiver::Other
+    }
+}
+
+/// What repeats `operation`: a repetition of its own body, else its function.
+///
+/// # Specification
+/// - ensures: `Present(Local)` with [`local_repetition`]'s scope when it
+///   answers `Present`; `Absent(Fails)` when it answers `Absent(Fails)`;
+///   otherwise `Present(Body)` with the value of the body of the item that owns
+///   `operation` when the machinery's table holds that item
+///   ([`Repetitions::of`]); otherwise `Absent` with [`local_repetition`]'s
+///   reason.
+/// - provides: the one reading of repetition that every cost-shape lint takes.
+/// - panics: none.
+/// - executable: none — the outcome is the HIR walk and the crate's table,
+///   which a predicate could only repeat.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures place operations in each loop form, and in
+///   functions that a loop, a repeated caller or a role repeats, and accept a
+///   string that such a function makes for the error that a `?` returns.
+/// - witness: `tests::ui_cost_shape`
+pub fn repetition<'tcx>(
+    cx: &LateContext<'tcx>,
+    machinery: &Machinery,
+    operation: &Expr<'tcx>,
+) -> Maybe<Repetition<'tcx>, repetition_reading::Unrepeated>
+{
+    let reason = match local_repetition(cx, operation) {
+        Maybe::Present(scope) => return Maybe::Present(Repetition::Local(scope)),
+        Maybe::Absent(repetition_reading::Unrepeated::Fails) => {
+            return Maybe::Absent(repetition_reading::Unrepeated::Fails);
+        },
+        Maybe::Absent(reason) => reason,
+    };
+    let function = operation.hir_id.owner.def_id;
+    match (
+        machinery.repetitions.of(cx.tcx, function),
+        cx.tcx.hir_maybe_body_owned_by(function),
+    ) {
+        (Maybe::Present(repeater), Some(body)) => {
+            Maybe::Present(Repetition::Body(body.value, repeater))
+        },
+        (Maybe::Present(_) | Maybe::Absent(_), _) => Maybe::Absent(reason),
     }
 }
 
@@ -418,10 +674,12 @@ pub fn repeated_read<'tcx>(
 ///   its body, skipping those whose trip count is fixed and those the operation
 ///   leaves ([`exit_after`]): a `return` leaves every loop up to the closure or
 ///   item that owns it, a `break` every loop up to its target.
-/// - ensures: `Absent(Exits)` when a loop was skipped because the operation
-///   leaves it and no open repetition remains; `Absent(FixedTrip)` when every
-///   enclosing repetition has a fixed trip count; `Absent(Straight)` when none
-///   encloses `operation`.
+/// - ensures: `Absent(Fails)` when no open repetition remains and the operation
+///   sits in a closure that only builds the error a `?` returns
+///   ([`error_path`]); else `Absent(Exits)` when a loop was skipped because the
+///   operation leaves it and no open repetition remains; `Absent(FixedTrip)`
+///   when every enclosing repetition has a fixed trip count; `Absent(Straight)`
+///   when none encloses `operation`.
 /// - panics: none.
 ///
 /// # Adequacy
@@ -433,9 +691,9 @@ pub fn repeated_read<'tcx>(
 /// - witness: `tests::ui_cost_shape`
 #[spec(ensures: |output| match output {
     Maybe::Present(scope) => matches!(scope.kind, ExprKind::Loop(..) | ExprKind::Closure(..)),
-    Maybe::Absent(reason) => matches!(reason, repetition_reading::Unrepeated::Straight | repetition_reading::Unrepeated::FixedTrip | repetition_reading::Unrepeated::Exits),
+    Maybe::Absent(reason) => matches!(reason, repetition_reading::Unrepeated::Straight | repetition_reading::Unrepeated::FixedTrip | repetition_reading::Unrepeated::Exits | repetition_reading::Unrepeated::Fails),
 })]
-pub fn repetition<'tcx>(
+fn local_repetition<'tcx>(
     cx: &LateContext<'tcx>,
     operation: &Expr<'tcx>,
 ) -> Maybe<&'tcx Expr<'tcx>, repetition_reading::Unrepeated>
@@ -443,6 +701,7 @@ pub fn repetition<'tcx>(
     let mut fixed = Trip::Open;
     let mut leaving = Leaving::Stays;
     let mut left = false;
+    let mut fails = false;
     let mut child = operation.hir_id;
     for (parent_id, node) in cx.tcx.hir_parent_iter(operation.hir_id) {
         #[expect(
@@ -491,6 +750,7 @@ pub fn repetition<'tcx>(
                             Maybe::Absent(closure_reading::NotPerElement::CalledOnce) => {
                                 if error_path(cx, parent) == Path::Leaves {
                                     leaving = Leaving::Returns;
+                                    fails = true;
                                 }
                                 child = parent_id;
                                 continue;
@@ -515,10 +775,11 @@ pub fn repetition<'tcx>(
         }
         child = parent_id;
     }
-    Maybe::Absent(match (left, fixed) {
-        (true, _) => repetition_reading::Unrepeated::Exits,
-        (false, Trip::Fixed) => repetition_reading::Unrepeated::FixedTrip,
-        (false, Trip::Open) => repetition_reading::Unrepeated::Straight,
+    Maybe::Absent(match (fails, left, fixed) {
+        (true, ..) => repetition_reading::Unrepeated::Fails,
+        (false, true, _) => repetition_reading::Unrepeated::Exits,
+        (false, false, Trip::Fixed) => repetition_reading::Unrepeated::FixedTrip,
+        (false, false, Trip::Open) => repetition_reading::Unrepeated::Straight,
     })
 }
 
@@ -693,26 +954,82 @@ fn per_element_trip<'tcx>(
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum Path
 {
-    /// The closure builds the error a `?` returns at once.
+    /// The closure builds the error that a `?` or the function returns at
+    /// once.
     Leaves,
     /// It may run on a path that stays.
     Stays,
 }
 
-/// Decide whether a closure only builds the error a `?` returns.
+/// Whether a method only builds the error arm of its result.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum ErrorArm
+{
+    /// `Result::map_err` or `Option::ok_or_else`: its closure runs only to
+    /// build the error.
+    Builds,
+    /// Any other method.
+    Other,
+}
+
+/// Decide whether a method only builds the error arm of its result.
 ///
 /// # Specification
-/// - ensures: `Leaves` exactly when `closure` is the argument of
-///   `Result::map_err` or `Option::ok_or_else` and that call is the operand of
-///   a `?`; `Stays` otherwise.
+/// - ensures: `Builds` exactly when `method` is `Result::map_err` or
+///   `Option::ok_or_else`; `Other` otherwise.
+/// - provides: the error path of [`local_repetition`] and the error arm that
+///   [`Returns::fresh`] does not follow.
+/// - panics: none.
+/// - executable: none — the outcome is the compiler's definition table.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures accept a string made inside `map_err` before
+///   a `?` in a loop, and a call in a loop of a function that returns the
+///   result of `map_err`.
+/// - witness: `tests::ui_cost_shape`
+///
+/// [`Returns::fresh`]: crate::allocation_free_region::Returns::fresh
+pub fn error_arm(
+    tcx: TyCtxt<'_>,
+    method: DefId,
+) -> ErrorArm
+{
+    let named = tcx
+        .inherent_impl_of_assoc(method)
+        .and_then(|owner| {
+            let held = tcx.type_of(owner).instantiate_identity().skip_norm_wip();
+            tcx.get_diagnostic_name(held.ty_adt_def()?.did())
+        })
+        .is_some_and(|owner| {
+            matches!(
+                (owner.as_str(), tcx.item_name(method).as_str()),
+                ("Result", "map_err") | ("Option", "ok_or_else")
+            )
+        });
+    if named {
+        ErrorArm::Builds
+    }
+    else {
+        ErrorArm::Other
+    }
+}
+
+/// Decide whether a closure only builds the error that a `?` or the function
+/// returns.
+///
+/// # Specification
+/// - ensures: `Leaves` exactly when `closure` is the argument of a call that
+///   [`error_arm`] answers `Builds` for, and that call is the operand of a `?`,
+///   or the value of a `return` or of the body's tail through blocks alone;
+///   `Stays` otherwise.
 /// - panics: none.
 /// - executable: none — the outcome is a walk up the HIR parents and the
 ///   compiler's method resolution.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — the fixtures accept a string made inside `map_err` before
-///   a `?` in a loop, and refuse one made inside `map_err` whose result is
-///   matched.
+///   a `?` in a loop and in the tail of a function that a loop calls, and
+///   refuse one made inside `map_err` whose result is matched.
 /// - witness: `tests::ui_cost_shape`
 fn error_path<'tcx>(
     cx: &LateContext<'tcx>,
@@ -727,41 +1044,40 @@ fn error_path<'tcx>(
     else {
         return Path::Stays;
     };
-    let builds_error = cx
+    if !cx
         .typeck_results()
         .type_dependent_def_id(call.hir_id)
-        .and_then(|method| {
-            let owner = cx.tcx.inherent_impl_of_assoc(method)?;
-            let held = cx.tcx.type_of(owner).instantiate_identity().skip_norm_wip();
-            let name = cx.tcx.get_diagnostic_name(held.ty_adt_def()?.did())?;
-            Some((name, cx.tcx.item_name(method)))
-        })
-        .is_some_and(|(owner, method)| {
-            matches!(
-                (owner.as_str(), method.as_str()),
-                ("Result", "map_err") | ("Option", "ok_or_else")
-            )
-        });
-    if !builds_error {
+        .is_some_and(|method| error_arm(cx.tcx, method) == ErrorArm::Builds)
+    {
         return Path::Stays;
     }
-    let Node::Expr(branch) = cx.tcx.parent_hir_node(call.hir_id)
-    else {
-        return Path::Stays;
-    };
-    let Node::Expr(question) = cx.tcx.parent_hir_node(branch.hir_id)
-    else {
-        return Path::Stays;
-    };
-    if matches!(
-        question.kind,
-        ExprKind::Match(_, _, MatchSource::TryDesugar(_))
-    ) {
-        Path::Leaves
+    if let Node::Expr(branch) = cx.tcx.parent_hir_node(call.hir_id)
+        && let Node::Expr(question) = cx.tcx.parent_hir_node(branch.hir_id)
+        && matches!(
+            question.kind,
+            ExprKind::Match(_, _, MatchSource::TryDesugar(_))
+        )
+    {
+        return Path::Leaves;
     }
-    else {
-        Path::Stays
+    let mut child = call.hir_id;
+    for (parent_id, node) in cx.tcx.hir_parent_iter(call.hir_id) {
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`Node` and `ExprKind` are rustc's, their variants moving with the pinned \
+                      nightly; only a block's tail, a block, a `return` and the body's owner \
+                      carry the value out"
+        )]
+        match node {
+            Node::Block(block) if block.expr.is_some_and(|tail| tail.hir_id == child) => {},
+            Node::Expr(parent) if matches!(parent.kind, ExprKind::Block(..)) => {},
+            Node::Expr(parent) if matches!(parent.kind, ExprKind::Ret(_)) => return Path::Leaves,
+            Node::Item(_) | Node::ImplItem(_) | Node::TraitItem(_) => return Path::Leaves,
+            _ => return Path::Stays,
+        }
+        child = parent_id;
     }
+    Path::Stays
 }
 
 /// Whether an iterated expression walks a number of elements fixed when the
@@ -1350,6 +1666,63 @@ pub fn pass_escape<'tcx>(
         },
         _ => None,
     };
+    let escapes = match bound {
+        Some(local) => return moved_out(cx, &moves, walked, local),
+        None => moves.temporaries.contains(&value.hir_id),
+    };
+    if escapes {
+        Escape::Escapes
+    }
+    else {
+        Escape::Stays
+    }
+}
+
+/// Whether a local bound inside a repetition is moved out of its pass.
+///
+/// # Specification
+/// - requires: `scope` is the loop or per-element closure whose pass binds
+///   `local`.
+/// - ensures: [`moved_out`] over the walk of the pass that binds `local`.
+/// - panics: none.
+/// - executable: none — the outcome is the compiler's use walk, which a
+///   predicate could only repeat.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures refuse the item of a `for` loop that a local
+///   iterator allocates and the pass only borrows, and accept one that the pass
+///   pushes outward.
+/// - witness: `tests::ui_cost_shape`
+pub fn binding_escape<'tcx>(
+    cx: &LateContext<'tcx>,
+    local: HirId,
+    scope: &'tcx Expr<'tcx>,
+) -> Escape
+{
+    let (moves, walked) = walk_pass(cx, pass_root(cx, local, scope));
+    moved_out(cx, &moves, walked, local)
+}
+
+/// Whether a walked pass moves a local out of it.
+///
+/// # Specification
+/// - ensures: `Escapes` exactly when `moves` moves `local` other than into
+///   `drop`, or the walk of `walked` swaps it out ([`swapped_out`]).
+/// - panics: none.
+/// - executable: none — the outcome is the compiler's use walk, which a
+///   predicate could only repeat.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures refuse a value dropped by `drop` and accept
+///   one pushed outward and one handed on by `mem::take`.
+/// - witness: `tests::ui_cost_shape`
+fn moved_out<'tcx>(
+    cx: &LateContext<'tcx>,
+    moves: &Moves,
+    walked: &'tcx Expr<'tcx>,
+    local: HirId,
+) -> Escape
+{
     let dropped = |mover: HirId| {
         let Node::Expr(call) = cx.tcx.parent_hir_node(mover)
         else {
@@ -1367,16 +1740,11 @@ pub fn pass_escape<'tcx>(
             .opt_def_id()
             .is_some_and(|function| cx.tcx.is_diagnostic_item(sym::mem_drop, function))
     };
-    let escapes = match bound {
-        Some(local) => {
-            moves
-                .locals
-                .iter()
-                .any(|&(moved, mover)| moved == local && !dropped(mover))
-                || swapped_out(cx, walked, local) == Swap::Swapped
-        },
-        None => moves.temporaries.contains(&value.hir_id),
-    };
+    let escapes = moves
+        .locals
+        .iter()
+        .any(|&(moved, mover)| moved == local && !dropped(mover))
+        || swapped_out(cx, walked, local) == Swap::Swapped;
     if escapes {
         Escape::Escapes
     }
@@ -1464,7 +1832,7 @@ fn swapped_out<'tcx>(
 
 quenchant_shape::reason_enum! {
     /// An expression can be something other than a closure's returned value.
-    mod return_reading {
+    pub mod return_reading {
         /// Why the expression is not what a closure returns.
         #[derive(Clone, Copy, Debug, Eq, PartialEq)]
         pub enum Unreturned {
@@ -1487,7 +1855,7 @@ quenchant_shape::reason_enum! {
 /// - hypothesis: L3 — the fixtures return a copy from a per-element closure,
 ///   from a block-bodied one, and from a closure handed to `Option::map`.
 /// - witness: `tests::ui_cost_shape`
-fn returned_by<'tcx>(
+pub fn returned_by<'tcx>(
     cx: &LateContext<'tcx>,
     value: &'tcx Expr<'tcx>,
 ) -> Maybe<&'tcx Expr<'tcx>, return_reading::Unreturned>

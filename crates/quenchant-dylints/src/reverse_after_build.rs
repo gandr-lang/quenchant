@@ -53,8 +53,8 @@ use rustc_lint::impl_lint_pass;
 use rustc_span::Symbol;
 use rustc_span::sym;
 
-use crate::clause_cost::ClauseRegions;
 use crate::cost_shape::Inspection;
+use crate::cost_shape::Machinery;
 use crate::cost_shape::Method;
 use crate::cost_shape::Owner;
 use crate::cost_shape::Trip;
@@ -139,20 +139,20 @@ pub enum Source
 #[repr(transparent)]
 pub struct ReverseAfterBuild
 {
-    /// The authored `spec` attribute ranges, whose clauses are not inspected.
-    regions: ClauseRegions,
+    /// The machinery every cost-shape pass takes.
+    machinery: Machinery,
 }
 
 impl ReverseAfterBuild
 {
-    /// The pass reads the ranges the pre-expansion clause collector records.
+    /// The pass over the shared machinery.
     ///
     /// # Specification
     /// trivial.
     #[must_use]
-    pub const fn new(regions: ClauseRegions) -> Self
+    pub const fn new(machinery: Machinery) -> Self
     {
-        Self { regions }
+        Self { machinery }
     }
 }
 
@@ -181,7 +181,7 @@ impl<'tcx> LateLintPass<'tcx> for ReverseAfterBuild
         expr: &'tcx Expr<'tcx>,
     )
     {
-        if inspection(&self.regions, expr) == Inspection::Skipped {
+        if inspection(&self.machinery.regions, expr) == Inspection::Skipped {
             return;
         }
         let Maybe::Present(source) = reversal(cx, expr)

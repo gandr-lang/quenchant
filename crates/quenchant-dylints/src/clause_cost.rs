@@ -16,6 +16,12 @@
 //! expansion. Following stops at a function whose rustdoc states its bound in a
 //! `# Clause cost` section: that is how a combinator that checks only what
 //! changed since a captured point declares itself.
+//!
+//! This reading is right by design. The cost of a clause is the walk it
+//! starts, and the walk summaries read that walk over each callee: the lint
+//! follows a call through them and through nothing else. The lint reads no
+//! repetition, because a clause runs once for each call of the function it
+//! checks. Thus the cost of one run is the cost of the clause.
 
 use alloc::collections::BTreeMap;
 use alloc::sync::Arc;
