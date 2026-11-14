@@ -141,13 +141,12 @@ LL |     let _ = value.checked_add(1);
 error: primitive arithmetic must use the nominal arithmetic surface
   --> $DIR/primitive.rs:40:24
    |
+LL | macro_rules! primitive_call {
 LL |     ($value:expr) => { $value.checked_add(1) };
    |                        ^^^^^^^^^^^^^^^^^^^^^
 ...
 LL |     let _ = primitive_call!(value);
    |             ---------------------- in this macro invocation
-   |
-   = note: this error originates in the macro `primitive_call` (in Nightly builds, run with -Z macro-backtrace for more info)
 
 error: aborting due to 24 previous errors
 

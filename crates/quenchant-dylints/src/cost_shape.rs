@@ -860,10 +860,9 @@ pub fn place_root<'tcx>(
             ExprKind::Path(ref path) => {
                 return match cx.qpath_res(path, current.hir_id) {
                     Res::Local(local) => Maybe::Present(local),
-                    Res::Def(
-                        DefKind::Const { .. } | DefKind::AssocConst { .. } | DefKind::Static { .. },
-                        _,
-                    ) => Maybe::Absent(root_reading::Unrooted::Constant),
+                    Res::Def(DefKind::Const | DefKind::AssocConst | DefKind::Static { .. }, _) => {
+                        Maybe::Absent(root_reading::Unrooted::Constant)
+                    },
                     _ => Maybe::Absent(root_reading::Unrooted::Temporary),
                 };
             },

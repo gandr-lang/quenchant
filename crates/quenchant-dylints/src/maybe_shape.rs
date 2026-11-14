@@ -21,9 +21,9 @@ use rustc_hir::ItemKind;
 use rustc_hir::Variant;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
+use rustc_lint::declare_lint;
+use rustc_lint::impl_lint_pass;
 use rustc_middle::ty;
-use rustc_session::declare_lint;
-use rustc_session::impl_lint_pass;
 use rustc_span::Symbol;
 
 use crate::specification::name_authored;
@@ -132,7 +132,7 @@ impl<'tcx> LateLintPass<'tcx> for MaybeShape
             .tcx
             .lint_level_spec_at_node(MAYBE_SHAPE, item.hir_id())
             .level()
-            == rustc_session::lint::Level::Allow
+            == rustc_lint::Level::Allow
             || !name_authored(cx, def_id).0
             || cx
                 .tcx

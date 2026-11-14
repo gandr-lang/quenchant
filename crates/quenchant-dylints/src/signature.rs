@@ -174,18 +174,18 @@ pub fn check_fn_decl<'tcx>(
                             diagnostics.0 = diagnostics.0.saturating_add(1_usize);
                         },
                     },
-                    TyKind::Ptr(mut_ty) => {
+                    TyKind::Ptr(pointee, _) => {
                         if let rustc_ty::RawPtr(semantic_inner, _) = *semantic_ty.kind() {
-                            work.push(PrimitiveWork::SemanticTy(mut_ty.ty, semantic_inner));
+                            work.push(PrimitiveWork::SemanticTy(pointee, semantic_inner));
                         }
                         else {
                             emit_primitive(cx, ty.span);
                             diagnostics.0 = diagnostics.0.saturating_add(1_usize);
                         }
                     },
-                    TyKind::Ref(_, mut_ty) => {
+                    TyKind::Ref(_, pointee, _) => {
                         if let rustc_ty::Ref(_, semantic_inner, _) = *semantic_ty.kind() {
-                            work.push(PrimitiveWork::SemanticTy(mut_ty.ty, semantic_inner));
+                            work.push(PrimitiveWork::SemanticTy(pointee, semantic_inner));
                         }
                         else {
                             emit_primitive(cx, ty.span);
@@ -219,11 +219,14 @@ pub fn check_fn_decl<'tcx>(
                     },
                     TyKind::Path(ref qpath) => {
                         work.push(PrimitiveWork::PathFallback(ty, diagnostics));
-                        // economy: positional pairing can misidentify a descendant span when
-                        // aliases reorder or discard arguments, as `type Flip<A, B> = Result<B, A>`
-                        // does. `PathFallback` preserves the denial when descendants supply none.
-                        // Alias-aware substitution would improve span precision for alias-heavy
-                        // inputs.
+                        // economy: positional pairing can misidentify a
+                        // descendant span when
+                        // aliases reorder or discard arguments, as `type
+                        // Flip<A, B> = Result<B, A>`
+                        // does. `PathFallback` preserves the denial when
+                        // descendants supply none.
+                        // Alias-aware substitution would improve span precision
+                        // for alias-heavy inputs.
                         if let Maybe::Present(generic_args) = last_segment_args(qpath) {
                             let semantic_args = semantic_type_args(cx, semantic_ty);
                             // Pushed in argument order, then reversed in place,
@@ -282,8 +285,8 @@ pub fn check_fn_decl<'tcx>(
                 | TyKind::View(inner, _) => {
                     work.push(PrimitiveWork::HirTy(inner));
                 },
-                TyKind::Ptr(mut_ty) | TyKind::Ref(_, mut_ty) => {
-                    work.push(PrimitiveWork::HirTy(mut_ty.ty));
+                TyKind::Ptr(pointee, _) | TyKind::Ref(_, pointee, _) => {
+                    work.push(PrimitiveWork::HirTy(pointee));
                 },
                 TyKind::FnPtr(fn_ptr) => {
                     work.push(PrimitiveWork::HirFnDecl(fn_ptr.decl));
@@ -335,8 +338,8 @@ pub fn check_fn_decl<'tcx>(
                 | TyKind::View(inner, _) => {
                     work.push(PrimitiveWork::OpaqueOutputTy(inner));
                 },
-                TyKind::Ptr(mut_ty) | TyKind::Ref(_, mut_ty) => {
-                    work.push(PrimitiveWork::OpaqueOutputTy(mut_ty.ty));
+                TyKind::Ptr(pointee, _) | TyKind::Ref(_, pointee, _) => {
+                    work.push(PrimitiveWork::OpaqueOutputTy(pointee));
                 },
                 TyKind::FnPtr(fn_ptr) => {
                     work.push(PrimitiveWork::HirFnDecl(fn_ptr.decl));

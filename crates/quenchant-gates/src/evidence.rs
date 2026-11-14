@@ -453,7 +453,7 @@ pub fn read_prose(
         let outside = document
             .get("external_crates")
             .and_then(serde_json::Value::as_object)
-            .map(|crates| {
+            .map_or_default(|crates| {
                 crates
                     .iter()
                     .filter(|&(_, krate)| {
@@ -464,8 +464,7 @@ pub fn read_prose(
                     })
                     .map(|(id, _)| id.clone())
                     .collect()
-            })
-            .unwrap_or_default();
+            });
         let tables = RustdocTables {
             index,
             paths,
@@ -507,8 +506,7 @@ pub fn read_prose(
             }
             let lines = sources
                 .get(&item.position.file)
-                .map(|source| documentation_lines(source, docs))
-                .unwrap_or_default();
+                .map_or_default(|source| documentation_lines(source, docs));
             for link in clause_links(&lines) {
                 let Some(target) = links.get(&link.destination)
                 else {
@@ -672,14 +670,13 @@ fn rustdoc_position(
     let begin: Vec<usize> = span
         .and_then(|span| span.get("begin"))
         .and_then(serde_json::Value::as_array)
-        .map(|begin| {
+        .map_or_default(|begin| {
             begin
                 .iter()
                 .filter_map(serde_json::Value::as_u64)
                 .filter_map(|value| usize::try_from(value).ok())
                 .collect()
-        })
-        .unwrap_or_default();
+        });
     match (file, begin.as_slice()) {
         (Some(file), &[line, column]) => Maybe::Present(Position {
             file: relative(SourceText::from(file), root),

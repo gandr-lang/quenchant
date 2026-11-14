@@ -1,8 +1,8 @@
 #:tombi toml-version = "v1.0.0"
-# One toolchain for the whole workspace: the nightly that rust-clippy's
-# rust-<stable> release tag names in its own rust-toolchain.toml. The channel
-# and the root manifest's clippy_utils tag move together under
-# `mise run toolchain:bump <stable>`.
+# One toolchain for the whole workspace: the nightly that the pinned
+# rust-clippy source names in its own rust-toolchain.toml, through a
+# rust-<stable> release tag or a full commit. The channel and the root
+# manifest's clippy_utils source move together under `mise run toolchain:bump`.
 
 # The component list is the union the consolidated trees need. The Dylint
 # policy library is a member of this workspace, and its driver links rustc's
@@ -12,7 +12,7 @@
 # arithmetic preconditions. A component is dropped only when the gate that
 # needs it leaves the wall.
 [toolchain]
-channel = "nightly-2026-08-07"
+channel = "nightly-2026-10-01"
 components = ["clippy", "rustfmt", "miri", "rustc-dev", "llvm-tools"]
 targets = ["thumbv7em-none-eabi"]
 profile = "minimal"

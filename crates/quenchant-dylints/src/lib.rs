@@ -57,6 +57,7 @@
 
 extern crate alloc;
 extern crate rustc_ast;
+extern crate rustc_attr_ir;
 extern crate rustc_data_structures;
 
 extern crate rustc_errors;
@@ -67,6 +68,7 @@ extern crate rustc_lint;
 extern crate rustc_middle;
 extern crate rustc_session;
 extern crate rustc_span;
+extern crate rustc_structures;
 
 mod adequacy;
 mod allocation_free_region;
@@ -117,6 +119,8 @@ use clippy_utils::diagnostics::span_lint_hir;
 use clippy_utils::diagnostics::span_lint_hir_and_then;
 use clippy_utils::trait_ref_of_method;
 use quenchant_shape::shape::Maybe;
+use rustc_attr_ir::ReprAttr;
+use rustc_attr_ir::find_attr;
 use rustc_hir::Body;
 use rustc_hir::CRATE_HIR_ID;
 use rustc_hir::FnDecl;
@@ -129,19 +133,17 @@ use rustc_hir::OwnerId;
 use rustc_hir::TraitFn;
 use rustc_hir::TraitItem;
 use rustc_hir::TraitItemKind;
-use rustc_hir::attrs::ReprAttr;
 use rustc_hir::def_id::LocalDefId;
-use rustc_hir::find_attr;
 use rustc_hir::intravisit::FnKind;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
 use rustc_lint::Level;
 use rustc_lint::LintId;
 use rustc_lint::LintStore;
+use rustc_lint::declare_lint;
+use rustc_lint::impl_lint_pass;
 use rustc_middle::lint::LintLevelSource;
 use rustc_session::Session;
-use rustc_session::declare_lint;
-use rustc_session::impl_lint_pass;
 use rustc_span::Span;
 
 use crate::adequacy::ADEQUACY_BLOCK_GRAMMAR;
@@ -878,8 +880,9 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
             let hir_id = cx.tcx.local_def_id_to_hir_id(def_id);
             let report_span = reportable_span(cx, def_id, node.span);
 
-            // The denial also fulfills an item-local expectation. Omitting it for an
-            // excepted item would instead leave that expectation unfulfilled.
+            // The denial also fulfills an item-local expectation. Omitting it
+            // for an excepted item would instead leave that
+            // expectation unfulfilled.
             span_lint_hir(
                 cx,
                 RECURSION_FORBIDDEN,
@@ -900,8 +903,8 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
                 },
             };
 
-            // Crate-root lint state prevents the item's expectation from hiding an invalid
-            // exception.
+            // Crate-root lint state prevents the item's expectation from hiding
+            // an invalid exception.
             span_lint_hir(
                 cx,
                 RECURSION_FORBIDDEN,
@@ -1708,31 +1711,34 @@ unproduced = [
                 if !directories.contains(parent) {
                     directories.insert(parent.to_path_buf());
                 }
+                // A library's rlib holds only a stub of its metadata; the
+                // fixtures emit metadata alone, so each takes the full
+                // `.rmeta`.
                 match (target, extension) {
                     (Some("anodized_macros"), Some(extension))
                         if extension == std::env::consts::DLL_EXTENSION =>
                     {
                         upstream_anodized = Some(path.to_path_buf());
                     },
-                    (Some("cxx"), Some("rlib")) => {
+                    (Some("cxx"), Some("rmeta")) => {
                         cxx = Some(path.to_path_buf());
                     },
-                    (Some("serde"), Some("rlib")) => {
+                    (Some("serde"), Some("rmeta")) => {
                         serde = Some(path.to_path_buf());
                     },
-                    (Some("clap"), Some("rlib")) => {
+                    (Some("clap"), Some("rmeta")) => {
                         clap = Some(path.to_path_buf());
                     },
-                    (Some("rayon"), Some("rlib")) => {
+                    (Some("rayon"), Some("rmeta")) => {
                         rayon = Some(path.to_path_buf());
                     },
-                    (Some("anodized"), Some("rlib")) if instrumented => {
+                    (Some("anodized"), Some("rmeta")) if instrumented => {
                         anodized = Some(path.to_path_buf());
                     },
-                    (Some("quenchant_arith"), Some("rlib")) => {
+                    (Some("quenchant_arith"), Some("rmeta")) => {
                         arithmetic = Some(path.to_path_buf());
                     },
-                    (Some("quenchant_shape"), Some("rlib")) => {
+                    (Some("quenchant_shape"), Some("rmeta")) => {
                         shape = Some(path.to_path_buf());
                     },
                     (Some("quenchant_fixture_macros"), Some(extension))

@@ -41,9 +41,9 @@ use rustc_hir::def_id::DefId;
 use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_lint::LateContext;
 use rustc_lint::Level;
+use rustc_lint::Lint;
 use rustc_middle::lint::LintLevelSource;
 use rustc_middle::ty::TyCtxt;
-use rustc_session::lint::Lint;
 use rustc_span::Span;
 
 use crate::semantic::DiagnosticText;

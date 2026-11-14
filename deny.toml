@@ -151,6 +151,9 @@ allow-build-scripts = [
   # The gate's documentation reader; the script generates the parser's own
   # spec tests only under `gen-tests`, which stays off, and is empty otherwise.
   "pulldown-cmark@0.13.6",
+  # The lint library's build id, a hash of its manifest and sources, keys the
+  # reach records the library writes beside each unit's metadata.
+  "quenchant-dylints@0.0.0",
   # Procedural macros require quote's compiler capability probe.
   "quote@1.0.47",
   # The pool rule's rayon fixture; the empty script exists for `links`,

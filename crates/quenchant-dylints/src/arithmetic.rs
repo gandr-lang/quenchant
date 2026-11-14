@@ -14,9 +14,9 @@ use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
+use rustc_lint::declare_lint;
+use rustc_lint::impl_lint_pass;
 use rustc_middle::ty;
-use rustc_session::declare_lint;
-use rustc_session::impl_lint_pass;
 use rustc_span::Symbol;
 
 declare_lint! {
@@ -62,7 +62,7 @@ impl<'tcx> LateLintPass<'tcx> for PrimitiveArithmetic
             .tcx
             .lint_level_spec_at_node(PRIMITIVE_ARITHMETIC, expr.hir_id)
             .level()
-            == rustc_session::lint::Level::Allow
+            == rustc_lint::Level::Allow
         {
             return;
         }

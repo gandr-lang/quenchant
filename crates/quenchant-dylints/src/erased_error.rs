@@ -28,10 +28,10 @@ use rustc_hir::def_id::LocalDefId;
 use rustc_hir::intravisit::FnKind;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
+use rustc_lint::declare_lint;
+use rustc_lint::impl_lint_pass;
 use rustc_middle::ty;
 use rustc_middle::ty::Ty;
-use rustc_session::declare_lint;
-use rustc_session::impl_lint_pass;
 use rustc_span::Span;
 use rustc_span::Symbol;
 use rustc_span::sym;
@@ -178,7 +178,7 @@ impl ErasedErrorSignature
                     cx.tcx.local_def_id_to_hir_id(owner),
                 )
                 .level()
-                == rustc_session::lint::Level::Allow
+                == rustc_lint::Level::Allow
             || !name_authored(cx, owner).0
             || crate::implements_non_local_trait(cx, owner).0
         {

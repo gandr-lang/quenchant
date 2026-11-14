@@ -49,6 +49,8 @@ use rustc_hir::def_id::DefId;
 use rustc_hir::def_id::LocalDefId;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
+use rustc_lint::declare_lint;
+use rustc_lint::impl_lint_pass;
 use rustc_middle::mir::TerminatorKind;
 use rustc_middle::ty;
 use rustc_middle::ty::EarlyBinder;
@@ -59,8 +61,6 @@ use rustc_middle::ty::ShimKind;
 use rustc_middle::ty::Ty;
 use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::TypingEnv;
-use rustc_session::declare_lint;
-use rustc_session::impl_lint_pass;
 use rustc_span::Span;
 
 use crate::cost_shape::Ownership;
@@ -488,7 +488,8 @@ fn classify_call<'tcx>(
             | ShimKind::FutureDropPoll(..)
             | ShimKind::AsyncDropGlueCtor(..)
             | ShimKind::Clone(..)
-            | ShimKind::FnPtrAddr(..),
+            | ShimKind::FnPtrAsPtr(..)
+            | ShimKind::FnPtrFromPtr(..),
         ) => Call::Body(instance),
     }
 }

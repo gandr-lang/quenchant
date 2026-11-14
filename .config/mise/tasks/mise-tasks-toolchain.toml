@@ -1,10 +1,13 @@
 #:tombi toml-version = "v1.0.0"
 #:schema https://mise.jdx.dev/schema/mise-task.json
 
-# Move the nightly and clippy_utils tag as one compiler-coupled pin.
+# Move the nightly and the clippy_utils source as one compiler-coupled pin. A
+# stable release names its rust-clippy tag; a full commit names a rust-clippy
+# merge whose nightly no release tag names. The gate refuses both or neither.
 ["toolchain:bump"]
-description = "Point the pinned toolchain and clippy_utils tag at a stable release"
+description = "Point the pinned toolchain and clippy_utils at a stable release's tag or at a rust-clippy commit"
 usage = """
-arg "<version>" help="stable release to pin, e.g. 1.98.0"
+arg "[version]" help="stable release to pin, e.g. 1.98.0"
+flag "--clippy-rev <commit>" help="full rust-clippy commit to pin in place of a release tag"
 """
-run = 'cargo run --quiet --locked -p quenchant-gates -- toolchain-bump --version "$usage_version"'
+run = 'cargo run --quiet --locked -p quenchant-gates -- toolchain-bump ${usage_version:+--version "$usage_version"} ${usage_clippy_rev:+--clippy-rev "$usage_clippy_rev"}'

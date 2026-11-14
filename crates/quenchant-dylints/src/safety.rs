@@ -17,8 +17,8 @@ use rustc_ast::ItemKind;
 use rustc_ast::Safety;
 use rustc_lint::EarlyContext;
 use rustc_lint::EarlyLintPass;
-use rustc_session::declare_lint;
-use rustc_session::impl_lint_pass;
+use rustc_lint::declare_lint;
+use rustc_lint::impl_lint_pass;
 use rustc_span::Span;
 use rustc_span::Symbol;
 

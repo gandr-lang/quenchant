@@ -7,7 +7,6 @@ edition.workspace = true
 rust-version.workspace = true
 description = "Nominal non-failure absence and transparent type scaffolding"
 readme = "README.md"
-homepage.workspace = true
 repository.workspace = true
 license.workspace = true
 keywords = ["absence", "newtype", "no-std", "nominal"]

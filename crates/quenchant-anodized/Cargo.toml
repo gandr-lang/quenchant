@@ -5,7 +5,6 @@ edition.workspace = true
 rust-version.workspace = true
 description = "Specification attributes with optional development instrumentation"
 readme = "README.md"
-homepage.workspace = true
 repository.workspace = true
 license.workspace = true
 keywords = ["no-std", "specification", "verification"]

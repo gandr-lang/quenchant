@@ -44,8 +44,8 @@ use rustc_ast::tokenstream::TokenTree;
 use rustc_lint::EarlyContext;
 use rustc_lint::EarlyLintPass;
 use rustc_lint::LateContext;
-use rustc_session::declare_lint;
-use rustc_session::impl_lint_pass;
+use rustc_lint::declare_lint;
+use rustc_lint::impl_lint_pass;
 use rustc_span::BytePos;
 use rustc_span::Span;
 use rustc_span::Symbol;
@@ -300,7 +300,8 @@ impl SpecificationSpelling
     )
     {
         let mut pending = vec![arguments];
-        // One argument list's trees, collected into one buffer every list reuses.
+        // One argument list's trees, collected into one buffer every list
+        // reuses.
         let mut trees: Vec<&TokenTree> = Vec::new();
         while let Some(arguments) = pending.pop() {
             trees.clear();

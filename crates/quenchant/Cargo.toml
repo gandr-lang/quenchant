@@ -7,7 +7,6 @@ edition.workspace = true
 rust-version.workspace = true
 description = "Specification-first hardening for Rust: types, obligations, tests, and gates that make evidence explicit."
 readme = "README.md"
-homepage.workspace = true
 repository.workspace = true
 license.workspace = true
 keywords = ["arithmetic", "no-std", "nominal", "specification"]

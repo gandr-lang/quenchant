@@ -64,6 +64,8 @@ use rustc_hir::def_id::DefId;
 use rustc_hir::def_id::DefIndex;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
+use rustc_lint::declare_lint;
+use rustc_lint::impl_lint_pass;
 use rustc_middle::mir::AggregateKind;
 use rustc_middle::mir::Body;
 use rustc_middle::mir::Const;
@@ -83,15 +85,13 @@ use rustc_middle::ty::InstanceKind;
 use rustc_middle::ty::Ty;
 use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::TypingEnv;
-use rustc_session::config::CrateType;
 use rustc_session::config::OutFileName;
 use rustc_session::config::OutputType;
-use rustc_session::declare_lint;
-use rustc_session::impl_lint_pass;
 use rustc_span::ExpnKind;
 use rustc_span::MacroKind;
 use rustc_span::Span;
 use rustc_span::sym;
+use rustc_structures::CrateType;
 
 use crate::answer_totality::CONFIGURATION_TABLE;
 use crate::answer_totality::names_local_crate;
@@ -143,7 +143,11 @@ const DEPTH: usize = 4;
 const RECORD_EXTENSION: &str = "embedded-reach";
 
 /// The first line of a reach record, which names its format.
-const RECORD_FORMAT: &str = "quenchant embedded_source reach 1";
+const RECORD_FORMAT: &str = "quenchant embedded_source reach 2";
+
+/// This lint library's build id, a hash of its manifest and its sources: a
+/// record that another build of the library wrote is not read.
+const LINT_BUILD: &str = env!("QUENCHANT_DYLINTS_BUILD");
 
 quenchant_shape::reason_enum! {
     /// The configuration can leave the rule off.
@@ -216,8 +220,11 @@ quenchant_shape::reason_enum! {
             /// it.
             NoArtifact,
             /// The crate's unit wrote no record, or its record is of another
-            /// build of the crate or of another configuration.
+            /// configuration.
             NoRecord,
+            /// The crate's record is of another crate, another build of the
+            /// lint or another format; the reading refuses it by name.
+            Mismatched,
         }
     }
 }
@@ -1034,16 +1041,21 @@ impl Reaching
 ///
 /// # Specification
 /// - ensures: `Present` when the file beside the crate's metadata, rlib or
-///   dylib holds the record format, the crate's hash and `heading`, one on a
-///   line, then `blind`, or `sinking` and one body index on each line after it;
-///   `Absent` otherwise, as for a crate no unit linted.
+///   dylib holds the record format, the crate's stable id, this lint's build
+///   id, the crate's `-C metadata` and `heading`, one on a line, then `blind`,
+///   or `sinking` and one body index on each line after it.
+/// - ensures: `Absent(NoRecord)` when no such file stands, as for a crate no
+///   unit linted, and the reach reads the crate's bodies instead.
+/// - ensures: `Absent(Mismatched)` when the file stands and does not match; the
+///   reading then refuses the record as a compiler error that names the crate
+///   and the file.
 /// - panics: none.
 /// - executable: none — the outcome is a file another compilation wrote; a
 ///   predicate could only read it again.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — the fixtures' dependency is linted before them and writes
-///   the record they read.
+///   the record they read, under the key the reading checks.
 /// - witness: `tests::ui_embedded_source`
 fn read_record(
     tcx: TyCtxt<'_>,
@@ -1060,33 +1072,57 @@ fn read_record(
     else {
         return Maybe::Absent(recording::Unrecorded::NoArtifact);
     };
-    let Ok(text) = std::fs::read_to_string(artifact.with_extension(RECORD_EXTENSION))
+    let path = artifact.with_extension(RECORD_EXTENSION);
+    let Ok(text) = std::fs::read_to_string(&path)
     else {
         return Maybe::Absent(recording::Unrecorded::NoRecord);
     };
-    let built = format!("crate {:032x}", tcx.crate_hash(krate).as_u128());
+    let crate_line = format!("crate {:016x}", tcx.stable_crate_id(krate).as_u64());
+    let lint_line = format!("lint {LINT_BUILD}");
     let mut lines = text.lines();
-    if lines.next() != Some(RECORD_FORMAT)
-        || lines.next() != Some(built.as_str())
-        || lines.next() != Some(heading.0.as_str())
-    {
-        return Maybe::Absent(recording::Unrecorded::NoRecord);
-    }
-    match lines.next() {
-        Some("blind") => Maybe::Present(Record::Blind),
-        Some("sinking") => {
-            let mut indices = HashSet::new();
-            for line in lines {
-                let Ok(index) = line.parse::<u32>()
+    let keyed = lines.next() == Some(RECORD_FORMAT)
+        && lines.next() == Some(crate_line.as_str())
+        && lines.next() == Some(lint_line.as_str())
+        && lines
+            .next()
+            .is_some_and(|line| line.starts_with("metadata"))
+        && lines.next() == Some(heading.0.as_str());
+    let record = if keyed {
+        match lines.next() {
+            Some("blind") => Maybe::Present(Record::Blind),
+            Some("sinking") => {
+                let mut indices = HashSet::new();
+                let mut whole = true;
+                for line in lines {
+                    let Ok(index) = line.parse::<u32>()
+                    else {
+                        whole = false;
+                        break;
+                    };
+                    indices.insert(DefIndex::from_u32(index));
+                }
+                if whole {
+                    Maybe::Present(Record::Sinking(indices))
+                }
                 else {
-                    return Maybe::Absent(recording::Unrecorded::NoRecord);
-                };
-                indices.insert(DefIndex::from_u32(index));
-            }
-            Maybe::Present(Record::Sinking(indices))
-        },
-        _ => Maybe::Absent(recording::Unrecorded::NoRecord),
+                    Maybe::Absent(recording::Unrecorded::Mismatched)
+                }
+            },
+            _ => Maybe::Absent(recording::Unrecorded::Mismatched),
+        }
     }
+    else {
+        Maybe::Absent(recording::Unrecorded::Mismatched)
+    };
+    if matches!(record, Maybe::Absent(recording::Unrecorded::Mismatched)) {
+        tcx.dcx().err(format!(
+            "the reach record of `{}` at `{}` is of another crate, another build of the lint or \
+             another configuration: build that crate again under this lint",
+            tcx.crate_name(krate),
+            path.display()
+        ));
+    }
+    record
 }
 
 /// The bodies a body's calls follow, and whether the body reaches a sink
@@ -1383,10 +1419,8 @@ fn constant_body(
                 |(_, body)| Maybe::Present(body),
             ),
         Promotion::Item
-            if matches!(
-                tcx.def_kind(def_id),
-                DefKind::Const { .. } | DefKind::AssocConst { .. }
-            ) && tcx.is_mir_available(def_id) =>
+            if matches!(tcx.def_kind(def_id), DefKind::Const | DefKind::AssocConst)
+                && tcx.is_mir_available(def_id) =>
         {
             Maybe::Present(tcx.mir_for_ctfe(def_id))
         },
@@ -2662,13 +2696,13 @@ impl<'tcx> LateLintPass<'tcx> for EmbeddedSource
     /// # Specification
     /// - ensures: when configured, reports the configuration's defects at the
     ///   crate root; a unit another crate can depend on writes its reach
-    ///   record, blind when no configured type resolves; reads each function
-    ///   and closure body of the crate that reaches a sink for its literals,
-    ///   and the constants of every body; refuses, once per literal, each
-    ///   literal of two or more lines and each `include_str!` of another
-    ///   extension that reaches a sink, unless the package is allowed; writes
-    ///   the reached inline literals to the list directory when one is
-    ///   configured.
+    ///   record, blind when no configured type resolves, and removes a stale
+    ///   one when it is not configured; reads each function and closure body of
+    ///   the crate that reaches a sink for its literals, and the constants of
+    ///   every body; refuses, once per literal, each literal of two or more
+    ///   lines and each `include_str!` of another extension that reaches a
+    ///   sink, unless the package is allowed; writes the reached inline
+    ///   literals to the list directory when one is configured.
     /// - panics: none.
     /// - executable: none — the outcome is emitted diagnostics and written
     ///   files.
@@ -2683,17 +2717,21 @@ impl<'tcx> LateLintPass<'tcx> for EmbeddedSource
         cx: &LateContext<'tcx>,
     )
     {
-        let Maybe::Present(ref configured) = self.configured
-        else {
-            return;
-        };
-        report_defects(cx, EMBEDDED_SOURCE, &configured.defects);
         let tcx = cx.tcx;
         let library = !tcx.sess.is_test_crate()
             && tcx
                 .crate_types()
                 .iter()
                 .any(|kind| matches!(*kind, CrateType::Rlib | CrateType::Dylib));
+        let Maybe::Present(ref configured) = self.configured
+        else {
+            // A unit that writes no record leaves none of an earlier build.
+            if library {
+                remove_record(tcx);
+            }
+            return;
+        };
+        report_defects(cx, EMBEDDED_SOURCE, &configured.defects);
         if configured.types.is_empty() {
             // No body of a crate that cannot name a configured type reaches
             // one, and its calls go only to crates that cannot name one.
@@ -2892,12 +2930,13 @@ fn write_list(
 /// the reach of this crate's bodies without reading them.
 ///
 /// # Specification
-/// - ensures: the record format, the crate's hash and `heading`, one on a line,
-///   then `blind` for [`Record::Blind`], or `sinking` and each listed body
-///   index in ascending order, one on a line; written whole to a temporary name
-///   and renamed beside the unit's metadata, so a reader never meets half a
-///   record; a unit whose metadata goes to standard output writes none; a
-///   failure is reported as a compiler error.
+/// - ensures: the record format, the crate's stable id, this lint's build id,
+///   the crate's `-C metadata` and `heading`, one on a line, then `blind` for
+///   [`Record::Blind`], or `sinking` and each listed body index in ascending
+///   order, one on a line; written whole to a temporary name and renamed beside
+///   the unit's metadata, so a reader never meets half a record; a unit whose
+///   metadata goes to standard output writes none; a failure is reported as a
+///   compiler error.
 /// - panics: none.
 /// - executable: none — the outcome is a written file.
 ///
@@ -2919,8 +2958,9 @@ fn write_record(
     let mut contents = Vec::new();
     let mut written = writeln!(
         contents,
-        "{RECORD_FORMAT}\ncrate {:032x}\n{}",
-        tcx.crate_hash(rustc_hir::def_id::LOCAL_CRATE).as_u128(),
+        "{RECORD_FORMAT}\ncrate {:016x}\nlint {LINT_BUILD}\nmetadata {}\n{}",
+        tcx.stable_crate_id(rustc_hir::def_id::LOCAL_CRATE).as_u64(),
+        tcx.sess.opts.cg.metadata.join(" "),
         heading.0
     );
     match *record {
@@ -2949,5 +2989,39 @@ fn write_record(
             "the reach record cannot be written to `{}`: {error}",
             path.display()
         ));
+    }
+}
+
+/// Remove the reach record beside the unit's metadata, so a unit that writes
+/// none leaves no record of an earlier build for a reader to refuse.
+///
+/// # Specification
+/// - ensures: no record stands beside the unit's metadata afterwards; an absent
+///   record is no failure; another failure is reported as a compiler error; a
+///   unit whose metadata goes to standard output removes none.
+/// - panics: none.
+/// - executable: none — the outcome is a removed file.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the removal is the write's other branch, and the
+///   fixtures' dependency always takes the write: no fixture compiles a unit
+///   with no configuration, since the UI harness configures the whole run.
+/// - witness: `tests::ui_embedded_source`
+fn remove_record(tcx: TyCtxt<'_>)
+{
+    let OutFileName::Real(metadata) = tcx.output_filenames(()).path(OutputType::Metadata)
+    else {
+        return;
+    };
+    let path = metadata.with_extension(RECORD_EXTENSION);
+    match std::fs::remove_file(&path) {
+        Ok(()) => {},
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {},
+        Err(error) => {
+            tcx.dcx().err(format!(
+                "the stale reach record `{}` cannot be removed: {error}",
+                path.display()
+            ));
+        },
     }
 }

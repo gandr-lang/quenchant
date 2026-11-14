@@ -34,8 +34,8 @@ use rustc_hir::def_id::DefId;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
 use rustc_lint::Level;
-use rustc_session::declare_lint;
-use rustc_session::declare_lint_pass;
+use rustc_lint::declare_lint;
+use rustc_lint::declare_lint_pass;
 
 use crate::answer_totality::ExceptionRefusals;
 use crate::answer_totality::report_refusing;

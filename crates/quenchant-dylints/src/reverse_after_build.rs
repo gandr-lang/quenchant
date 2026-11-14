@@ -48,8 +48,8 @@ use rustc_hir::StmtKind;
 use rustc_hir::def::Res;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
-use rustc_session::declare_lint;
-use rustc_session::impl_lint_pass;
+use rustc_lint::declare_lint;
+use rustc_lint::impl_lint_pass;
 use rustc_span::Symbol;
 use rustc_span::sym;
 

@@ -226,7 +226,7 @@ LL +     let unsized_length = (&raw mut buffer as *mut [u32]).len();
    |
 
 error: this borrow only feeds a pointer constructor
-  --> $DIR/forms.rs:85:23
+  --> $DIR/forms.rs:86:23
    |
 LL |     let through_box = core::ptr::from_ref::<u32>(&owned);
    |                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

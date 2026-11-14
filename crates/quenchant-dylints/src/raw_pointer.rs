@@ -32,14 +32,14 @@ use rustc_hir::def::DefKind;
 use rustc_hir::def::Res;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
+use rustc_lint::declare_lint;
+use rustc_lint::impl_lint_pass;
 use rustc_middle::ty;
 use rustc_middle::ty::adjustment::Adjust;
 use rustc_middle::ty::adjustment::Adjustment;
 use rustc_middle::ty::adjustment::AutoBorrow;
 use rustc_middle::ty::adjustment::DerefAdjustKind;
 use rustc_middle::ty::adjustment::PointerCoercion;
-use rustc_session::declare_lint;
-use rustc_session::impl_lint_pass;
 use rustc_span::Span;
 
 declare_lint! {

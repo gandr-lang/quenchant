@@ -117,11 +117,11 @@ use rustc_hir::intravisit::Visitor;
 use rustc_hir::intravisit::walk_expr;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
+use rustc_lint::declare_lint;
+use rustc_lint::impl_lint_pass;
 use rustc_middle::hir::nested_filter;
 use rustc_middle::ty as rustc_ty;
 use rustc_middle::ty::TyCtxt;
-use rustc_session::declare_lint;
-use rustc_session::impl_lint_pass;
 use rustc_span::Span;
 
 use crate::rustdoc::indented_rustdoc_lines;
@@ -236,8 +236,8 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowJudgement
         item: &'tcx Item<'tcx>,
     )
     {
-        // Function declarations are deferred to `check_fn`, where parameter bindings
-        // are available, and are read only once.
+        // Function declarations are deferred to `check_fn`, where parameter
+        // bindings are available, and are read only once.
         if matches!(item.kind, ItemKind::Fn { .. }) {
             return;
         }
@@ -305,8 +305,8 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowJudgement
         impl_item: &'tcx ImplItem<'tcx>,
     )
     {
-        // Body-bearing methods reach `check_fn`; other implementation members have no
-        // scrutinee to bind.
+        // Body-bearing methods reach `check_fn`; other implementation members
+        // have no scrutinee to bind.
         if matches!(impl_item.kind, ImplItemKind::Fn(..)) {
             return;
         }
@@ -338,9 +338,9 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowJudgement
         trait_item: &'tcx TraitItem<'tcx>,
     )
     {
-        // Provided methods reach `check_fn`. Required methods have no body-local
-        // binding to inspect; an implementation owns different parameters and must
-        // carry its own declaration.
+        // Provided methods reach `check_fn`. Required methods have no
+        // body-local binding to inspect; an implementation owns
+        // different parameters and must carry its own declaration.
         if matches!(trait_item.kind, TraitItemKind::Fn(_, TraitFn::Provided(_))) {
             return;
         }

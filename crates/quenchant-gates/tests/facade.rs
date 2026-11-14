@@ -1,6 +1,32 @@
 //! A standalone `no_std` consumer resolves only the facade package and
 //! exercises stripped, compile-only, and enforcing interpretations.
 
+/// A Cargo command whose compiler is the one beside the test's own Cargo.
+///
+/// # Specification
+/// - ensures: the command runs the Cargo that built this test, with `RUSTC` set
+///   to the `rustc` in that Cargo's directory; a consumer outside the workspace
+///   thus builds with the pinned toolchain, not the host's default, whose
+///   compiler can disagree with this Cargo on the build directory.
+/// - panics: none.
+/// - executable: none — the outcome is the environment of a child process.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the facade test builds its consumer outside the
+///   workspace; with the host's default compiler in place of this Cargo's, the
+///   consumer's build fails on the new build directory's dep info.
+/// - witness: `gates::facade::standalone_facade_preserves_const_values_and_enforces_predicates`
+fn consumer_cargo() -> std::process::Command
+{
+    let cargo = std::path::Path::new(env!("CARGO"));
+    let mut command = std::process::Command::new(cargo);
+    command.env(
+        "RUSTC",
+        cargo.with_file_name(format!("rustc{}", std::env::consts::EXE_SUFFIX)),
+    );
+    command
+}
+
 #[test]
 fn standalone_facade_preserves_const_values_and_enforces_predicates()
 {
@@ -104,7 +130,7 @@ mod tests {
         ("", "--cfg anodized_panic", false),
         ("", "--cfg anodized_print", false),
     ] {
-        let mut command = std::process::Command::new(env!("CARGO"));
+        let mut command = consumer_cargo();
         command
             .current_dir(&root)
             .args(["test", "--offline", "--no-default-features"])
@@ -137,7 +163,7 @@ mod tests {
         }
     }
 
-    let graph = std::process::Command::new(env!("CARGO"))
+    let graph = consumer_cargo()
         .current_dir(&root)
         .args([
             "tree",
@@ -214,7 +240,7 @@ fn main() {
     )
     .unwrap();
     for flags in ["", "--cfg anodized_panic"] {
-        let output = std::process::Command::new(env!("CARGO"))
+        let output = consumer_cargo()
             .current_dir(&root)
             .args([
                 "run",
@@ -302,7 +328,7 @@ fn main() {
         ("backend", "--cfg anodized_panic"),
         ("backend", "--cfg anodized_print"),
     ] {
-        let mut command = std::process::Command::new(env!("CARGO"));
+        let mut command = consumer_cargo();
         command
             .current_dir(&root)
             .args([

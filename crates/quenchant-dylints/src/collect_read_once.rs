@@ -59,10 +59,10 @@ use rustc_hir::PatKind;
 use rustc_hir::StmtKind;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
+use rustc_lint::declare_lint;
+use rustc_lint::impl_lint_pass;
 use rustc_middle::ty::adjustment::Adjust;
 use rustc_middle::ty::adjustment::DerefAdjustKind;
-use rustc_session::declare_lint;
-use rustc_session::impl_lint_pass;
 use rustc_span::Span;
 use rustc_span::Symbol;
 

@@ -50,9 +50,9 @@ use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
+use rustc_lint::declare_lint;
+use rustc_lint::impl_lint_pass;
 use rustc_middle::ty::TyCtxt;
-use rustc_session::declare_lint;
-use rustc_session::impl_lint_pass;
 
 use crate::answer_totality::CONFIGURATION_TABLE;
 use crate::answer_totality::names_local_crate;
@@ -165,6 +165,8 @@ impl PresenterCoverage
         else {
             return table;
         };
+        // One buffer serves every entry, so a pass allocates only to grow it.
+        let mut functions: Vec<TypePath<'_>> = Vec::new();
         for entry in config
             .get("presenters")
             .and_then(|value| value.as_array())
@@ -172,16 +174,15 @@ impl PresenterCoverage
             .flatten()
         {
             let enumeration = entry.get("enum").and_then(|value| value.as_str());
-            let functions: Vec<TypePath<'_>> = entry
-                .get("functions")
-                .and_then(|value| value.as_array())
-                .map(|functions| {
-                    functions
-                        .iter()
-                        .filter_map(|path| path.as_str().map(TypePath))
-                        .collect()
-                })
-                .unwrap_or_default();
+            functions.clear();
+            functions.extend(
+                entry
+                    .get("functions")
+                    .and_then(|value| value.as_array())
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|path| path.as_str().map(TypePath)),
+            );
             let Some(enumeration) = enumeration.filter(|_| !functions.is_empty())
             else {
                 table.defects.push(
