@@ -1,0 +1,53 @@
+error: `dyn std::error::Error` is a trait object of a configured class
+  --> $DIR/objects.rs:9:30
+   |
+LL | fn boxed() -> Result<(), Box<dyn Error>>
+   |                              ^^^^^^^^^
+   |
+   = help: name the implementers: a closed enum where the set is known, a generic parameter where the callers are few; a site that keeps its trait object states why with `#[expect(trait_object, reason = "...")]`
+   = note: `#[deny(trait_object)]` on by default
+
+error: `dyn std::error::Error` is a trait object of a configured class
+  --> $DIR/objects.rs:14:21
+   |
+LL | fn borrowed(error: &dyn Error) -> usize
+   |                     ^^^^^^^^^
+   |
+   = help: name the implementers: a closed enum where the set is known, a generic parameter where the callers are few; a site that keeps its trait object states why with `#[expect(trait_object, reason = "...")]`
+
+error: `dyn std::error::Error` is a trait object of a configured class
+  --> $DIR/objects.rs:19:25
+   |
+LL | fn sent(errors: Vec<Box<dyn Error + Send>>) -> usize
+   |                         ^^^^^^^^^^^^^^^^
+   |
+   = help: name the implementers: a closed enum where the set is known, a generic parameter where the callers are few; a site that keeps its trait object states why with `#[expect(trait_object, reason = "...")]`
+
+error: `dyn std::ops::Fn` is a trait object of a configured class
+  --> $DIR/objects.rs:24:22
+   |
+LL | fn called(callback: &dyn Fn(u8) -> u8) -> u8
+   |                      ^^^^^^^^^^^^^^^^
+   |
+   = help: name the implementers: a closed enum where the set is known, a generic parameter where the callers are few; a site that keeps its trait object states why with `#[expect(trait_object, reason = "...")]`
+
+error: a trait-object exception must state why the site keeps its trait object: write `reason = "..."` on its `#[expect(trait_object, ..)]`
+  --> $DIR/objects.rs:57:35
+   |
+LL | fn unreasoned() -> Result<(), Box<dyn Error>>
+   |                                   ^^^^^^^^^
+
+error: a trait-object exception must be stated where the trait object stands: an `#[expect(trait_object, ..)]` on an enclosing module, implementation or crate excepts nothing inside it
+  --> $DIR/objects.rs:68:38
+   |
+LL |     pub fn boxed() -> Result<(), Box<dyn std::error::Error>>
+   |                                      ^^^^^^^^^^^^^^^^^^^^^
+
+error: a trait object of a configured class is admitted only by `#[expect(trait_object, reason = "...")]`; an `allow` does not say why the site keeps it, nor fail when it goes
+  --> $DIR/objects.rs:75:32
+   |
+LL | fn allowed() -> Result<(), Box<dyn Error>>
+   |                                ^^^^^^^^^
+
+error: aborting due to 7 previous errors
+

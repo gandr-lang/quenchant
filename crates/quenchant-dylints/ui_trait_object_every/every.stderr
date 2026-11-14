@@ -1,0 +1,19 @@
+error: `dyn std::fmt::Display` is a trait object of a configured class
+  --> $DIR/every.rs:7:18
+   |
+LL | fn shown(value: &dyn Display) -> String
+   |                  ^^^^^^^^^^^
+   |
+   = help: name the implementers: a closed enum where the set is known, a generic parameter where the callers are few; a site that keeps its trait object states why with `#[expect(trait_object, reason = "...")]`
+   = note: `#[deny(trait_object)]` on by default
+
+error: `dyn std::marker::Send` is a trait object of a configured class
+  --> $DIR/every.rs:12:20
+   |
+LL | fn sent(value: Box<dyn Send>) -> usize
+   |                    ^^^^^^^^
+   |
+   = help: name the implementers: a closed enum where the set is known, a generic parameter where the callers are few; a site that keeps its trait object states why with `#[expect(trait_object, reason = "...")]`
+
+error: aborting due to 2 previous errors
+
