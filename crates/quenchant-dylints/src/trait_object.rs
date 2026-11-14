@@ -13,13 +13,13 @@
 //! `#[expect(trait_object, reason = "…")]` at the site or on a node between it
 //! and its enclosing item. An expectation on an enclosing module,
 //! implementation or crate, one without its reason and an `allow` written in
-//! the source are refused. A type under `#[cfg(test)]` is not read: a test
-//! owns its trait objects. A test target reads only the sites that state an
-//! expectation, so the expectation a library states holds in the library's
-//! test build too. A type that an external macro expands is not read.
+//! the source are refused. The rule reads a test as it reads a library: a
+//! type under `#[cfg(test)]` and a type in a test target are refused unless
+//! their site states an expectation. So one expectation holds in the library
+//! build and in its test build. A type that an external macro expands is not
+//! read.
 
 use anodized::spec;
-use clippy_utils::is_in_test;
 use quenchant_shape::shape::Maybe;
 use rustc_hir::AmbigArg;
 use rustc_hir::Ty;
@@ -27,7 +27,6 @@ use rustc_hir::TyKind;
 use rustc_hir::def_id::DefId;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
-use rustc_lint::Level;
 use rustc_lint::declare_lint;
 use rustc_lint::impl_lint_pass;
 use rustc_middle::ty::TyCtxt;
@@ -296,23 +295,23 @@ impl<'tcx> LateLintPass<'tcx> for TraitObject
         report_defects(cx, TRAIT_OBJECT, &self.defects);
     }
 
-    /// Refuse a trait object of a configured class, outside the tests.
+    /// Refuse a trait object of a configured class, in a test as in a library.
     ///
     /// # Specification
-    /// - ensures: reports `ty` exactly when [`TraitObject::refused`] names it,
-    ///   `ty` sits in no test and in no external macro's expansion, and either
-    ///   the crate is no test target or the level at `ty` is an expectation; an
-    ///   exception the site does not state properly is refused at the crate
-    ///   root ([`report_refusing`]).
+    /// - ensures: reports `ty` exactly when [`TraitObject::refused`] names it
+    ///   and `ty` sits in no external macro's expansion, whether `ty` is under
+    ///   `#[cfg(test)]`, in a test target or in neither; an exception the site
+    ///   does not state properly is refused at the crate root
+    ///   ([`report_refusing`]).
     /// - panics: none.
     /// - executable: none — rustc owns resolution and diagnostic emission.
     ///
     /// # Adequacy
     /// - hypothesis: L3 — the fixtures refuse each object of a configured
-    ///   class, accept a reasoned expectation and a test, and refuse an
-    ///   unreasoned expectation, an inherited one and an `allow`; in a test
-    ///   target, a reasoned expectation is fulfilled and an unstated object is
-    ///   not reported.
+    ///   class, accept a reasoned expectation, and refuse an unreasoned
+    ///   expectation, an inherited one and an `allow`; in a test target, a
+    ///   reasoned expectation is fulfilled, and an unstated object is refused
+    ///   in a library item, in a test function and under `#[cfg(test)]`.
     /// - witness: `tests::ui_trait_object`
     /// - witness: `tests::ui_trait_object_test_target`
     fn check_ty(
@@ -326,16 +325,7 @@ impl<'tcx> LateLintPass<'tcx> for TraitObject
         else {
             return;
         };
-        if ty.span.in_external_macro(cx.tcx.sess.source_map()) || is_in_test(cx.tcx, ty.hir_id) {
-            return;
-        }
-        if cx.tcx.sess.is_test_crate()
-            && cx
-                .tcx
-                .lint_level_spec_at_node(TRAIT_OBJECT, ty.hir_id)
-                .level()
-                != Level::Expect
-        {
+        if ty.span.in_external_macro(cx.tcx.sess.source_map()) {
             return;
         }
         report_refusing(

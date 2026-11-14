@@ -1,0 +1,27 @@
+error: `dyn std::error::Error` is a trait object of a configured class
+  --> $DIR/target.rs:18:30
+   |
+LL | fn boxed() -> Result<(), Box<dyn Error>>
+   |                              ^^^^^^^^^
+   |
+   = help: name the implementers: a closed enum where the set is known, a generic parameter where the callers are few; a site that keeps its trait object states why with `#[expect(trait_object, reason = "...")]`
+   = note: `#[deny(trait_object)]` on by default
+
+error: `dyn std::error::Error` is a trait object of a configured class
+  --> $DIR/target.rs:28:19
+   |
+LL |     let held: Box<dyn Error> = "text".into();
+   |                   ^^^^^^^^^
+   |
+   = help: name the implementers: a closed enum where the set is known, a generic parameter where the callers are few; a site that keeps its trait object states why with `#[expect(trait_object, reason = "...")]`
+
+error: `dyn std::error::Error` is a trait object of a configured class
+  --> $DIR/target.rs:39:40
+   |
+LL |     pub fn failing() -> Result<(), Box<dyn std::error::Error>>
+   |                                        ^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: name the implementers: a closed enum where the set is known, a generic parameter where the callers are few; a site that keeps its trait object states why with `#[expect(trait_object, reason = "...")]`
+
+error: aborting due to 3 previous errors
+
