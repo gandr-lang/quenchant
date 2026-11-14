@@ -94,6 +94,7 @@ use alloc::string::String;
 use alloc::sync::Arc;
 use alloc::vec::Vec;
 use core::hash::Hash as _;
+use core::hash::Hasher as _;
 use std::path::Path;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -130,6 +131,7 @@ use rustc_middle::ty;
 use rustc_middle::ty::Instance;
 use rustc_middle::ty::InstanceKind;
 use rustc_middle::ty::TyCtxt;
+use rustc_middle::ty::print::with_no_trimmed_paths;
 use rustc_session::Session;
 use rustc_span::BytePos;
 use rustc_span::FileName;
@@ -199,13 +201,27 @@ quenchant_shape::reason_enum! {
 
 quenchant_shape::reason_enum! {
     /// A compilation unit's own paths can need no qualifier.
-    mod unit_paths {
+    pub mod unit_paths {
         /// Why a unit's paths are printed as the compiler prints them.
         #[derive(Clone, Copy, Debug, Eq, PartialEq)]
         pub enum Unqualified {
             /// A library or its unit tests, whose paths other crates use, or
             /// a unit compiled outside Cargo.
             Library,
+        }
+    }
+}
+
+quenchant_shape::reason_enum! {
+    /// A definition can have no body whose behaviour a hash reads.
+    pub mod body_hashing {
+        /// Why a definition has no body hash.
+        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        pub enum Unhashed {
+            /// The definition is no function or method with a body.
+            NoBody,
+            /// The compiler's printer refuses a part of the body.
+            Unprintable,
         }
     }
 }
@@ -814,9 +830,10 @@ impl<'tcx> LateLintPass<'tcx> for SpecificationEdges
         // does, which `serde_json` never reports for a `Value`; the first
         // failure is still kept and reported instead of a partial record.
         let mut rendered = Ok(());
+        let mut bodies = BodyHasher::new(tcx);
         for def_id in indexed_definitions(tcx) {
             let Maybe::Present(record) =
-                item_record(tcx, &self.attributes, &self.qualifier, def_id)
+                item_record(tcx, &mut bodies, &self.attributes, &self.qualifier, def_id)
             else {
                 continue;
             };
@@ -1230,10 +1247,11 @@ fn indexed_definitions(tcx: TyCtxt<'_>) -> Vec<LocalDefId>
 ///   its extent from its first authored attribute or documentation line, the
 ///   lines its documentation spans or `null`, the fingerprint of the extent's
 ///   source text as 32 hexadecimal digits, and whether the crate's effective
-///   visibilities export the definition. The kind is one of `fn`, `assoc-fn`,
-///   `const`, `assoc-const`, `static`, `struct`, `union`, `enum`, `variant`,
-///   `field`, `trait`, `trait-alias`, `type-alias`, `foreign-type` and
-///   `assoc-type`.
+///   visibilities export the definition. A function or method with MIR also
+///   yields `body`, its [`BodyHasher::body`]. The kind is one of `fn`,
+///   `assoc-fn`, `const`, `assoc-const`, `static`, `struct`, `union`, `enum`,
+///   `variant`, `field`, `trait`, `trait-alias`, `type-alias`, `foreign-type`
+///   and `assoc-type`.
 /// - provides: `indexing::Unindexed::OtherKind` for every other definition and
 ///   `NoSource` for one whose span is generated or lies in no local file.
 /// - panics: none.
@@ -1249,6 +1267,7 @@ fn indexed_definitions(tcx: TyCtxt<'_>) -> Vec<LocalDefId>
 /// - witness: `tests::ui_evidence`
 fn item_record(
     tcx: TyCtxt<'_>,
+    bodies: &mut BodyHasher<'_>,
     attributes: &AttributeIndex,
     qualifier: &Maybe<String, unit_paths::Unqualified>,
     def_id: LocalDefId,
@@ -1316,7 +1335,7 @@ fn item_record(
         .unwrap_or_default()
         .hash(&mut hasher);
     let (high, low) = hasher.finish::<Fingerprint>().split();
-    Maybe::Present(serde_json::json!({
+    let mut record = serde_json::json!({
         "record": "item",
         "path": canonical_path(tcx, qualifier, def_id.to_def_id()),
         "kind": kind,
@@ -1328,7 +1347,211 @@ fn item_record(
         "docs": docs.map(|(lo, hi)| [line(lo), line(hi)]),
         "revision": format!("{:016x}{:016x}", high.as_u64(), low.as_u64()),
         "exported": tcx.effective_visibilities(()).is_exported(def_id),
-    }))
+    });
+    if let Maybe::Present(hash) = bodies.body(def_id)
+        && let Some(fields) = record.as_object_mut()
+    {
+        fields.insert("body".to_owned(), serde_json::Value::String(hash));
+    }
+    Maybe::Present(record)
+}
+
+/// The hash of each function's behaviour, from a canonical text of its MIR.
+///
+/// The text is the function's argument count, the type of each local, and
+/// each statement and terminator of each block. The closures that the
+/// function defines follow it. Paths print whole and by crate name. Each
+/// allocation prints by its order of first use in the function, so no
+/// session's numbering enters the hash. The span that a closure's type prints
+/// after `@` is dropped.
+///
+/// The compiler's stable hash is no fit. It names a definition by a hash that
+/// holds the crate's `StableCrateId`, which moves with `-C metadata`. Its
+/// caches of lists and ADTs serve every hashing context, so a context of this
+/// crate's own still takes their fingerprints.
+pub struct BodyHasher<'tcx>
+{
+    /// The compiler's context.
+    tcx: TyCtxt<'tcx>,
+    /// The text of one statement, kept for the next.
+    line: String,
+    /// The order of first use of each allocation in one function.
+    allocations: FxHashMap<u64, usize>,
+}
+
+impl<'tcx> BodyHasher<'tcx>
+{
+    /// A hasher with no text yet.
+    ///
+    /// # Specification
+    /// trivial.
+    pub fn new(tcx: TyCtxt<'tcx>) -> Self
+    {
+        Self {
+            tcx,
+            line: String::new(),
+            allocations: FxHashMap::default(),
+        }
+    }
+
+    /// The hash of a function's behaviour: the canonical text of its
+    /// optimized MIR and of its closures' MIR.
+    ///
+    /// # Specification
+    /// - ensures: for a function or method with MIR, the stable hash of the
+    ///   canonical text, as 32 hexadecimal digits. A move of the function's
+    ///   text, an edit of its comments and documentation, a new `-C metadata`
+    ///   and a new order of the session's allocations keep the hash. A change
+    ///   of a statement, a call, a type or a closure changes it.
+    /// - provides: `body_hashing::Unhashed::NoBody` for every other definition,
+    ///   and `Unprintable` when the compiler's printer refuses a part of the
+    ///   body.
+    /// - panics: none.
+    /// - executable: none — the hash is a hash of the compiler's printing,
+    ///   which a predicate could only compute again.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — the evidence fixture pins the hash of each function;
+    ///   the base-record fixture compiles twice under two values of `-C
+    ///   metadata`, holds a function whose pinned hash it changes, and keeps
+    ///   one whose hash it leaves.
+    /// - witness: `tests::ui_evidence`
+    /// - witness: `tests::ui_allocation_base`
+    pub fn body(
+        &mut self,
+        def_id: LocalDefId,
+    ) -> Maybe<String, body_hashing::Unhashed>
+    {
+        if !matches!(self.tcx.def_kind(def_id), DefKind::Fn | DefKind::AssocFn)
+            || !self.tcx.is_mir_available(def_id.to_def_id())
+        {
+            return Maybe::Absent(body_hashing::Unhashed::NoBody);
+        }
+        self.allocations.clear();
+        let mut hasher = StableHasher::new();
+        let mut written = self.write_body(&mut hasher, def_id);
+        for nested in self.tcx.nested_bodies_within(def_id) {
+            if written.is_ok()
+                && matches!(self.tcx.def_kind(nested), DefKind::Closure)
+                && self.tcx.is_mir_available(nested.to_def_id())
+            {
+                written = self.write_body(&mut hasher, nested);
+            }
+        }
+        if written.is_err() {
+            return Maybe::Absent(body_hashing::Unhashed::Unprintable);
+        }
+        let (high, low) = hasher.finish::<Fingerprint>().split();
+        Maybe::Present(format!("{:016x}{:016x}", high.as_u64(), low.as_u64()))
+    }
+
+    /// Hash the canonical text of one body.
+    ///
+    /// # Specification
+    /// - ensures: the argument count and each local's type form one line; then
+    ///   each statement forms one line, and each terminator one line after its
+    ///   block's name. Each line enters `hasher` through [`BodyHasher::feed`],
+    ///   with paths untrimmed.
+    /// - fails: the error of the compiler's printer, at the first line it
+    ///   refuses.
+    /// - panics: none.
+    /// - executable: none — the text is the compiler's printing, which a
+    ///   predicate could only produce again.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — as [`BodyHasher::body`].
+    /// - witness: `tests::ui_evidence`
+    /// - witness: `tests::ui_allocation_base`
+    fn write_body(
+        &mut self,
+        hasher: &mut StableHasher,
+        def_id: LocalDefId,
+    ) -> core::fmt::Result
+    {
+        use core::fmt::Write as _;
+
+        let body = self.tcx.optimized_mir(def_id);
+        self.line.clear();
+        with_no_trimmed_paths!(write!(self.line, "{}(", body.arg_count))?;
+        for declaration in &body.local_decls {
+            with_no_trimmed_paths!(write!(self.line, "{},", declaration.ty))?;
+        }
+        self.feed(hasher);
+        for (block, data) in body.basic_blocks.iter_enumerated() {
+            for statement in &data.statements {
+                self.line.clear();
+                with_no_trimmed_paths!(write!(self.line, "{statement:?}"))?;
+                self.feed(hasher);
+            }
+            if let Some(ref terminator) = data.terminator {
+                self.line.clear();
+                with_no_trimmed_paths!(write!(self.line, "{block:?}: {:?}", terminator.kind))?;
+                self.feed(hasher);
+            }
+        }
+        Ok(())
+    }
+
+    /// Hash the line of text, with each allocation renumbered and each span
+    /// after `@` dropped.
+    ///
+    /// # Specification
+    /// - ensures: the line enters `hasher` as written, then a line end, except
+    ///   in two forms. `alloc` followed by digits, at the start of a word,
+    ///   enters as `alloc` and the order of the number's first use in this
+    ///   function. An `@` enters alone, and the text after it up to the next
+    ///   `}` does not enter.
+    /// - panics: none.
+    /// - executable: none — the outcome is the hasher's state, which a
+    ///   predicate could only compute again.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — the base fixture compiles under two values of `-C
+    ///   metadata`, and the evidence fixture's closure and constants hash the
+    ///   same across two runs.
+    /// - witness: `tests::ui_evidence`
+    /// - witness: `tests::ui_allocation_base`
+    fn feed(
+        &mut self,
+        hasher: &mut StableHasher,
+    )
+    {
+        let mut rest = self.line.as_str();
+        while let Some(at) = rest.find(['@', 'a']) {
+            let (head, tail) = rest.split_at(at);
+            hasher.write(head.as_bytes());
+            if let Some(after) = tail.strip_prefix('@') {
+                hasher.write(b"@");
+                rest = after
+                    .find('}')
+                    .and_then(|end| after.get(end ..))
+                    .unwrap_or_default();
+            }
+            else if let Some(after) = tail.strip_prefix("alloc")
+                && !head
+                    .ends_with(|character: char| character.is_alphanumeric() || character == '_')
+                && let Some(digits) = after
+                    .find(|character: char| !character.is_ascii_digit())
+                    .or(Some(after.len()))
+                    .filter(|&digits| digits > 0)
+                && let Some(number) = after
+                    .get(.. digits)
+                    .and_then(|text| text.parse::<u64>().ok())
+            {
+                let next = self.allocations.len();
+                let order = *self.allocations.entry(number).or_insert(next);
+                hasher.write(b"alloc");
+                hasher.write_usize(order);
+                rest = after.get(digits ..).unwrap_or_default();
+            }
+            else {
+                hasher.write(b"a");
+                rest = tail.get(1 ..).unwrap_or_default();
+            }
+        }
+        hasher.write(rest.as_bytes());
+        hasher.write(b"\n");
+    }
 }
 
 /// The definition path an item record and a clause record spell.
@@ -1349,7 +1572,7 @@ fn item_record(
 /// - hypothesis: L3 — the evidence fixture's pinned record spells every path
 ///   with the fixture's crate name, including a method and a variant.
 /// - witness: `tests::ui_evidence`
-fn canonical_path(
+pub fn canonical_path(
     tcx: TyCtxt<'_>,
     qualifier: &Maybe<String, unit_paths::Unqualified>,
     def_id: DefId,
@@ -1382,7 +1605,7 @@ fn canonical_path(
 /// - hypothesis: L3 — the evidence fixture, compiled outside Cargo, keeps its
 ///   crate name unqualified in every pinned path.
 /// - witness: `tests::ui_evidence`
-fn unit_qualifier() -> Maybe<String, unit_paths::Unqualified>
+pub fn unit_qualifier() -> Maybe<String, unit_paths::Unqualified>
 {
     let library = std::env::var_os("CARGO_TARGET_TMPDIR").is_none()
         && std::env::var_os("CARGO_BIN_NAME").is_none();

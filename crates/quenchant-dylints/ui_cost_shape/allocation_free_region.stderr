@@ -62,5 +62,14 @@ LL |     table.insert(key, key);
    = note: the path reaches a call that can reach any implementation, none of them held to the clause, in `hashbrown::raw::RawTableInner::rehash_in_place`
    = help: reserve or build what the region needs before it is entered, or mark the callee with the same clause
 
-error: aborting due to 7 previous errors
+error: this call can allocate inside a function marked allocation-free in steady state
+  --> $DIR/allocation_free_region.rs:120:5
+   |
+LL |     format!("{value}").len()
+   |     ^^^^^^^^^^^^^^^^^^
+   |
+   = note: the path reaches a call whose body is unavailable and whose signature hands back or writes a value that owns heap memory, in `std::fmt::format::{closure#0}`
+   = help: reserve or build what the region needs before it is entered, or mark the callee with the same clause
+
+error: aborting due to 8 previous errors
 

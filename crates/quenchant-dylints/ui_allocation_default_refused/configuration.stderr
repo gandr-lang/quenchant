@@ -1,0 +1,14 @@
+error: `allocation_default_crates` entry `1` is no crate name, nor the start of one followed by `*`
+   |
+   = note: `#[deny(allocation_free_region)]` on by default
+
+error: `allocation_default_crates` entry `""` is no crate name, nor the start of one followed by `*`
+
+error: `allocation_default_crates` entry `"*"` is no crate name, nor the start of one followed by `*`
+
+error: `allocation_count_directory` is `7`, and not the path of a directory
+
+error: `allocation_base_records` names `no-such-base-directory`, which is no directory
+
+error: aborting due to 5 previous errors
+

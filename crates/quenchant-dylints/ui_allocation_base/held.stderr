@@ -1,0 +1,19 @@
+error: this call reaches a call into the allocator, in `std::alloc::Global::alloc_impl_runtime`, and its function's `# Cost` declares no allocation
+  --> $DIR/held.rs:13:12
+   |
+LL |     values.push(2);
+   |            ^^^^^^^
+   |
+   = help: move the allocation out of the function, or declare it under `# Cost` as `- allocation: <what>, <why>`, the why one of `setup`, `growth within <the source of the capacity>`, `error path`, `diagnostic` and `durable by <the key>`; a site that keeps it states why with `#[expect(allocation_free_region, reason = "...")]`
+   = note: `#[deny(allocation_free_region)]` on by default
+
+error: this call reaches a call into the allocator, in `std::alloc::Global::alloc_impl_runtime`, and its function's `# Cost` declares no allocation
+  --> $DIR/held.rs:18:12
+   |
+LL |     values.push(3);
+   |            ^^^^^^^
+   |
+   = help: move the allocation out of the function, or declare it under `# Cost` as `- allocation: <what>, <why>`, the why one of `setup`, `growth within <the source of the capacity>`, `error path`, `diagnostic` and `durable by <the key>`; a site that keeps it states why with `#[expect(allocation_free_region, reason = "...")]`
+
+error: aborting due to 2 previous errors
+
