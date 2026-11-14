@@ -29,10 +29,12 @@
 //! ([`doc_shape`]). Eight `deny` lints refuse a standard-library operation
 //! whose cost is wrong for its receiver's type ([`cost_shape`]), and
 //! `allocation_free_region` refuses an allocation reachable from a function
-//! whose `# Cost` section marks it allocation-free in steady state
-//! ([`allocation_free_region`]). `pool_only_threads`, opted into per consumer,
-//! refuses a thread or a pool started outside the consumer's work pool, unless
-//! the site states why it owns its thread ([`pool_only_threads`]).
+//! whose `# Cost` section marks it allocation-free in steady state. In a
+//! crate the consumer names, it also refuses an allocation that its function
+//! does not declare ([`allocation_free_region`]). `pool_only_threads`, opted
+//! into per consumer, refuses a thread or a pool started outside the
+//! consumer's work pool, unless the site states why it owns its thread
+//! ([`pool_only_threads`]).
 //! `trait_object`, configured by the consumer class by class, refuses a trait
 //! object of a configured class, unless the site states why it keeps it
 //! ([`trait_object`]).
@@ -515,7 +517,7 @@ pub fn register_lints(
         ))
     }));
     lint_store.register_late_lint_pass(Box::new(|_| {
-        Box::<allocation_free_region::AllocationFreeRegion<'_>>::default()
+        Box::new(allocation_free_region::AllocationFreeRegion::configured())
     }));
     let cloned = cost_regions.clone();
     lint_store.register_late_lint_pass(Box::new(move |_| {
@@ -1668,6 +1670,238 @@ trait_object_classes = [1, "", "refused::Missing", "refused::Shape"]
         dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_trait_object_test_target")
             .rustc_flags(flags)
             .dylint_toml(OBJECT_CLASSES)
+            .run();
+    }
+
+    /// The fixture crates of the allocation default: one by its whole name,
+    /// one by the start of its name, and the test target.
+    const ALLOCATION_DEFAULT: &str = r#"
+[quenchant-dylints]
+allocation_default_crates = ["refused", "accept*", "target"]
+"#;
+
+    /// A number, an empty entry and the bare `*` among the crates, a base
+    /// directory that does not exist, and a count directory that is a number.
+    const ALLOCATION_REFUSED: &str = r#"
+[quenchant-dylints]
+allocation_default_crates = [1, "", "*"]
+allocation_base_records = "no-such-base-directory"
+allocation_count_directory = 7
+"#;
+
+    /// A directory beside the test binary's target directory, emptied.
+    ///
+    /// # Specification
+    /// - ensures: the path `name` in the Cargo target directory that holds the
+    ///   running test binary, with no file in it.
+    /// - panics: a test binary outside a Cargo target directory, or a stale
+    ///   directory that cannot be removed, fails the test's setup.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — each allocation test reads only what its own run
+    ///   writes.
+    /// - witness: `tests::ui_allocation_count`
+    /// - witness: `tests::ui_allocation_base`
+    #[spec(ensures: |output| output.ends_with(name) && !output.exists())]
+    fn emptied(name: &std::path::Path) -> std::path::PathBuf
+    {
+        let directory = std::env::current_exe()
+            .expect("the running test binary has a path on disk")
+            .parent()
+            .and_then(std::path::Path::parent)
+            .and_then(std::path::Path::parent)
+            .expect("the test binary lives in a Cargo target directory")
+            .join(name);
+        if directory.exists() {
+            std::fs::remove_dir_all(&directory).expect("a stale directory can be removed");
+        }
+        directory
+    }
+
+    /// The one file of `directory` whose name holds `marker`.
+    ///
+    /// # Specification
+    /// - ensures: the path of the single entry of `directory` whose name holds
+    ///   `marker`.
+    /// - panics: a directory that cannot be read, or no entry or more than one
+    ///   that matches, fails the test.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — each allocation test finds the file its fixture's
+    ///   unit writes.
+    /// - witness: `tests::ui_allocation_count`
+    /// - witness: `tests::ui_allocation_base`
+    #[spec(ensures: |output| output.starts_with(directory))]
+    fn written_for(
+        directory: &std::path::Path,
+        marker: &std::ffi::OsStr,
+    ) -> std::path::PathBuf
+    {
+        let marker = marker.to_string_lossy();
+        let mut matching: Vec<std::path::PathBuf> = std::fs::read_dir(directory)
+            .expect("the pass wrote its directory")
+            .map(|entry| entry.expect("an entry is readable").path())
+            .filter(|path| path.to_string_lossy().contains(&*marker))
+            .collect();
+        assert_eq!(
+            matching.len(),
+            1,
+            "one file of {} names {marker}: {matching:?}",
+            directory.display()
+        );
+        matching.pop().expect("one file names the marker")
+    }
+
+    #[test]
+    fn ui_allocation_default()
+    {
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_allocation_default")
+            .rustc_flags(trait_object_flags())
+            .dylint_toml(ALLOCATION_DEFAULT)
+            .run();
+    }
+
+    #[test]
+    fn ui_allocation_default_refused()
+    {
+        dylint_testing::ui::Test::src_base(
+            env!("CARGO_CRATE_NAME"),
+            "ui_allocation_default_refused",
+        )
+        .rustc_flags(trait_object_flags())
+        .dylint_toml(ALLOCATION_REFUSED)
+        .run();
+    }
+
+    #[test]
+    fn ui_allocation_default_test_target()
+    {
+        let mut flags = trait_object_flags();
+        flags.push("--test".to_owned());
+        dylint_testing::ui::Test::src_base(
+            env!("CARGO_CRATE_NAME"),
+            "ui_allocation_default_test_target",
+        )
+        .rustc_flags(flags)
+        .dylint_toml(ALLOCATION_DEFAULT)
+        .run();
+    }
+
+    /// The count holds every function of a unit outside the default, refuses
+    /// none, and writes the unit's report.
+    #[test]
+    fn ui_allocation_count()
+    {
+        let counts = emptied(std::path::Path::new("ui-allocation-counts"));
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_allocation_count")
+            .rustc_flags(trait_object_flags())
+            .dylint_toml(format!(
+                "[quenchant-dylints]\nallocation_count_directory = \"{}\"\n",
+                counts.display()
+            ))
+            .run();
+        let report = written_for(
+            &counts,
+            std::ffi::OsStr::new("ui_allocation_count_counted_rs."),
+        );
+        let text = std::fs::read_to_string(&report).expect("the report is readable");
+        let line: serde_json::Value =
+            serde_json::from_str(&text).expect("the report is one JSON line");
+        assert_eq!(
+            line.get("crate").and_then(serde_json::Value::as_str),
+            Some("counted")
+        );
+        for (key, expected) in [
+            ("held", 6_u64),
+            ("refused", 4),
+            ("declared", 1),
+            ("allocator", 2),
+            ("signature", 1),
+            ("dynamic", 1),
+        ] {
+            assert_eq!(
+                line.get(key).and_then(serde_json::Value::as_u64),
+                Some(expected),
+                "the report's {key}: {text}"
+            );
+        }
+    }
+
+    /// Outside the default, the base's records hold a function whose body
+    /// changes and one the base lacks, and leave one whose body is the same.
+    ///
+    /// The first run writes the evidence records of a copy of the fixture.
+    /// The test removes one function's record from them and changes
+    /// another's body hash, and the second run reads them as its base. The
+    /// two runs take different `-C metadata`, as a base and a head do when a
+    /// dependency moves, so the kept function also shows that the hash
+    /// holds no crate's identity.
+    #[test]
+    fn ui_allocation_base()
+    {
+        use core::fmt::Write as _;
+
+        let records = emptied(std::path::Path::new("ui-allocation-base-records"));
+        let base = emptied(std::path::Path::new("ui-allocation-base"));
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_allocation_base_record")
+            .rustc_flags({
+                let mut flags = trait_object_flags();
+                flags.push("-Cmetadata=base".to_owned());
+                flags
+            })
+            .dylint_toml(format!(
+                "[quenchant-dylints]\nevidence_directory = \"{}\"\n",
+                records.display()
+            ))
+            .run();
+        let record = written_for(
+            &records,
+            std::ffi::OsStr::new("ui_allocation_base_record_held_rs."),
+        );
+        let name = record
+            .file_name()
+            .expect("a record has a file name")
+            .to_string_lossy()
+            .replace(
+                "ui_allocation_base_record_held_rs",
+                "ui_allocation_base_held_rs",
+            );
+        let text = std::fs::read_to_string(&record).expect("the record is readable");
+        let mut hashed = 0_usize;
+        let mut lines = String::new();
+        for line in text.lines() {
+            let mut value: serde_json::Value =
+                serde_json::from_str(line).expect("each record line is JSON");
+            let path = value.get("path").and_then(serde_json::Value::as_str);
+            if value.get("body").is_some() {
+                hashed = hashed.saturating_add(1);
+            }
+            if path == Some("held::fresh") {
+                continue;
+            }
+            if path == Some("held::changed")
+                && let Some(fields) = value.as_object_mut()
+            {
+                fields.insert("body".to_owned(), serde_json::Value::String("0".repeat(32)));
+            }
+            writeln!(lines, "{value}").expect("a string takes each record");
+        }
+        assert_eq!(
+            hashed, 4,
+            "each function of the fixture has a body hash: {text}"
+        );
+        std::fs::create_dir_all(&base).expect("the base directory can be made");
+        std::fs::write(base.join(name), lines).expect("the base record can be written");
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_allocation_base")
+            .rustc_flags({
+                let mut flags = trait_object_flags();
+                flags.push("-Cmetadata=head".to_owned());
+                flags
+            })
+            .dylint_toml(format!(
+                "[quenchant-dylints]\nallocation_base_records = \"{}\"\n",
+                base.display()
+            ))
             .run();
     }
 

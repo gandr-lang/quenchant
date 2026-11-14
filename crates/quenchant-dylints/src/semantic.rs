@@ -286,6 +286,43 @@ semantic_borrowed_str!(
     struct DiagnosticText;
 );
 semantic_borrowed_str!(
+    /// A crate's name as the compiler spells it.
+    struct CrateName;
+);
+semantic_borrowed_str!(
+    /// The why of an allocation line: the text after its last `, `.
+    struct AllocationWhy;
+);
+semantic_borrowed_str!(
+    /// One compilation unit's evidence record, one JSON record to a line.
+    struct RecordText;
+);
+semantic_copy!(
+    /// A pattern of the allocation default takes the crate.
+    struct DefaultCrate(bool);
+);
+semantic_copy!(
+    /// An allocation line's why is one of the five forms.
+    struct KnownWhy(bool);
+);
+semantic_copy!(
+    /// The unit compiles a library or a binary, and no test, benchmark or
+    /// example.
+    struct ProductUnit(bool);
+);
+semantic_copy!(
+    /// A callee answers for its own allocations under the allocation default.
+    struct AnswersItself(bool);
+);
+semantic_copy!(
+    /// The base revision's record changes or lacks a function.
+    struct ChangedSinceBase(bool);
+);
+semantic_copy!(
+    /// The allocation pass counts what it holds, and refuses nothing.
+    struct CountOnly(bool);
+);
+semantic_borrowed_str!(
     /// Attribute text before reader-specific line interpretation.
     struct RustdocText;
 );

@@ -1,0 +1,67 @@
+error: this call reaches a call into the allocator, in `std::alloc::Global::alloc_impl_runtime`, and its function's `# Cost` declares no allocation
+  --> $DIR/refused.rs:12:12
+   |
+LL |     values.push(value);
+   |            ^^^^^^^^^^^
+   |
+   = help: move the allocation out of the function, or declare it under `# Cost` as `- allocation: <what>, <why>`, the why one of `setup`, `growth within <the source of the capacity>`, `error path`, `diagnostic` and `durable by <the key>`; a site that keeps it states why with `#[expect(allocation_free_region, reason = "...")]`
+   = note: `#[deny(allocation_free_region)]` on by default
+
+error: this call reaches a call whose body is unavailable and whose signature hands back or writes a value that owns heap memory, in `std::fmt::format::{closure#0}`, and its function's `# Cost` declares no allocation
+  --> $DIR/refused.rs:17:5
+   |
+LL |     format!("{value}")
+   |     ^^^^^^^^^^^^^^^^^^
+   |
+   = help: move the allocation out of the function, or declare it under `# Cost` as `- allocation: <what>, <why>`, the why one of `setup`, `growth within <the source of the capacity>`, `error path`, `diagnostic` and `durable by <the key>`; a site that keeps it states why with `#[expect(allocation_free_region, reason = "...")]`
+
+error: this call reaches a call that can reach any implementation, none of them held to the clause, and its function's `# Cost` declares no allocation
+  --> $DIR/refused.rs:22:5
+   |
+LL |     callback(1)
+   |     ^^^^^^^^^^^
+   |
+   = help: move the allocation out of the function, or declare it under `# Cost` as `- allocation: <what>, <why>`, the why one of `setup`, `growth within <the source of the capacity>`, `error path`, `diagnostic` and `durable by <the key>`; a site that keeps it states why with `#[expect(allocation_free_region, reason = "...")]`
+
+error: this call reaches a call into the allocator, in `std::alloc::Global::alloc_impl_runtime`, and its function's `# Cost` declares no allocation
+  --> $DIR/refused.rs:28:5
+   |
+LL |     make().len()
+   |     ^^^^^^
+   |
+   = help: move the allocation out of the function, or declare it under `# Cost` as `- allocation: <what>, <why>`, the why one of `setup`, `growth within <the source of the capacity>`, `error path`, `diagnostic` and `durable by <the key>`; a site that keeps it states why with `#[expect(allocation_free_region, reason = "...")]`
+
+error: this call reaches a call into the allocator, in `std::alloc::Global::alloc_impl_runtime`, and its function's `# Cost` declares no allocation
+  --> $DIR/refused.rs:39:10
+   |
+LL |     held.clone().values.len()
+   |          ^^^^^^^
+   |
+   = help: move the allocation out of the function, or declare it under `# Cost` as `- allocation: <what>, <why>`, the why one of `setup`, `growth within <the source of the capacity>`, `error path`, `diagnostic` and `durable by <the key>`; a site that keeps it states why with `#[expect(allocation_free_region, reason = "...")]`
+
+error: the `# Cost` line `- allocation: the values, because it is simple` states an allocation in neither form: write `- allocation: none in steady state`, or `- allocation: <what>, <why>` with the why one of `setup`, `growth within <the source of the capacity>`, `error path`, `diagnostic` and `durable by <the key>`
+  --> $DIR/refused.rs:47:1
+   |
+LL | fn unreasoned_line() -> Vec<u32>
+   | ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+error: an allocation exception must state why the site keeps its allocation: write `reason = "..."` on its `#[expect(allocation_free_region, ..)]`
+  --> $DIR/refused.rs:57:5
+   |
+LL |     vec![1]
+   |     ^^^^^^^
+
+error: an allocation exception must be stated where the allocation stands: an `#[expect(allocation_free_region, ..)]` on an enclosing module, implementation or crate excepts nothing inside it
+  --> $DIR/refused.rs:68:9
+   |
+LL |         Box::new(1)
+   |         ^^^^^^^^^^^
+
+error: an allocation is admitted only by its function's `- allocation:` line or by `#[expect(allocation_free_region, reason = "...")]`; an `allow` does not say why the site keeps it, nor fail when it goes
+  --> $DIR/refused.rs:75:5
+   |
+LL |     vec![1]
+   |     ^^^^^^^
+
+error: aborting due to 9 previous errors
+

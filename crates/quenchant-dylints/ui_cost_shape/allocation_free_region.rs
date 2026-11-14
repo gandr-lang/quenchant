@@ -111,6 +111,15 @@ fn inserts(
     table.insert(key, key);
 }
 
+// Refused: a macro of another crate that allocates, written in the region,
+// is refused at its call.
+/// # Cost
+/// - allocation: none in steady state.
+fn renders(value: u32) -> usize
+{
+    format!("{value}").len()
+}
+
 fn main()
 {
 }
