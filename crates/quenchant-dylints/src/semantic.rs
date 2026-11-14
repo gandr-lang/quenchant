@@ -306,6 +306,14 @@ semantic_copy!(
     struct DefaultCrate(bool);
 );
 semantic_copy!(
+    /// The loop lints follow the crate's loops into their callees.
+    struct FollowsCalls(bool);
+);
+semantic_copy!(
+    /// The function is `Clone::clone` or `ToOwned::to_owned`.
+    struct CopyingMethod(bool);
+);
+semantic_copy!(
     /// An allocation line's why is one of the five forms.
     struct KnownWhy(bool);
 );
