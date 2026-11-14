@@ -201,7 +201,7 @@ pub enum Clause
     Steady,
     /// `- allocation: <what>, <why>`, with one of the five whys.
     Declared,
-    /// An allocation line in neither form, with the line.
+    /// An allocation bullet in neither form, with its lines joined.
     Malformed(String),
     /// No allocation line under a `# Cost` heading.
     Silent,
@@ -233,37 +233,46 @@ pub fn clause(
 ///
 /// # Specification
 /// - ensures: the first line that starts with `- allocation:` after a line `#
-///   Cost` and before the next heading decides. With the rest `none in steady
-///   state`, a trailing period allowed, it is [`Clause::Steady`]. With a rest
-///   `<what>, <why>` whose what is not empty and whose why, a trailing period
-///   allowed, is one of the five forms, it is [`Clause::Declared`]. Any other
-///   rest is [`Clause::Malformed`]. With no such line, it is
-///   [`Clause::Silent`].
+///   Cost` and before the next heading decides. Each line after it that is not
+///   empty and starts no other bullet continues it, after one space, as
+///   Markdown reads a list item. With the rest `none in steady state`, a
+///   trailing period allowed, it is [`Clause::Steady`]. With a rest `<what>,
+///   <why>` whose what is not empty and whose why, a trailing period allowed,
+///   is one of the five forms, it is [`Clause::Declared`]. Any other rest is
+///   [`Clause::Malformed`]. With no such line, it is [`Clause::Silent`].
 /// - panics: none.
 /// - executable: none — the outcome is a scan of the lines, which a predicate
 ///   could only repeat.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — the unit tests read each why, an empty growth, an unknown
-///   why, a missing what, a line under another heading and the clause of a
-///   region.
+///   why, a missing what, a line under another heading, the clause of a region
+///   and a bullet that the formatter wraps.
 /// - witness: `allocation_free_region::tests::each_why_declares`
 /// - witness: `allocation_free_region::tests::a_why_outside_the_five_is_malformed`
 /// - witness: `allocation_free_region::tests::only_the_cost_section_is_read`
+/// - witness: `allocation_free_region::tests::a_wrapped_bullet_reads_as_one_line`
 pub fn clause_of(lines: &[String]) -> Clause
 {
     let Some(start) = lines.iter().position(|line| line == HEADING)
     else {
         return Clause::Silent;
     };
-    let Some(line) = lines
+    let mut section = lines
         .iter()
         .skip(start.saturating_add(1))
-        .take_while(|line| !line.starts_with('#'))
-        .find(|line| line.starts_with(LINE))
+        .take_while(|line| !line.starts_with('#'));
+    let Some(first) = section.find(|line| line.starts_with(LINE))
     else {
         return Clause::Silent;
     };
+    // The formatter wraps a long bullet over more lines. Markdown reads each
+    // line up to an empty line or the next bullet as one item.
+    let mut line = first.clone();
+    for next in section.take_while(|next| !next.is_empty() && !next.starts_with("- ")) {
+        line.push(' ');
+        line.push_str(next);
+    }
     let rest = line
         .get(LINE.len() ..)
         .unwrap_or_default()
@@ -276,7 +285,7 @@ pub fn clause_of(lines: &[String]) -> Clause
         Some((what, why)) if !what.trim().is_empty() && why_reads(AllocationWhy(why.trim())).0 => {
             Clause::Declared
         },
-        Some(_) | None => Clause::Malformed(line.clone()),
+        Some(_) | None => Clause::Malformed(line),
     }
 }
 
@@ -1742,6 +1751,57 @@ mod tests
         .to_vec();
         assert_eq!(clause_of(&lines), Clause::Silent);
         assert_eq!(clause_of(&[]), Clause::Silent);
+    }
+
+    #[test]
+    fn a_wrapped_bullet_reads_as_one_line()
+    {
+        let cost = |bullet: &[&str]| -> Vec<String> {
+            ["Text.", "", "# Cost"]
+                .iter()
+                .chain(bullet)
+                .chain(&["- time: linear", "", "# Adequacy"])
+                .map(|line| (*line).to_owned())
+                .collect()
+        };
+        let declared: [&[&str]; 3] = [
+            &[
+                "- allocation: the query's clauses, goals and seed model, and the",
+                "saturation's values and log, growth within the query's atoms",
+            ],
+            &[
+                "- allocation: the clauses that each constraint compiles to,",
+                "setup",
+            ],
+            &[
+                "- allocation: the clauses of the poset, growth",
+                "within the poset's",
+                "constraints.",
+            ],
+        ];
+        for bullet in declared {
+            assert_eq!(clause_of(&cost(bullet)), Clause::Declared, "{bullet:?}");
+        }
+        assert_eq!(
+            clause_of(&cost(&["- allocation: none in", "steady state."])),
+            Clause::Steady
+        );
+        assert_eq!(
+            clause_of(&cost(&[
+                "- allocation: the frames,",
+                "because it is simple"
+            ])),
+            Clause::Malformed("- allocation: the frames, because it is simple".to_owned())
+        );
+        assert_eq!(
+            clause_of(&cost(&[
+                "- allocation: the frames, growth",
+                "",
+                "within the depth"
+            ])),
+            Clause::Malformed("- allocation: the frames, growth".to_owned()),
+            "an empty line ends the bullet"
+        );
     }
 
     #[test]
