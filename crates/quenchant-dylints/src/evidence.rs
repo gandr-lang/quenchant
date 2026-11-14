@@ -1359,7 +1359,12 @@ fn item_record(
 /// The version of the canonical text of [`BodyHasher`]. A change of the text
 /// that an unchanged body prints raises it, so that no base of the earlier text
 /// reads as changed.
-const TEXT_VERSION: &str = "mir-text-1";
+const TEXT_VERSION: &str = "mir-text-2";
+
+/// The text that stands for the compiling crate's manifest directory in a
+/// body's text. A base builds in another directory than its head, so the path
+/// itself does not enter a hash.
+const MANIFEST_TOKEN: &str = "$CARGO_MANIFEST_DIR";
 
 /// The scheme of each body hash that this library writes: eight hexadecimal
 /// digits of the version of the canonical text and of the compiler.
@@ -1398,7 +1403,9 @@ pub fn body_scheme() -> String
 /// function defines follow it. Paths print whole and by crate name. Each
 /// allocation prints by its order of first use in the function, so no
 /// session's numbering enters the hash. The span that a closure's type prints
-/// after `@` is dropped.
+/// after `@` is dropped. The compiling crate's manifest directory, which
+/// `env!("CARGO_MANIFEST_DIR")` writes into a constant, prints as
+/// [`MANIFEST_TOKEN`].
 ///
 /// The compiler's stable hash is no fit. It names a definition by a hash that
 /// holds the crate's `StableCrateId`, which moves with `-C metadata`. Its
@@ -1414,6 +1421,10 @@ pub struct BodyHasher<'tcx>
     allocations: FxHashMap<u64, usize>,
     /// The scheme that each hash carries, [`body_scheme`].
     scheme: String,
+    /// The compiling crate's manifest directory, empty outside Cargo.
+    manifest: String,
+    /// The line with each manifest directory replaced, kept for the next.
+    replaced: String,
 }
 
 impl<'tcx> BodyHasher<'tcx>
@@ -1429,6 +1440,8 @@ impl<'tcx> BodyHasher<'tcx>
             line: String::new(),
             allocations: FxHashMap::default(),
             scheme: body_scheme(),
+            manifest: std::env::var("CARGO_MANIFEST_DIR").unwrap_or_default(),
+            replaced: String::new(),
         }
     }
 
@@ -1439,9 +1452,9 @@ impl<'tcx> BodyHasher<'tcx>
     /// - ensures: for a function or method with MIR, the scheme of
     ///   [`body_scheme`], a hyphen, and the stable hash of the canonical text
     ///   as 32 hexadecimal digits. A move of the function's text, an edit of
-    ///   its comments and documentation, a new `-C metadata` and a new order of
-    ///   the session's allocations keep the hash. A change of a statement, a
-    ///   call, a type or a closure changes it.
+    ///   its comments and documentation, a new `-C metadata`, a new manifest
+    ///   directory and a new order of the session's allocations keep the hash.
+    ///   A change of a statement, a call, a type or a closure changes it.
     /// - provides: `body_hashing::Unhashed::NoBody` for every other definition,
     ///   and `Unprintable` when the compiler's printer refuses a part of the
     ///   body.
@@ -1453,7 +1466,8 @@ impl<'tcx> BodyHasher<'tcx>
     /// - hypothesis: L3 — the evidence fixture pins the hash of each function;
     ///   the base-record fixture compiles twice under two values of `-C
     ///   metadata`, holds a function whose pinned hash it changes, and keeps
-    ///   one whose hash it leaves.
+    ///   one whose hash it leaves, among them one that reads its manifest
+    ///   directory under another path.
     /// - witness: `tests::ui_evidence`
     /// - witness: `tests::ui_allocation_base`
     pub fn body(
@@ -1536,23 +1550,24 @@ impl<'tcx> BodyHasher<'tcx>
         Ok(())
     }
 
-    /// Hash the line of text, with each allocation renumbered and each span
-    /// after `@` dropped.
+    /// Hash the line of text, with each manifest directory replaced, each
+    /// allocation renumbered and each span after `@` dropped.
     ///
     /// # Specification
     /// - ensures: the line enters `hasher` as written, then a line end, except
-    ///   in two forms. `alloc` followed by digits, at the start of a word,
-    ///   enters as `alloc` and the order of the number's first use in this
-    ///   function. An `@` enters alone, and the text after it up to the next
-    ///   `}` does not enter.
+    ///   in three forms. Each occurrence of the compiling crate's manifest
+    ///   directory enters as [`MANIFEST_TOKEN`]. `alloc` followed by digits, at
+    ///   the start of a word, enters as `alloc` and the order of the number's
+    ///   first use in this function. An `@` enters alone, and the text after it
+    ///   up to the next `}` does not enter.
     /// - panics: none.
     /// - executable: none — the outcome is the hasher's state, which a
     ///   predicate could only compute again.
     ///
     /// # Adequacy
     /// - hypothesis: L3 — the base fixture compiles under two values of `-C
-    ///   metadata`, and the evidence fixture's closure and constants hash the
-    ///   same across two runs.
+    ///   metadata` and of the manifest directory, and the evidence fixture's
+    ///   closure and constants hash the same across two runs.
     /// - witness: `tests::ui_evidence`
     /// - witness: `tests::ui_allocation_base`
     fn feed(
@@ -1560,6 +1575,16 @@ impl<'tcx> BodyHasher<'tcx>
         hasher: &mut StableHasher,
     )
     {
+        if !self.manifest.is_empty() && self.line.contains(self.manifest.as_str()) {
+            self.replaced.clear();
+            for (index, piece) in self.line.split(self.manifest.as_str()).enumerate() {
+                if index > 0 {
+                    self.replaced.push_str(MANIFEST_TOKEN);
+                }
+                self.replaced.push_str(piece);
+            }
+            core::mem::swap(&mut self.line, &mut self.replaced);
+        }
         let mut rest = self.line.as_str();
         while let Some(at) = rest.find(['@', 'a']) {
             let (head, tail) = rest.split_at(at);
