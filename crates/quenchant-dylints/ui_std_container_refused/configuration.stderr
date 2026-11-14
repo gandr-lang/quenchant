@@ -1,0 +1,10 @@
+error: `std_container_crates` entry `1` is no crate name, nor the start of one followed by `*`
+   |
+   = note: `#[deny(std_container)]` on by default
+
+error: `std_container_crates` entry `""` is no crate name, nor the start of one followed by `*`
+
+error: `std_container_crates` entry `"*"` is no crate name, nor the start of one followed by `*`
+
+error: aborting due to 3 previous errors
+

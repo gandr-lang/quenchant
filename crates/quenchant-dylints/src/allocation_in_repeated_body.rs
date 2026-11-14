@@ -66,15 +66,11 @@ use rustc_span::Span;
 use rustc_span::sym;
 
 use crate::allocation_free_region::Cause;
-use crate::allocation_free_region::CratePattern;
 use crate::allocation_free_region::Reach;
 use crate::allocation_free_region::Summaries;
 use crate::allocation_free_region::Witness;
 use crate::allocation_free_region::allocation_path;
 use crate::allocation_free_region::callee_reach;
-use crate::allocation_free_region::crate_pattern;
-use crate::allocation_free_region::pattern_reading;
-use crate::answer_totality::CONFIGURATION_TABLE;
 use crate::answer_totality::report_defects;
 use crate::clause_cost::ClauseRegions;
 use crate::clause_cost::Enclosure;
@@ -95,6 +91,9 @@ use crate::cost_shape::pass_escape;
 use crate::cost_shape::pass_mutation;
 use crate::cost_shape::repetition;
 use crate::cost_shape::std_method;
+use crate::crate_list;
+use crate::crate_list::CratePattern;
+use crate::crate_list::ListKey;
 use crate::semantic::CrateName;
 use crate::semantic::FollowsCalls;
 use crate::walk_summary::standard_name;
@@ -184,7 +183,7 @@ pub struct Allocation<'tcx>
 }
 
 /// The key of the crates whose loops the lint follows into their callees.
-const CALLS_KEY: &str = "repeated_call_crates";
+const CALLS_KEY: ListKey = ListKey("repeated_call_crates");
 
 /// Repeated-allocation policy; specification clauses are left to
 /// `spec_clause_traversal`.
@@ -212,7 +211,7 @@ impl AllocationInRepeatedBody<'_>
     ///   [`crate::register_lints`] guarantees by calling it first.
     /// - ensures: each entry of `repeated_call_crates` that names a crate, or
     ///   the start of one followed by `*`, becomes a pattern
-    ///   ([`crate_pattern`]); a value that is no list, and each other entry,
+    ///   ([`crate_list::read`]); a value that is no list, and each other entry,
     ///   becomes a defect. With no configuration or no key, no crate is
     ///   followed.
     /// - panics: none.
@@ -227,31 +226,8 @@ impl AllocationInRepeatedBody<'_>
     #[must_use]
     pub fn new(regions: ClauseRegions) -> Self
     {
-        let mut crates = Vec::new();
         let mut defects = Vec::new();
-        if let Ok(Some(config)) = dylint_linting::config_toml(CONFIGURATION_TABLE)
-            && let Some(value) = config.get(CALLS_KEY)
-        {
-            if let Some(entries) = value.as_array() {
-                for entry in entries {
-                    let pattern = entry
-                        .as_str()
-                        .map_or(Maybe::Absent(pattern_reading::Unnamed::Empty), |name| {
-                            crate_pattern(CrateName(name))
-                        });
-                    match pattern {
-                        Maybe::Present(pattern) => crates.push(pattern),
-                        Maybe::Absent(_) => defects.push(format!(
-                            "`{CALLS_KEY}` entry `{entry}` is no crate name, nor the start of one \
-                             followed by `*`"
-                        )),
-                    }
-                }
-            }
-            else {
-                defects.push(format!("`{CALLS_KEY}` is no list of crate names"));
-            }
-        }
+        let crates = crate_list::read(CALLS_KEY, &mut defects);
         Self {
             regions,
             crates,

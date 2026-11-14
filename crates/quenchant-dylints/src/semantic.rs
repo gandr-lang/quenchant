@@ -302,8 +302,8 @@ semantic_borrowed_str!(
     struct BodyScheme;
 );
 semantic_copy!(
-    /// A pattern of the allocation default takes the crate.
-    struct DefaultCrate(bool);
+    /// A pattern of a consumer's list of crates takes the crate.
+    struct ListedCrate(bool);
 );
 semantic_copy!(
     /// The loop lints follow the crate's loops into their callees.
