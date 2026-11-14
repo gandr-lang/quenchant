@@ -297,6 +297,10 @@ semantic_borrowed_str!(
     /// One compilation unit's evidence record, one JSON record to a line.
     struct RecordText;
 );
+semantic_borrowed_str!(
+    /// The scheme of a body hash, as `crate::evidence::body_scheme` gives it.
+    struct BodyScheme;
+);
 semantic_copy!(
     /// A pattern of the allocation default takes the crate.
     struct DefaultCrate(bool);
