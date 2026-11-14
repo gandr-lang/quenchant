@@ -375,6 +375,7 @@ quenchant_shape::reason_enum! {
 ///   the refused configuration carries an empty entry and `*`, each reported.
 /// - witness: `tests::ui_allocation_default`
 /// - witness: `tests::ui_allocation_default_refused`
+#[spec(ensures: |output| matches!(output, Maybe::Absent(_)) == (name.0.is_empty() || name.0 == "*"))]
 pub fn crate_pattern(name: CrateName<'_>) -> Maybe<CratePattern, pattern_reading::Unnamed>
 {
     if name.0.is_empty() || name.0 == "*" {
@@ -819,11 +820,13 @@ impl<'tcx> Summaries<'tcx>
 ///   itself; else the reach of the callee's body, every call in it followed and
 ///   a definite allocation named before one the build cannot name.
 /// - panics: none.
+/// - executable: none — the outcome is the summary of the callee's MIR, which a
+///   predicate could only compute again.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — the loop fixtures call a helper that allocates a value
 ///   the pass drops, one that allocates nothing, and one two calls deep.
-/// - witness: `tests::ui_cost_shape`
+/// - witness: `tests::ui_repeated_call`
 pub fn callee_reach<'tcx>(
     tcx: TyCtxt<'tcx>,
     typing_env: TypingEnv<'tcx>,

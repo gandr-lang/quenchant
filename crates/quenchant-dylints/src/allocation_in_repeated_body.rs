@@ -13,6 +13,16 @@
 //! `to_string()`; and `collect()` into an owned collection. A `clone()` of an
 //! owned value is not one of them.
 //!
+//! # Boundaries
+//!
+//! The repetition is [`crate::cost_shape`]'s: a loop body or a per-element
+//! closure whose trip count is open, and that the allocation does not leave
+//! at once. An allocation whose value leaves the pass — pushed into an outer
+//! collection, returned, stored, handed on by value or captured by a moving
+//! closure — is the structure's growth, not a throwaway, and is accepted. So
+//! is an allocation on a path that diverges, such as a panic's message, and a
+//! `collect()` that [`collect_read_once`] already refuses.
+//!
 //! In a crate that `repeated_call_crates` names, the lint also follows each
 //! call of a repeated body into its callee, over MIR, with the summaries of
 //! [`crate::allocation_free_region`]. A call is refused when some path of its
@@ -24,16 +34,6 @@
 //! with `push`. The refusal is `clone_in_loop`'s when the call path passes
 //! through `Clone::clone` or `ToOwned::to_owned`. The other crates follow no
 //! call, and pay nothing for it.
-//!
-//! # Boundaries
-//!
-//! The repetition is [`crate::cost_shape`]'s: a loop body or a per-element
-//! closure whose trip count is open, and that the allocation does not leave
-//! at once. An allocation whose value leaves the pass — pushed into an outer
-//! collection, returned, stored, handed on by value or captured by a moving
-//! closure — is the structure's growth, not a throwaway, and is accepted. So
-//! is an allocation on a path that diverges, such as a panic's message, and a
-//! `collect()` that [`collect_read_once`] already refuses.
 //!
 //! Clippy's `format_collect` and `format_push_string` take a `format!`
 //! collected or pushed onto a `String`; no Clippy lint prices an allocation
@@ -216,11 +216,14 @@ impl AllocationInRepeatedBody<'_>
     ///   becomes a defect. With no configuration or no key, no crate is
     ///   followed.
     /// - panics: none.
+    /// - executable: none — the outcome is the configuration as read, which a
+    ///   predicate could only read again.
     ///
     /// # Adequacy
     /// - hypothesis: L3 — the call fixture names its crate; the refused
-    ///   configuration names an empty entry, each reported.
-    /// - witness: `tests::ui_cost_shape`
+    ///   configuration names a number, an empty entry and `*`, each reported.
+    /// - witness: `tests::ui_repeated_call`
+    /// - witness: `tests::ui_repeated_call_refused`
     #[must_use]
     pub fn new(regions: ClauseRegions) -> Self
     {
@@ -276,7 +279,7 @@ impl<'tcx> LateLintPass<'tcx> for AllocationInRepeatedBody<'tcx>
     /// # Adequacy
     /// - hypothesis: L3 — the call fixture names its crate, and the plain
     ///   fixture names none and follows no call.
-    /// - witness: `tests::ui_cost_shape`
+    /// - witness: `tests::ui_repeated_call`
     fn check_crate(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -312,6 +315,7 @@ impl<'tcx> LateLintPass<'tcx> for AllocationInRepeatedBody<'tcx>
     ///   repetition and each call whose callee allocates a value the pass
     ///   drops, and accept each exception beside them.
     /// - witness: `tests::ui_cost_shape`
+    /// - witness: `tests::ui_repeated_call`
     fn check_expr(
         &mut self,
         cx: &LateContext<'tcx>,
@@ -415,7 +419,7 @@ pub struct Called<'tcx>
 ///   vector the pass drops, one whose callee makes and drops a buffer, and one
 ///   two calls deep; and accept a push into an outer vector, a callee whose
 ///   value is pushed outward, a free callee and a call through `dyn`.
-/// - witness: `tests::ui_cost_shape`
+/// - witness: `tests::ui_repeated_call`
 pub fn allocating_call<'tcx>(
     cx: &LateContext<'tcx>,
     expr: &'tcx Expr<'tcx>,
@@ -517,6 +521,12 @@ pub fn allocating_call<'tcx>(
 ///   function in another crate moves with each toolchain.
 /// - panics: none.
 /// - executable: none — rustc emits diagnostics without a queryable result.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the call fixture refuses a clone one call down under
+///   `clone_in_loop`, and a vector one and two calls down under
+///   `allocation_in_repeated_body`, each with its call path.
+/// - witness: `tests::ui_repeated_call`
 fn report_call<'tcx>(
     cx: &LateContext<'tcx>,
     expr: &'tcx Expr<'tcx>,
