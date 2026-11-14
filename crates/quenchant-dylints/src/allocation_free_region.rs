@@ -84,6 +84,9 @@ use crate::answer_totality::report_defects;
 use crate::answer_totality::report_refusing;
 use crate::cost_shape::Ownership;
 use crate::cost_shape::heap_ownership;
+use crate::crate_list;
+use crate::crate_list::CratePattern;
+use crate::crate_list::ListKey;
 use crate::evidence::BodyHasher;
 use crate::evidence::canonical_path;
 use crate::evidence::record_name;
@@ -94,7 +97,6 @@ use crate::semantic::BodyScheme;
 use crate::semantic::ChangedSinceBase;
 use crate::semantic::CountOnly;
 use crate::semantic::CrateName;
-use crate::semantic::DefaultCrate;
 use crate::semantic::DiagnosticText;
 use crate::semantic::KnownWhy;
 use crate::semantic::ProductUnit;
@@ -150,7 +152,7 @@ const PLAIN_WHYS: [&str; 3] = ["setup", "error path", "diagnostic"];
 const NAMED_WHYS: [&str; 2] = ["growth within ", "durable by "];
 
 /// The key of the crates whose default turns round.
-const CRATES_KEY: &str = "allocation_default_crates";
+const CRATES_KEY: ListKey = ListKey("allocation_default_crates");
 
 /// The key of the base revision's evidence records.
 const BASE_KEY: &str = "allocation_base_records";
@@ -314,79 +316,6 @@ fn why_reads(why: AllocationWhy<'_>) -> KnownWhy
     )
 }
 
-/// One entry of a list of crates: `allocation_default_crates`, or the crates
-/// whose loops the loop lints follow into their callees.
-#[derive(Clone, Debug, Eq, PartialEq)]
-pub enum CratePattern
-{
-    /// A crate's whole name.
-    Exact(String),
-    /// The start of a crate's name, written with a `*` after it.
-    Prefix(String),
-}
-
-impl CratePattern
-{
-    /// Whether the pattern takes a crate of name `name`.
-    ///
-    /// # Specification
-    /// - ensures: an exact pattern takes its own name alone; a prefix takes
-    ///   each name that starts with it.
-    /// - panics: none.
-    ///
-    /// # Adequacy
-    /// - hypothesis: L3 — the unit tests take a name whole and by prefix, and
-    ///   refuse a longer name and another prefix.
-    /// - witness: `allocation_free_region::tests::a_pattern_takes_its_crates`
-    #[spec(ensures: |output| !output.0 || !name.0.is_empty() || matches!(self, Self::Exact(whole) if whole.is_empty()))]
-    pub fn matches(
-        &self,
-        name: CrateName<'_>,
-    ) -> DefaultCrate
-    {
-        DefaultCrate(match *self {
-            Self::Exact(ref whole) => name.0 == whole,
-            Self::Prefix(ref start) => name.0.starts_with(start.as_str()),
-        })
-    }
-}
-
-quenchant_shape::reason_enum! {
-    /// An entry of a list of crates can name no crate.
-    pub mod pattern_reading {
-        /// Why an entry gives no pattern.
-        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-        pub enum Unnamed {
-            /// The entry is empty, or `*` alone, which would take every crate.
-            Empty,
-        }
-    }
-}
-
-/// The pattern that one entry of a list of crates names.
-///
-/// # Specification
-/// - ensures: a name other than an empty one and `*` becomes a pattern, a
-///   prefix when it ends in `*`; `Absent(Empty)` otherwise.
-/// - panics: none.
-///
-/// # Adequacy
-/// - hypothesis: L3 — the default fixture names its crates whole and by prefix;
-///   the refused configuration carries an empty entry and `*`, each reported.
-/// - witness: `tests::ui_allocation_default`
-/// - witness: `tests::ui_allocation_default_refused`
-#[spec(ensures: |output| matches!(output, Maybe::Absent(_)) == (name.0.is_empty() || name.0 == "*"))]
-pub fn crate_pattern(name: CrateName<'_>) -> Maybe<CratePattern, pattern_reading::Unnamed>
-{
-    if name.0.is_empty() || name.0 == "*" {
-        return Maybe::Absent(pattern_reading::Unnamed::Empty);
-    }
-    Maybe::Present(name.0.strip_suffix('*').map_or_else(
-        || CratePattern::Exact(name.0.to_owned()),
-        |start| CratePattern::Prefix(start.to_owned()),
-    ))
-}
-
 quenchant_shape::reason_enum! {
     /// A key of the configuration can be left out.
     mod setting {
@@ -475,33 +404,11 @@ impl Default for Settings
 fn read_settings() -> Settings
 {
     let mut settings = Settings::default();
+    settings.crates = crate_list::read(CRATES_KEY, &mut settings.defects);
     let Ok(Some(config)) = dylint_linting::config_toml(CONFIGURATION_TABLE)
     else {
         return settings;
     };
-    if let Some(value) = config.get(CRATES_KEY) {
-        let Some(entries) = value.as_array()
-        else {
-            settings
-                .defects
-                .push(format!("`{CRATES_KEY}` is no list of crate names"));
-            return settings;
-        };
-        for entry in entries {
-            let pattern = entry
-                .as_str()
-                .map_or(Maybe::Absent(pattern_reading::Unnamed::Empty), |name| {
-                    crate_pattern(CrateName(name))
-                });
-            match pattern {
-                Maybe::Present(pattern) => settings.crates.push(pattern),
-                Maybe::Absent(_) => settings.defects.push(format!(
-                    "`{CRATES_KEY}` entry `{entry}` is no crate name, nor the start of one followed by \
-                     `*`"
-                )),
-            }
-        }
-    }
     for (key, slot) in [
         (BASE_KEY, &mut settings.base),
         (COUNT_KEY, &mut settings.count),
@@ -1817,12 +1724,10 @@ mod tests
     use quenchant_shape::shape::Maybe;
 
     use super::Clause;
-    use super::CratePattern;
     use super::base_bodies_of;
     use super::base_reading;
     use super::clause_of;
     use crate::semantic::BodyScheme;
-    use crate::semantic::CrateName;
     use crate::semantic::RecordText;
     use crate::semantic::RustdocText;
 
@@ -1960,18 +1865,6 @@ mod tests
             Clause::Malformed("- allocation: the frames, growth".to_owned()),
             "an empty line ends the bullet"
         );
-    }
-
-    #[test]
-    fn a_pattern_takes_its_crates()
-    {
-        let whole = CratePattern::Exact("gandr_kernel_core".to_owned());
-        let start = CratePattern::Prefix("gandr_kernel".to_owned());
-        assert!(whole.matches(CrateName("gandr_kernel_core")).0);
-        assert!(!whole.matches(CrateName("gandr_kernel_core_base")).0);
-        assert!(start.matches(CrateName("gandr_kernel_core_base")).0);
-        assert!(start.matches(CrateName("gandr_kernel")).0);
-        assert!(!start.matches(CrateName("gandr_core_term")).0);
     }
 
     #[test]

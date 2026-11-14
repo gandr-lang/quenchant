@@ -38,6 +38,9 @@
 //! `trait_object`, configured by the consumer class by class, refuses a trait
 //! object of a configured class, unless the site states why it keeps it
 //! ([`trait_object`]).
+//! `std_container`, configured by the consumer crate by crate, refuses a `Vec`,
+//! a `String` or an `Arc` of `alloc` in a listed crate, unless the site states
+//! why it keeps it ([`std_container`]).
 //! `embedded_source`, configured by the consumer, refuses a multi-line literal
 //! that reaches the type a parser reads, so the source lives in a file
 //! ([`embedded_source`]).
@@ -88,6 +91,7 @@ mod clone_in_loop;
 mod collect_read_once;
 mod cost_shape;
 mod count_comparison;
+mod crate_list;
 mod dishonest_answer;
 mod doc_shape;
 mod embedded_source;
@@ -114,6 +118,7 @@ mod signature;
 mod specification;
 #[cfg(test)]
 mod specification_tests;
+mod std_container;
 mod termination;
 mod trait_object;
 mod walk_summary;
@@ -446,6 +451,7 @@ pub fn register_lints(
         reverse_after_build::REVERSE_AFTER_BUILD,
         pool_only_threads::POOL_ONLY_THREADS,
         trait_object::TRAIT_OBJECT,
+        std_container::STD_CONTAINER,
         embedded_source::EMBEDDED_SOURCE,
     ]);
     lint_store.register_group(true, answer_totality::GROUP, None, vec![
@@ -501,6 +507,9 @@ pub fn register_lints(
     }));
     lint_store.register_late_lint_pass(Box::new(|tcx| {
         Box::new(trait_object::TraitObject::configured(tcx))
+    }));
+    lint_store.register_late_lint_pass(Box::new(|tcx| {
+        Box::new(std_container::StdContainer::configured(tcx))
     }));
     lint_store.register_late_lint_pass(Box::new(|tcx| {
         Box::new(presenter_coverage::PresenterCoverage::configured(tcx))
@@ -1837,6 +1846,51 @@ repeated_call_crates = [1, "", "*"]
         )
         .rustc_flags(flags)
         .dylint_toml(ALLOCATION_DEFAULT)
+        .run();
+    }
+
+    /// The fixture crate of the container rule by its whole name, and the test
+    /// target. The crate `untaken` is not listed.
+    const STD_CONTAINER_CRATES: &str = r#"
+[quenchant-dylints]
+std_container_crates = ["refused", "target"]
+"#;
+
+    /// A number, an empty entry and the bare `*` among the crates.
+    const STD_CONTAINER_REFUSED: &str = r#"
+[quenchant-dylints]
+std_container_crates = [1, "", "*"]
+"#;
+
+    #[test]
+    fn ui_std_container()
+    {
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_std_container")
+            .rustc_flags(trait_object_flags())
+            .dylint_toml(STD_CONTAINER_CRATES)
+            .run();
+    }
+
+    #[test]
+    fn ui_std_container_refused()
+    {
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_std_container_refused")
+            .rustc_flags(trait_object_flags())
+            .dylint_toml(STD_CONTAINER_REFUSED)
+            .run();
+    }
+
+    #[test]
+    fn ui_std_container_test_target()
+    {
+        let mut flags = trait_object_flags();
+        flags.push("--test".to_owned());
+        dylint_testing::ui::Test::src_base(
+            env!("CARGO_CRATE_NAME"),
+            "ui_std_container_test_target",
+        )
+        .rustc_flags(flags)
+        .dylint_toml(STD_CONTAINER_CRATES)
         .run();
     }
 
