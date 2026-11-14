@@ -1,0 +1,18 @@
+error: `trait_object_classes` entry `1` is not the path of a trait, nor `*`
+   |
+   = note: `#[deny(trait_object)]` on by default
+
+error: `trait_object_classes` entry `""` is not the path of a trait, nor `*`
+
+error: `trait_object_classes` entry `refused::Missing` names no trait of this crate
+
+error: `dyn Shape` is a trait object of a configured class
+  --> $DIR/refused.rs:20:21
+   |
+LL | fn measured(shape: &dyn Shape) -> u32
+   |                     ^^^^^^^^^
+   |
+   = help: name the implementers: a closed enum where the set is known, a generic parameter where the callers are few; a site that keeps its trait object states why with `#[expect(trait_object, reason = "...")]`
+
+error: aborting due to 4 previous errors
+

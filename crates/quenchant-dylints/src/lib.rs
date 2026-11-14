@@ -33,6 +33,9 @@
 //! ([`allocation_free_region`]). `pool_only_threads`, opted into per consumer,
 //! refuses a thread or a pool started outside the consumer's work pool, unless
 //! the site states why it owns its thread ([`pool_only_threads`]).
+//! `trait_object`, configured by the consumer class by class, refuses a trait
+//! object of a configured class, unless the site states why it keeps it
+//! ([`trait_object`]).
 //! `embedded_source`, configured by the consumer, refuses a multi-line literal
 //! that reaches the type a parser reads, so the source lives in a file
 //! ([`embedded_source`]).
@@ -109,6 +112,7 @@ mod specification;
 #[cfg(test)]
 mod specification_tests;
 mod termination;
+mod trait_object;
 mod walk_summary;
 
 use std::collections::HashMap;
@@ -438,6 +442,7 @@ pub fn register_lints(
         linear_search::LINEAR_SEARCH_IN_LOOP,
         reverse_after_build::REVERSE_AFTER_BUILD,
         pool_only_threads::POOL_ONLY_THREADS,
+        trait_object::TRAIT_OBJECT,
         embedded_source::EMBEDDED_SOURCE,
     ]);
     lint_store.register_group(true, answer_totality::GROUP, None, vec![
@@ -490,6 +495,9 @@ pub fn register_lints(
     }));
     lint_store.register_late_lint_pass(Box::new(|tcx| {
         Box::new(dishonest_answer::DishonestAnswer::configured(tcx))
+    }));
+    lint_store.register_late_lint_pass(Box::new(|tcx| {
+        Box::new(trait_object::TraitObject::configured(tcx))
     }));
     lint_store.register_late_lint_pass(Box::new(|tcx| {
         Box::new(presenter_coverage::PresenterCoverage::configured(tcx))
@@ -1572,6 +1580,94 @@ unproduced = [
         flags.push("--test".to_owned());
         dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_pool_threads_test_target")
             .rustc_flags(flags)
+            .run();
+    }
+
+    /// The classes `Error` and `Fn`, by the paths that `core` gives them.
+    const OBJECT_CLASSES: &str = r#"
+[quenchant-dylints]
+trait_object_classes = ["core::error::Error", "core::ops::Fn"]
+"#;
+
+    /// The class that takes every trait object.
+    const EVERY_CLASS: &str = r#"
+[quenchant-dylints]
+trait_object_classes = ["*"]
+"#;
+
+    /// A number, an empty entry and a trait of the fixture crate that does not
+    /// exist, beside the fixture's own trait.
+    const REFUSED_CLASSES: &str = r#"
+[quenchant-dylints]
+trait_object_classes = [1, "", "refused::Missing", "refused::Shape"]
+"#;
+
+    /// The trait-object rule's flags: unknown lints denied and the unrelated
+    /// signature, error and specification rules allowed.
+    ///
+    /// # Specification
+    /// - ensures: the 2024 edition, `-Dunknown-lints`, and the primitive
+    ///   signature, transparent representation, erased error and specification
+    ///   rules allowed.
+    /// - panics: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — the fixtures see only the trait-object rule's
+    ///   findings.
+    /// - witness: `tests::ui_trait_object`
+    /// - witness: `tests::ui_trait_object_every`
+    /// - witness: `tests::ui_trait_object_refused`
+    /// - witness: `tests::ui_trait_object_test_target`
+    #[spec(ensures: |output| output.iter().any(|flag| flag == "-Dunknown-lints"))]
+    fn trait_object_flags() -> Vec<String>
+    {
+        [
+            "--edition=2024",
+            "-Dunknown-lints",
+            "-Aprimitive_signature",
+            "-Asingle_field_struct_needs_transparent_repr",
+            "-Aerased_error_signature",
+            "-Aspecification_present",
+        ]
+        .map(str::to_owned)
+        .to_vec()
+    }
+
+    #[test]
+    fn ui_trait_object()
+    {
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_trait_object")
+            .rustc_flags(trait_object_flags())
+            .dylint_toml(OBJECT_CLASSES)
+            .run();
+    }
+
+    #[test]
+    fn ui_trait_object_every()
+    {
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_trait_object_every")
+            .rustc_flags(trait_object_flags())
+            .dylint_toml(EVERY_CLASS)
+            .run();
+    }
+
+    #[test]
+    fn ui_trait_object_refused()
+    {
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_trait_object_refused")
+            .rustc_flags(trait_object_flags())
+            .dylint_toml(REFUSED_CLASSES)
+            .run();
+    }
+
+    #[test]
+    fn ui_trait_object_test_target()
+    {
+        let mut flags = trait_object_flags();
+        flags.push("--test".to_owned());
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_trait_object_test_target")
+            .rustc_flags(flags)
+            .dylint_toml(OBJECT_CLASSES)
             .run();
     }
 
