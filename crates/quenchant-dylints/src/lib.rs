@@ -1836,7 +1836,9 @@ allocation_count_directory = 7
     /// another's body hash, and the second run reads them as its base. The
     /// two runs take different `-C metadata`, as a base and a head do when a
     /// dependency moves, so the kept function also shows that the hash
-    /// holds no crate's identity.
+    /// holds no crate's identity. They also take different manifest
+    /// directories, as a base built in a scratch worktree does, and the
+    /// function that reads its directory is kept.
     #[test]
     fn ui_allocation_base()
     {
@@ -1897,7 +1899,7 @@ allocation_count_directory = 7
             writeln!(lines, "{value}").expect("a string takes each record");
         }
         assert_eq!(
-            hashed, 4,
+            hashed, 5,
             "each function of the fixture has a body hash: {text}"
         );
         std::fs::create_dir_all(&base).expect("the base directory can be made");

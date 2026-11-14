@@ -1,5 +1,5 @@
 error: this call reaches a call into the allocator, in `std::alloc::Global::alloc_impl_runtime`, and its function's `# Cost` declares no allocation
-  --> $DIR/held.rs:13:12
+  --> $DIR/held.rs:15:12
    |
 LL |     values.push(2);
    |            ^^^^^^^
@@ -8,7 +8,7 @@ LL |     values.push(2);
    = note: `#[deny(allocation_free_region)]` on by default
 
 error: this call reaches a call into the allocator, in `std::alloc::Global::alloc_impl_runtime`, and its function's `# Cost` declares no allocation
-  --> $DIR/held.rs:18:12
+  --> $DIR/held.rs:20:12
    |
 LL |     values.push(3);
    |            ^^^^^^^
