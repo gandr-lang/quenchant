@@ -68,6 +68,7 @@ extern crate rustc_data_structures;
 extern crate rustc_errors;
 extern crate rustc_hir;
 extern crate rustc_hir_typeck;
+extern crate rustc_interface;
 extern crate rustc_lexer;
 extern crate rustc_lint;
 extern crate rustc_middle;
@@ -1882,7 +1883,16 @@ allocation_count_directory = 7
             if path == Some("held::changed")
                 && let Some(fields) = value.as_object_mut()
             {
-                fields.insert("body".to_owned(), serde_json::Value::String("0".repeat(32)));
+                let scheme = fields
+                    .get("body")
+                    .and_then(serde_json::Value::as_str)
+                    .and_then(|body| body.split_once('-'))
+                    .map(|(scheme, _)| scheme.to_owned())
+                    .expect("a body hash carries its scheme");
+                fields.insert(
+                    "body".to_owned(),
+                    serde_json::Value::String(format!("{scheme}-{}", "0".repeat(32))),
+                );
             }
             writeln!(lines, "{value}").expect("a string takes each record");
         }
@@ -1898,6 +1908,60 @@ allocation_count_directory = 7
                 flags.push("-Cmetadata=head".to_owned());
                 flags
             })
+            .dylint_toml(format!(
+                "[quenchant-dylints]\nallocation_base_records = \"{}\"\n",
+                base.display()
+            ))
+            .run();
+    }
+
+    /// Outside the default, a unit whose base holds no record of it, or a
+    /// record whose hashes carry another scheme, takes no base and holds
+    /// nothing: its package is untouched, or another compiler or an earlier
+    /// library wrote the record.
+    #[test]
+    fn ui_allocation_base_unread()
+    {
+        let base = emptied(std::path::Path::new("ui-allocation-base-unread"));
+        std::fs::create_dir_all(&base).expect("the base directory can be made");
+        let configuration = format!(
+            "[quenchant-dylints]\nallocation_base_records = \"{}\"\n",
+            base.display()
+        );
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_allocation_base_unread")
+            .rustc_flags(trait_object_flags())
+            .dylint_toml(configuration.clone())
+            .run();
+        let other = ["kept", "changed", "fresh", "main"]
+            .map(|name| {
+                format!(
+                    r#"{{"record":"item","path":"held::{name}","kind":"fn","body":"ffffffff-{}"}}"#,
+                    "0".repeat(32)
+                )
+            })
+            .join("\n");
+        std::fs::write(
+            base.join("ui_allocation_base_unread_held_rs.bin.jsonl"),
+            other,
+        )
+        .expect("the base record can be written");
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_allocation_base_unread")
+            .rustc_flags(trait_object_flags())
+            .dylint_toml(configuration)
+            .run();
+    }
+
+    /// Outside the default, an empty base record is a unit new at the base,
+    /// and each of its functions is held.
+    #[test]
+    fn ui_allocation_base_new()
+    {
+        let base = emptied(std::path::Path::new("ui-allocation-base-new"));
+        std::fs::create_dir_all(&base).expect("the base directory can be made");
+        std::fs::write(base.join("ui_allocation_base_new_held_rs.bin.jsonl"), "")
+            .expect("the base record can be written");
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_allocation_base_new")
+            .rustc_flags(trait_object_flags())
             .dylint_toml(format!(
                 "[quenchant-dylints]\nallocation_base_records = \"{}\"\n",
                 base.display()

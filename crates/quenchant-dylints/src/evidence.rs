@@ -1356,6 +1356,41 @@ fn item_record(
     Maybe::Present(record)
 }
 
+/// The version of the canonical text of [`BodyHasher`]. A change of the text
+/// that an unchanged body prints raises it, so that no base of the earlier text
+/// reads as changed.
+const TEXT_VERSION: &str = "mir-text-1";
+
+/// The scheme of each body hash that this library writes: eight hexadecimal
+/// digits of the version of the canonical text and of the compiler.
+///
+/// Two compilers can print one body in two texts. So a hash is comparable only
+/// with a hash of the same scheme, and a reader of a base takes no base whose
+/// hashes carry another scheme.
+///
+/// # Specification
+/// - ensures: eight hexadecimal digits that depend only on [`TEXT_VERSION`] and
+///   on the version string of the running compiler, with its commit.
+/// - panics: none.
+/// - executable: none — the outcome is a hash of the compiler's version, which
+///   a predicate could only compute again.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the base fixture writes a record and reads it under one
+///   compiler, and it reads a record whose hashes carry another scheme.
+/// - witness: `tests::ui_allocation_base`
+/// - witness: `tests::ui_allocation_base_unread`
+pub fn body_scheme() -> String
+{
+    let mut hasher = StableHasher::new();
+    TEXT_VERSION.hash(&mut hasher);
+    rustc_interface::util::rustc_version_str()
+        .unwrap_or_default()
+        .hash(&mut hasher);
+    let (high, _) = hasher.finish::<Fingerprint>().split();
+    format!("{:08x}", high.as_u64() >> 32_u32)
+}
+
 /// The hash of each function's behaviour, from a canonical text of its MIR.
 ///
 /// The text is the function's argument count, the type of each local, and
@@ -1377,6 +1412,8 @@ pub struct BodyHasher<'tcx>
     line: String,
     /// The order of first use of each allocation in one function.
     allocations: FxHashMap<u64, usize>,
+    /// The scheme that each hash carries, [`body_scheme`].
+    scheme: String,
 }
 
 impl<'tcx> BodyHasher<'tcx>
@@ -1391,6 +1428,7 @@ impl<'tcx> BodyHasher<'tcx>
             tcx,
             line: String::new(),
             allocations: FxHashMap::default(),
+            scheme: body_scheme(),
         }
     }
 
@@ -1398,11 +1436,12 @@ impl<'tcx> BodyHasher<'tcx>
     /// optimized MIR and of its closures' MIR.
     ///
     /// # Specification
-    /// - ensures: for a function or method with MIR, the stable hash of the
-    ///   canonical text, as 32 hexadecimal digits. A move of the function's
-    ///   text, an edit of its comments and documentation, a new `-C metadata`
-    ///   and a new order of the session's allocations keep the hash. A change
-    ///   of a statement, a call, a type or a closure changes it.
+    /// - ensures: for a function or method with MIR, the scheme of
+    ///   [`body_scheme`], a hyphen, and the stable hash of the canonical text
+    ///   as 32 hexadecimal digits. A move of the function's text, an edit of
+    ///   its comments and documentation, a new `-C metadata` and a new order of
+    ///   the session's allocations keep the hash. A change of a statement, a
+    ///   call, a type or a closure changes it.
     /// - provides: `body_hashing::Unhashed::NoBody` for every other definition,
     ///   and `Unprintable` when the compiler's printer refuses a part of the
     ///   body.
@@ -1442,7 +1481,12 @@ impl<'tcx> BodyHasher<'tcx>
             return Maybe::Absent(body_hashing::Unhashed::Unprintable);
         }
         let (high, low) = hasher.finish::<Fingerprint>().split();
-        Maybe::Present(format!("{:016x}{:016x}", high.as_u64(), low.as_u64()))
+        Maybe::Present(format!(
+            "{}-{:016x}{:016x}",
+            self.scheme,
+            high.as_u64(),
+            low.as_u64()
+        ))
     }
 
     /// Hash the canonical text of one body.

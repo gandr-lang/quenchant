@@ -90,6 +90,7 @@ use crate::evidence::record_name;
 use crate::evidence::unit_qualifier;
 use crate::semantic::AllocationWhy;
 use crate::semantic::AnswersItself;
+use crate::semantic::BodyScheme;
 use crate::semantic::ChangedSinceBase;
 use crate::semantic::CountOnly;
 use crate::semantic::CrateName;
@@ -348,8 +349,27 @@ quenchant_shape::reason_enum! {
         pub enum Unset {
             /// The configuration does not name the key.
             NotConfigured,
-            /// The key names a directory that cannot be read.
+        }
+    }
+}
+
+quenchant_shape::reason_enum! {
+    /// A unit can take no base for its functions.
+    mod base_reading {
+        /// Why a unit takes no base.
+        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        pub enum Unread {
+            /// The configuration names no base.
+            NotConfigured,
+            /// The base or its record of the unit cannot be read.
             Unreadable,
+            /// The base holds no record of the unit: the change does not touch
+            /// its package.
+            NoRecord,
+            /// The base's record of the unit holds no body hash of this
+            /// library's scheme: another compiler or an earlier library wrote
+            /// it.
+            OtherScheme,
         }
     }
 }
@@ -456,23 +476,37 @@ fn read_settings() -> Settings
     settings
 }
 
-/// The body hashes of the functions of one unit's base record.
+/// The body hashes of the functions of one unit's base record, when the record
+/// holds hashes of this library's scheme.
 ///
 /// # Specification
-/// - ensures: for each line of `text` that is a JSON `item` record of kind `fn`
-///   or `assoc-fn` with a string `body`, its `path` maps to its `body`; every
-///   other line adds nothing.
+/// - ensures: for a `text` with no line, an empty map: the base holds the unit
+///   with no function. Otherwise, for each line that is a JSON `item` record of
+///   kind `fn` or `assoc-fn` with a string `body`, its `path` maps to its
+///   `body`, when some such body starts with `scheme` and a hyphen; every other
+///   line adds nothing.
+/// - provides: `base_reading::Unread::OtherScheme` for a `text` with a line and
+///   no body of `scheme`.
 /// - panics: none.
 /// - executable: none — the outcome is a parse of the text, which a predicate
 ///   could only repeat.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — the unit test reads a function, a method, a function with
-///   no body hash, a type and a line that is no JSON.
+///   no body hash, a type and a line that is no JSON; it reads an empty text,
+///   and a text whose bodies carry another scheme.
 /// - witness: `allocation_free_region::tests::the_base_maps_each_function_to_its_body`
-fn base_bodies_of(text: RecordText<'_>) -> HashMap<String, String>
+/// - witness: `allocation_free_region::tests::a_base_of_another_scheme_is_no_base`
+fn base_bodies_of(
+    text: RecordText<'_>,
+    scheme: BodyScheme<'_>,
+) -> Maybe<HashMap<String, String>, base_reading::Unread>
 {
-    text.0
+    if text.0.lines().all(|line| line.trim().is_empty()) {
+        return Maybe::Present(HashMap::new());
+    }
+    let bodies: HashMap<String, String> = text
+        .0
         .lines()
         .filter_map(|line| serde_json::from_str::<serde_json::Value>(line).ok())
         .filter(|record| {
@@ -487,7 +521,16 @@ fn base_bodies_of(text: RecordText<'_>) -> HashMap<String, String>
             let body = record.get("body")?.as_str()?.to_owned();
             Some((path, body))
         })
-        .collect()
+        .collect();
+    if bodies.values().any(|body| {
+        body.strip_prefix(scheme.0)
+            .is_some_and(|rest| rest.starts_with('-'))
+    }) {
+        Maybe::Present(bodies)
+    }
+    else {
+        Maybe::Absent(base_reading::Unread::OtherScheme)
+    }
 }
 
 /// Whether the unit compiles a product: a library or a binary that is no
@@ -1113,7 +1156,11 @@ impl Tally
 /// The key `allocation_base_records` names the evidence records of a base
 /// revision. Outside the default, the lint then holds each function whose
 /// [`crate::evidence::BodyHasher::body`] differs from the base's record, or
-/// that the base's record of the unit lacks. The key
+/// that the base's record of the unit lacks. A unit whose base holds no record
+/// of it, or a record with no hash of [`crate::evidence::body_scheme`], takes
+/// no base and holds nothing: its package is untouched, or another compiler or
+/// an earlier library wrote the record. An empty record is a unit new at the
+/// base, and each of its functions is held. The key
 /// `allocation_count_directory` names a directory. There the lint writes one
 /// report for each library or binary unit: the functions it holds, refuses and
 /// finds declared. It refuses nothing then.
@@ -1126,7 +1173,7 @@ pub struct AllocationFreeRegion<'tcx>
     /// The configuration of the default.
     settings: Settings,
     /// The body hash of each function of the base's record of this unit.
-    base: Maybe<HashMap<String, String>, setting::Unset>,
+    base: Maybe<HashMap<String, String>, base_reading::Unread>,
 }
 
 impl_lint_pass!(AllocationFreeRegion<'_> => [ALLOCATION_FREE_REGION]);
@@ -1151,7 +1198,7 @@ impl AllocationFreeRegion<'_>
             summaries: Summaries::default(),
             origin: Summaries::default(),
             settings: read_settings(),
-            base: Maybe::Absent(setting::Unset::NotConfigured),
+            base: Maybe::Absent(base_reading::Unread::NotConfigured),
         }
     }
 }
@@ -1436,18 +1483,23 @@ impl<'tcx> LateLintPass<'tcx> for AllocationFreeRegion<'tcx>
     /// defects.
     ///
     /// # Specification
-    /// - ensures: with a base directory that exists, the body hashes of the
-    ///   file of this unit's record name in it, or none when the base has no
-    ///   such file; a base directory that does not exist is a defect, and then
-    ///   no function is held for a change. Each defect is reported at the crate
+    /// - ensures: with a base directory that exists, the outcome of
+    ///   [`base_bodies_of`] over the file of this unit's record name in it,
+    ///   under [`crate::evidence::body_scheme`]. A base with no such file gives
+    ///   `NoRecord`, and a file that cannot be read gives `Unreadable` and a
+    ///   defect. A base directory that does not exist is a defect, and then no
+    ///   function is held for a change. Each defect is reported at the crate
     ///   root.
     /// - panics: none.
     /// - executable: none — rustc owns diagnostic emission; no readback exists.
     ///
     /// # Adequacy
-    /// - hypothesis: L3 — the base fixture reads its unit's file; the refused
-    ///   configuration names a base directory that does not exist.
+    /// - hypothesis: L3 — the base fixture reads its unit's file, an empty
+    ///   file, no file and a file of another scheme; the refused configuration
+    ///   names a base directory that does not exist.
     /// - witness: `tests::ui_allocation_base`
+    /// - witness: `tests::ui_allocation_base_new`
+    /// - witness: `tests::ui_allocation_base_unread`
     /// - witness: `tests::ui_allocation_default_refused`
     fn check_crate(
         &mut self,
@@ -1456,12 +1508,22 @@ impl<'tcx> LateLintPass<'tcx> for AllocationFreeRegion<'tcx>
     {
         if let Maybe::Present(ref directory) = self.settings.base {
             if directory.is_dir() {
-                let text = std::fs::read_to_string(directory.join(record_name(cx.tcx)))
-                    .unwrap_or_default();
-                self.base = Maybe::Present(base_bodies_of(RecordText(&text)));
+                let scheme = crate::evidence::body_scheme();
+                self.base = match std::fs::read_to_string(directory.join(record_name(cx.tcx))) {
+                    Ok(text) => base_bodies_of(RecordText(&text), BodyScheme(&scheme)),
+                    Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                        Maybe::Absent(base_reading::Unread::NoRecord)
+                    },
+                    Err(error) => {
+                        self.settings.defects.push(format!(
+                            "`{BASE_KEY}` holds a record of this unit that cannot be read: {error}"
+                        ));
+                        Maybe::Absent(base_reading::Unread::Unreadable)
+                    },
+                };
             }
             else {
-                self.base = Maybe::Absent(setting::Unset::Unreadable);
+                self.base = Maybe::Absent(base_reading::Unread::Unreadable);
                 self.settings.defects.push(format!(
                     "`{BASE_KEY}` names `{}`, which is no directory",
                     directory.display()
@@ -1585,11 +1647,14 @@ impl<'tcx> LateLintPass<'tcx> for AllocationFreeRegion<'tcx>
 mod tests
 {
     use anodized::spec;
+    use quenchant_shape::shape::Maybe;
 
     use super::Clause;
     use super::CratePattern;
     use super::base_bodies_of;
+    use super::base_reading;
     use super::clause_of;
+    use crate::semantic::BodyScheme;
     use crate::semantic::CrateName;
     use crate::semantic::RecordText;
     use crate::semantic::RustdocText;
@@ -1695,20 +1760,49 @@ mod tests
     fn the_base_maps_each_function_to_its_body()
     {
         let text = [
-            r#"{"record":"item","path":"case::kept","kind":"fn","body":"00ff"}"#,
-            r#"{"record":"item","path":"case::Type::method","kind":"assoc-fn","body":"0a0b"}"#,
+            r#"{"record":"item","path":"case::kept","kind":"fn","body":"abcd1234-00ff"}"#,
+            r#"{"record":"item","path":"case::Type::method","kind":"assoc-fn","body":"abcd1234-0a0b"}"#,
             r#"{"record":"item","path":"case::unhashed","kind":"fn"}"#,
             r#"{"record":"item","path":"case::Type","kind":"struct"}"#,
             r#"{"record":"use","item":"case::kept","names":[]}"#,
             "not json",
         ]
         .join("\n");
-        let bodies = base_bodies_of(RecordText(&text));
+        let Maybe::Present(bodies) = base_bodies_of(RecordText(&text), BodyScheme("abcd1234"))
+        else {
+            panic!("a record of this scheme is a base");
+        };
         assert_eq!(bodies.len(), 2);
-        assert_eq!(bodies.get("case::kept").map(String::as_str), Some("00ff"));
+        assert_eq!(
+            bodies.get("case::kept").map(String::as_str),
+            Some("abcd1234-00ff")
+        );
         assert_eq!(
             bodies.get("case::Type::method").map(String::as_str),
-            Some("0a0b")
+            Some("abcd1234-0a0b")
         );
+    }
+
+    #[test]
+    fn a_base_of_another_scheme_is_no_base()
+    {
+        let text = [
+            r#"{"record":"item","path":"case::kept","kind":"fn","body":"ffff0000-00ff"}"#,
+            r#"{"record":"item","path":"case::earlier","kind":"fn"}"#,
+        ]
+        .join("\n");
+        assert!(matches!(
+            base_bodies_of(RecordText(&text), BodyScheme("abcd1234")),
+            Maybe::Absent(base_reading::Unread::OtherScheme)
+        ));
+        assert!(matches!(
+            base_bodies_of(RecordText(&text), BodyScheme("ffff")),
+            Maybe::Absent(base_reading::Unread::OtherScheme)
+        ));
+        let Maybe::Present(bodies) = base_bodies_of(RecordText("\n\n"), BodyScheme("abcd1234"))
+        else {
+            panic!("an empty record is a base with no function");
+        };
+        assert!(bodies.is_empty());
     }
 }

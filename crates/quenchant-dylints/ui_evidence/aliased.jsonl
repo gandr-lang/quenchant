@@ -3,10 +3,10 @@
 {"column":1,"docs":[30,30],"end":37,"exported":true,"file":"ui_evidence/aliased.rs","kind":"enum","line":31,"path":"aliased::Logged","record":"item","revision":"1f4f98e7d234acd5d3898649e2578b2f","start":30}
 {"column":5,"docs":[33,33],"end":34,"exported":true,"file":"ui_evidence/aliased.rs","kind":"variant","line":34,"path":"aliased::Logged::Ok","record":"item","revision":"fc1e9235ec4b5736edaed80357a7a279","start":33}
 {"column":5,"docs":[35,35],"end":36,"exported":true,"file":"ui_evidence/aliased.rs","kind":"variant","line":36,"path":"aliased::Logged::Err","record":"item","revision":"c6a07bee644eb00e6d5ea088257718b1","start":35}
-{"body":"c96b42ed0354c9df7addccdb7a211c04","column":1,"docs":[39,42],"end":46,"exported":true,"file":"ui_evidence/aliased.rs","kind":"fn","line":43,"path":"aliased::lane","record":"item","revision":"ad90c605ce66b623bb9bce27302bddd2","start":39}
-{"body":"8208f38e6fbbb8461a73290061b12ae2","column":1,"docs":[48,51],"end":54,"exported":false,"file":"ui_evidence/aliased.rs","kind":"fn","line":52,"path":"aliased::main","record":"item","revision":"eeb942cf4613d957fd2975158adc9735","start":48}
+{"body":"f92febbd-c96b42ed0354c9df7addccdb7a211c04","column":1,"docs":[39,42],"end":46,"exported":true,"file":"ui_evidence/aliased.rs","kind":"fn","line":43,"path":"aliased::lane","record":"item","revision":"ad90c605ce66b623bb9bce27302bddd2","start":39}
+{"body":"f92febbd-8208f38e6fbbb8461a73290061b12ae2","column":1,"docs":[48,51],"end":54,"exported":false,"file":"ui_evidence/aliased.rs","kind":"fn","line":52,"path":"aliased::main","record":"item","revision":"eeb942cf4613d957fd2975158adc9735","start":48}
 {"column":5,"docs":[14,14],"end":15,"exported":true,"file":"ui_evidence/aliased.rs","kind":"assoc-type","line":15,"path":"<aliased::Daily as core::str::traits::FromStr>::Err","record":"item","revision":"38c86facf8fb773420e0425cec5f9930","start":14}
-{"body":"5a1714c159565fe06c4ec2fd046fc80b","column":5,"docs":[17,20],"end":24,"exported":true,"file":"ui_evidence/aliased.rs","kind":"assoc-fn","line":21,"path":"<aliased::Daily as core::str::traits::FromStr>::from_str","record":"item","revision":"529903ee9b2e06330831f64e11b33047","start":17}
+{"body":"f92febbd-5a1714c159565fe06c4ec2fd046fc80b","column":5,"docs":[17,20],"end":24,"exported":true,"file":"ui_evidence/aliased.rs","kind":"assoc-fn","line":21,"path":"<aliased::Daily as core::str::traits::FromStr>::from_str","record":"item","revision":"529903ee9b2e06330831f64e11b33047","start":17}
 {"item":"<aliased::Daily as core::str::traits::FromStr>","names":["aliased::Daily"],"record":"use"}
 {"item":"aliased::Answer","names":["aliased::Daily"],"record":"use"}
 {"item":"aliased::lane","names":["aliased::Answer"],"record":"use"}
