@@ -314,9 +314,10 @@ fn why_reads(why: AllocationWhy<'_>) -> KnownWhy
     )
 }
 
-/// One entry of `allocation_default_crates`.
+/// One entry of a list of crates: `allocation_default_crates`, or the crates
+/// whose loops the loop lints follow into their callees.
 #[derive(Clone, Debug, Eq, PartialEq)]
-enum CratePattern
+pub enum CratePattern
 {
     /// A crate's whole name.
     Exact(String),
@@ -338,7 +339,7 @@ impl CratePattern
     ///   refuse a longer name and another prefix.
     /// - witness: `allocation_free_region::tests::a_pattern_takes_its_crates`
     #[spec(ensures: |output| !output.0 || !name.0.is_empty() || matches!(self, Self::Exact(whole) if whole.is_empty()))]
-    fn matches(
+    pub fn matches(
         &self,
         name: CrateName<'_>,
     ) -> DefaultCrate
@@ -348,6 +349,42 @@ impl CratePattern
             Self::Prefix(ref start) => name.0.starts_with(start.as_str()),
         })
     }
+}
+
+quenchant_shape::reason_enum! {
+    /// An entry of a list of crates can name no crate.
+    pub mod pattern_reading {
+        /// Why an entry gives no pattern.
+        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
+        pub enum Unnamed {
+            /// The entry is empty, or `*` alone, which would take every crate.
+            Empty,
+        }
+    }
+}
+
+/// The pattern that one entry of a list of crates names.
+///
+/// # Specification
+/// - ensures: a name other than an empty one and `*` becomes a pattern, a
+///   prefix when it ends in `*`; `Absent(Empty)` otherwise.
+/// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the default fixture names its crates whole and by prefix;
+///   the refused configuration carries an empty entry and `*`, each reported.
+/// - witness: `tests::ui_allocation_default`
+/// - witness: `tests::ui_allocation_default_refused`
+#[spec(ensures: |output| matches!(output, Maybe::Absent(_)) == (name.0.is_empty() || name.0 == "*"))]
+pub fn crate_pattern(name: CrateName<'_>) -> Maybe<CratePattern, pattern_reading::Unnamed>
+{
+    if name.0.is_empty() || name.0 == "*" {
+        return Maybe::Absent(pattern_reading::Unnamed::Empty);
+    }
+    Maybe::Present(name.0.strip_suffix('*').map_or_else(
+        || CratePattern::Exact(name.0.to_owned()),
+        |start| CratePattern::Prefix(start.to_owned()),
+    ))
 }
 
 quenchant_shape::reason_enum! {
@@ -451,14 +488,14 @@ fn read_settings() -> Settings
             return settings;
         };
         for entry in entries {
-            match entry.as_str() {
-                Some(name) if !name.is_empty() && name != "*" => {
-                    settings.crates.push(name.strip_suffix('*').map_or_else(
-                        || CratePattern::Exact(name.to_owned()),
-                        |start| CratePattern::Prefix(start.to_owned()),
-                    ));
-                },
-                Some(_) | None => settings.defects.push(format!(
+            let pattern = entry
+                .as_str()
+                .map_or(Maybe::Absent(pattern_reading::Unnamed::Empty), |name| {
+                    crate_pattern(CrateName(name))
+                });
+            match pattern {
+                Maybe::Present(pattern) => settings.crates.push(pattern),
+                Maybe::Absent(_) => settings.defects.push(format!(
                     "`{CRATES_KEY}` entry `{entry}` is no crate name, nor the start of one followed by \
                      `*`"
                 )),
@@ -632,6 +669,10 @@ enum Mode<'crates>
 {
     /// A marked region: every call is followed.
     Every,
+    /// A repeated body's callee: every call is followed, and a call that
+    /// reaches the allocator or an allocating signature is named before one
+    /// whose implementation the build cannot name.
+    Definite,
     /// The default: a call of a function that the default holds is free, and
     /// so is a type parameter's trait method.
     Origin(&'crates [CratePattern]),
@@ -768,11 +809,111 @@ impl<'tcx> Summaries<'tcx>
     }
 }
 
+/// The reach of a callee that a repeated body calls, read over MIR as a
+/// marked region reads each of its calls.
+///
+/// # Specification
+/// - requires: `summaries` serves this reading alone, as [`Summaries::of`]
+///   asks.
+/// - ensures: `Free` when [`classify_call`] finds the call free; `Allocates`
+///   with the call's own cause at `site` in `owner` when the call allocates by
+///   itself; else the reach of the callee's body, every call in it followed and
+///   a definite allocation named before one the build cannot name.
+/// - panics: none.
+/// - executable: none — the outcome is the summary of the callee's MIR, which a
+///   predicate could only compute again.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the loop fixtures call a helper that allocates a value
+///   the pass drops, one that allocates nothing, and one two calls deep.
+/// - witness: `tests::ui_repeated_call`
+pub fn callee_reach<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    typing_env: TypingEnv<'tcx>,
+    summaries: &mut Summaries<'tcx>,
+    callee: Ty<'tcx>,
+    site: Span,
+    owner: DefId,
+) -> Reach
+{
+    match classify_call(tcx, typing_env, callee) {
+        Call::Free => Reach::Free,
+        Call::Allocates(cause) => Reach::Allocates(Witness {
+            cause,
+            span: site,
+            owner,
+        }),
+        Call::Body(instance) => summaries.of(tcx, typing_env, instance, Mode::Definite),
+    }
+}
+
+/// The functions that a callee's allocation passes through, from the callee
+/// down to the body that makes it.
+///
+/// # Specification
+/// - requires: `summaries` holds the reach of the callee's body in
+///   [`Mode::Definite`], as [`callee_reach`] leaves it.
+/// - ensures: empty when [`classify_call`] finds no body for `callee`;
+///   otherwise the callee's function first, then, while the first call of the
+///   last body in block order whose reach is definite is a body, that body's
+///   function. No instance stands twice, so a cycle ends.
+/// - panics: none.
+/// - executable: none — the outcome is a walk of the recorded summaries.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the call fixture's refusals name the path to the
+///   allocation one call down, two calls down and through a clone.
+/// - witness: `tests::ui_repeated_call`
+pub fn allocation_path<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    typing_env: TypingEnv<'tcx>,
+    summaries: &Summaries<'tcx>,
+    callee: Ty<'tcx>,
+) -> Vec<DefId>
+{
+    let Call::Body(mut instance) = classify_call(tcx, typing_env, callee)
+    else {
+        return Vec::new();
+    };
+    let mut path = vec![instance.def_id()];
+    let mut seen = HashSet::from([instance]);
+    'walk: loop {
+        for (_, _, call) in calls(tcx, typing_env, instance) {
+            match call {
+                Call::Allocates(Cause::Allocator | Cause::Signature) => break 'walk,
+                Call::Body(inner)
+                    if matches!(
+                        summaries.0.get(&inner),
+                        Some(Reach::Allocates(Witness {
+                            cause: Cause::Allocator | Cause::Signature,
+                            ..
+                        }))
+                    ) =>
+                {
+                    if !seen.insert(inner) {
+                        break 'walk;
+                    }
+                    path.push(inner.def_id());
+                    instance = inner;
+                    continue 'walk;
+                },
+                Call::Free | Call::Allocates(Cause::Dynamic | Cause::Parameter) | Call::Body(_) => {
+                },
+            }
+        }
+        break;
+    }
+    path
+}
+
 /// The calls of one body, each with what it reaches and its site.
 ///
 /// # Specification
 /// - ensures: one entry per call terminator of `instance`'s MIR, in block
-///   order, with its span, its lint root and [`classify_call`]'s answer.
+///   order, with its span, its lint root and [`classify_call`]'s answer; a
+///   callee type that does not normalize, as one that names an opaque type the
+///   build cannot prove, takes `Allocates(Parameter)`, as a callee the build
+///   cannot name.
 /// - panics: none.
 /// - executable: none — the outcome is a filter over the body's terminators.
 ///
@@ -799,17 +940,21 @@ fn calls<'tcx>(
         else {
             continue;
         };
-        let callee = instance.instantiate_mir_and_normalize_erasing_regions(
-            tcx,
-            typing_env,
-            EarlyBinder::bind(tcx, func.ty(&body.local_decls, tcx)),
-        );
         let root = terminator
             .source_info
             .scope
             .lint_root(&body.source_scopes)
             .map_or(Maybe::Absent(root_reading::NoRoot::Foreign), Maybe::Present);
-        found.push((fn_span, root, classify_call(tcx, typing_env, callee)));
+        let call = instance
+            .try_instantiate_mir_and_normalize_erasing_regions(
+                tcx,
+                typing_env,
+                EarlyBinder::bind(tcx, func.ty(&body.local_decls, tcx)),
+            )
+            .map_or(Call::Allocates(Cause::Parameter), |callee| {
+                classify_call(tcx, typing_env, callee)
+            });
+        found.push((fn_span, root, call));
     }
     found
 }
@@ -821,6 +966,8 @@ fn calls<'tcx>(
 ///   and not themselves being read; otherwise [`Reading::Ready`] holds the
 ///   first call, in block order, that allocates or whose callee's summary
 ///   allocates, each call taken as [`bounded`] gives it in `mode`, or `Free`.
+///   In [`Mode::Definite`] the first call that reaches the allocator or an
+///   allocating signature goes before an earlier one of another cause.
 /// - panics: none.
 /// - executable: none — the outcome is a scan over the body's calls against the
 ///   summaries; a predicate could only repeat it.
@@ -857,7 +1004,18 @@ fn read_body<'tcx>(
                 },
             },
         };
-        if first == Reach::Free {
+        let definite = |held: Reach| {
+            matches!(
+                held,
+                Reach::Allocates(Witness {
+                    cause: Cause::Allocator | Cause::Signature,
+                    ..
+                })
+            )
+        };
+        if first == Reach::Free
+            || (matches!(mode, Mode::Definite) && !definite(first) && definite(reach))
+        {
             first = reach;
         }
     }

@@ -35,10 +35,12 @@ use clippy_utils::ty::is_copy;
 use quenchant_shape::shape::Maybe;
 use rustc_hir::Expr;
 use rustc_hir::ExprKind;
+use rustc_hir::def_id::DefId;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
 use rustc_lint::declare_lint;
 use rustc_lint::impl_lint_pass;
+use rustc_middle::ty::TyCtxt;
 use rustc_span::sym;
 
 use crate::clause_cost::ClauseRegions;
@@ -54,6 +56,7 @@ use crate::cost_shape::inspection;
 use crate::cost_shape::pass_escape;
 use crate::cost_shape::repetition;
 use crate::cost_shape::std_method;
+use crate::semantic::CopyingMethod;
 use crate::walk_summary::standard_name;
 
 declare_lint! {
@@ -196,6 +199,44 @@ impl<'tcx> LateLintPass<'tcx> for CloneInLoop
     }
 }
 
+/// Whether a function is `Clone::clone` or `ToOwned::to_owned`, as its trait
+/// declares it or as an implementation of it.
+///
+/// # Specification
+/// - ensures: true exactly when `method`, or the trait item that it implements,
+///   is the `clone` method of `Clone` or the `to_owned` method of `ToOwned`; a
+///   function with no name, as a closure, is neither.
+/// - panics: none.
+/// - executable: none — the outcome is the compiler's definition tables, which
+///   a predicate could only read again.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the clone fixtures refuse `clone()` and `to_owned()` in a
+///   loop, and the call fixture refuses a call whose callee clones.
+/// - witness: `tests::ui_cost_shape`
+/// - witness: `tests::ui_repeated_call`
+pub fn copying_method(
+    tcx: TyCtxt<'_>,
+    method: DefId,
+) -> CopyingMethod
+{
+    let declared = tcx
+        .opt_associated_item(method)
+        .and_then(|item| item.trait_item_def_id())
+        .unwrap_or(method);
+    let Some(name) = tcx.opt_item_name(declared)
+    else {
+        return CopyingMethod(false);
+    };
+    CopyingMethod(tcx.trait_of_assoc(declared).is_some_and(|owner| {
+        (tcx.is_diagnostic_item(sym::Clone, owner) && name.as_str() == "clone")
+            || (tcx
+                .get_diagnostic_name(owner)
+                .is_some_and(|owner| owner.as_str() == "ToOwned")
+                && name.as_str() == "to_owned")
+    }))
+}
+
 /// Decide whether an expression is a heap-owning copy a repeated body drops.
 ///
 /// # Specification
@@ -231,14 +272,7 @@ pub fn copy<'tcx>(
         return not_a_copy;
     };
     let name = cx.tcx.item_name(method);
-    let by_trait = cx.tcx.trait_of_assoc(method).is_some_and(|owner| {
-        (cx.tcx.is_diagnostic_item(sym::Clone, owner) && name.as_str() == "clone")
-            || (cx
-                .tcx
-                .get_diagnostic_name(owner)
-                .is_some_and(|owner| owner.as_str() == "ToOwned")
-                && name.as_str() == "to_owned")
-    });
+    let by_trait = copying_method(cx.tcx, method).0;
     let by_slice = matches!(
         std_method(cx, expr),
         Maybe::Present(Method { owner: Owner::Slice, name }) if name.as_str() == "to_vec"

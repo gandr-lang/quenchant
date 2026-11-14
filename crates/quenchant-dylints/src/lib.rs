@@ -1774,6 +1774,58 @@ allocation_count_directory = 7
         .run();
     }
 
+    /// The followed fixture crate, by its whole name; the other crate of the
+    /// directory is not named.
+    const REPEATED_CALL: &str = r#"
+[quenchant-dylints]
+repeated_call_crates = ["called"]
+"#;
+
+    /// A number, an empty entry and the bare `*` among the followed crates.
+    const REPEATED_CALL_REFUSED: &str = r#"
+[quenchant-dylints]
+repeated_call_crates = [1, "", "*"]
+"#;
+
+    /// The flags of the call fixtures: the trait-object flags and the two loop
+    /// rules denied.
+    ///
+    /// # Specification
+    /// - ensures: [`trait_object_flags`], `-Dallocation_in_repeated_body` and
+    ///   `-Dclone_in_loop`.
+    /// - panics: none.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L2 — the fixtures see the loop rules' findings at the
+    ///   level the cost fixtures give them.
+    /// - witness: `tests::ui_repeated_call`
+    /// - witness: `tests::ui_repeated_call_refused`
+    #[spec(ensures: |output| output.iter().any(|flag| flag == "-Dallocation_in_repeated_body"))]
+    fn repeated_call_flags() -> Vec<String>
+    {
+        let mut flags = trait_object_flags();
+        flags.extend(["-Dallocation_in_repeated_body", "-Dclone_in_loop"].map(str::to_owned));
+        flags
+    }
+
+    #[test]
+    fn ui_repeated_call()
+    {
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_repeated_call")
+            .rustc_flags(repeated_call_flags())
+            .dylint_toml(REPEATED_CALL)
+            .run();
+    }
+
+    #[test]
+    fn ui_repeated_call_refused()
+    {
+        dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_repeated_call_refused")
+            .rustc_flags(repeated_call_flags())
+            .dylint_toml(REPEATED_CALL_REFUSED)
+            .run();
+    }
+
     #[test]
     fn ui_allocation_default_test_target()
     {

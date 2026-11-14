@@ -1,0 +1,64 @@
+error: this call copies a value that owns heap memory on every pass of a loop, and the pass drops the copy
+  --> $DIR/called.rs:137:20
+   |
+LL |     for reading in Odometer::new(bases) {
+   |                    ^^^^^^^^^^^^^^^^^^^^
+   |
+note: the loop that repeats it
+  --> $DIR/called.rs:137:5
+   |
+LL | /     for reading in Odometer::new(bases) {
+LL | |         let images = images_from(&reading, map.wires);
+LL | |         if map.validate(&images) {
+LL | |             count += 1;
+LL | |         }
+LL | |     }
+   | |_____^
+   = note: the call path: `<Odometer as std::iter::Iterator>::next` -> `<std::vec::Vec<T, A> as std::clone::Clone>::clone` -> ...
+   = note: the callee reaches a call into the allocator, in `std::alloc::Global::alloc_impl_runtime`
+   = help: let the callee lend what it copies, or turn one value in place over the passes
+   = note: requested on the command line with `-D clone-in-loop`
+
+error: this call allocates on every pass of a loop, and the pass drops what it allocates
+  --> $DIR/called.rs:138:22
+   |
+LL |         let images = images_from(&reading, map.wires);
+   |                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the loop that repeats it
+  --> $DIR/called.rs:137:5
+   |
+LL | /     for reading in Odometer::new(bases) {
+LL | |         let images = images_from(&reading, map.wires);
+LL | |         if map.validate(&images) {
+LL | |             count += 1;
+LL | |         }
+LL | |     }
+   | |_____^
+   = note: the call path: `images_from` -> `std::vec::from_elem` -> ...
+   = note: the callee reaches a call into the allocator, in `std::alloc::Global::alloc_impl_runtime`
+   = help: make the buffer once before the loop and lend it to the callee, or let the callee write into one reused buffer
+   = note: requested on the command line with `-D allocation-in-repeated-body`
+
+error: this call allocates on every pass of a loop, and the pass drops what it allocates
+  --> $DIR/called.rs:139:12
+   |
+LL |         if map.validate(&images) {
+   |            ^^^^^^^^^^^^^^^^^^^^^
+   |
+note: the loop that repeats it
+  --> $DIR/called.rs:137:5
+   |
+LL | /     for reading in Odometer::new(bases) {
+LL | |         let images = images_from(&reading, map.wires);
+LL | |         if map.validate(&images) {
+LL | |             count += 1;
+LL | |         }
+LL | |     }
+   | |_____^
+   = note: the call path: `Map::validate` -> `Map::wire_marks` -> `std::vec::from_elem` -> ...
+   = note: the callee reaches a call into the allocator, in `std::alloc::Global::alloc_impl_runtime`
+   = help: make the buffer once before the loop and lend it to the callee, or let the callee write into one reused buffer
+
+error: aborting due to 3 previous errors
+
