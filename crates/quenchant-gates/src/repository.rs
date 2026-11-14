@@ -203,7 +203,7 @@ pub fn dispatch(
                     flag.as_str(),
                     "--upstream-toolchain" | "--consumer-manifest" | "--consumer-config"
                 ))
-            || (name == "toolchain-bump" && flag == "--version");
+            || (name == "toolchain-bump" && matches!(flag.as_str(), "--version" | "--clippy-rev"));
         let Some(value) = arguments.next()
         else {
             eprintln!("{name}: {flag} requires a value");
@@ -226,13 +226,23 @@ pub fn dispatch(
             publish_allowlist::check(&root.join("Cargo.toml")),
         ),
         "pins" => report(SourceText(name), pins::check(&root, &options)),
-        "toolchain-bump" => options.remove("--version").map_or_else(
-            || {
-                eprintln!("toolchain-bump: --version is required");
+        "toolchain-bump" => match (options.remove("--version"), options.remove("--clippy-rev")) {
+            (Some(version), None) => {
+                let tag = format!("rust-{version}");
+                report(
+                    SourceText(name),
+                    pins::bump(&root, pins::Reference::Tag(SourceText(&tag))),
+                )
+            },
+            (None, Some(revision)) => report(
+                SourceText(name),
+                pins::bump(&root, pins::Reference::Rev(SourceText(&revision))),
+            ),
+            _ => {
+                eprintln!("toolchain-bump: exactly one of --version and --clippy-rev is required");
                 ExitCode::FAILURE
             },
-            |version| report(SourceText(name), pins::bump(&root, SourceText(&version))),
-        ),
+        },
         _ => {
             eprintln!("unknown repository command {name}");
             ExitCode::FAILURE

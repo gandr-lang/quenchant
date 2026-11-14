@@ -90,7 +90,7 @@ These commands accept `--root <repository>`; omission selects the working direct
 
 `pins` reads the exact rust-clippy release through `gh api`. `--upstream-toolchain <file>` explicitly substitutes offline evidence. `WORKSPACE_MANIFEST`, `TOOL_CONFIG`, and `TOOLCHAIN_FILE` retain pin-input overrides. Optional `--consumer-manifest <file>` and `--consumer-config <file>` must appear together. Relative inputs resolve under `--root`.
 
-`toolchain-bump --version <stable>` reads upstream evidence before updating only `clippy_utils.tag` and the compiler channel, preserving other TOML fields and comments. `mise run toolchain:bump <stable>` launches it. Rebuild the Dylint driver and rerun the gate set after a compiler move.
+`toolchain-bump --version <stable>` and `toolchain-bump --clippy-rev <commit>` read upstream evidence before they update the `clippy_utils` source, its version requirement and the compiler channel. They preserve other TOML fields and comments. A stable release pins its `rust-<stable>` tag. A full commit pins a rust-clippy merge whose nightly no release tag names, and its `rev` key takes the place of `tag`. `mise run toolchain:bump <stable>` and `mise run toolchain:bump --clippy-rev <commit>` launch them. Rebuild the Dylint driver and rerun the gate set after a compiler move.
 
 Each check carries a `# Specification`, closed refusal reasons in `Maybe`, and addressed operational errors. Deliberately invalid repository fixtures exercise the CLI as well as the pure comparisons. Git-backed checks inspect tracked working-tree text, not untracked files or historical file contents.
 

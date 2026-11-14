@@ -5,7 +5,7 @@
 //! quenchant-gates witnesses --manifest-path <Cargo.toml> [--inventory <nextest-list.json>]... [--package <name>]... [--exclude <name>]...
 //! quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--body <file>] [--comment <file>] [--selection <file>] [--labels <label,...>] [--hotpath <report>] [--require-acknowledged]
 //! quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]
-//! quenchant-gates toolchain-bump --version <stable> [--root <repository>]
+//! quenchant-gates toolchain-bump <--version <stable> | --clippy-rev <commit>> [--root <repository>]
 //! ```
 //!
 //! An explicit consumer manifest selects both gates' scope, including for an
@@ -17,9 +17,9 @@
 //! reports the re-verification a change owes and writes the pull-request
 //! comment and the nextest selection that discharges it.
 //!
-//! Policy violations and operational failures both produce unsuccessful exits
-//! with distinct diagnostics. Failure to obtain an inventory remains an
-//! operational failure rather than evidence that its obligations passed.
+//! Policy violations and operational failures both exit unsuccessfully, with
+//! distinct diagnostics. A missing inventory is an operational failure, not
+//! evidence that its obligations passed.
 
 extern crate alloc;
 
@@ -46,7 +46,7 @@ use quenchant_gates::semantic::IssueLabel;
 use quenchant_shape::shape::Maybe;
 
 /// Invalid argument shapes receive the complete supported command syntax.
-const USAGE: &str = "usage: quenchant-gates anodized --manifest-path <Cargo.toml> [--require-enforcing]\n       quenchant-gates witnesses --manifest-path <Cargo.toml> [--inventory <nextest-list.json>]... [--package <name>]... [--exclude <name>]...\n       quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--body <file>] [--comment <file>] [--selection <file>] [--labels <label,...>] [--hotpath <report>] [--require-acknowledged]\n       quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]\n       quenchant-gates toolchain-bump --version <stable> [--root <repository>]";
+const USAGE: &str = "usage: quenchant-gates anodized --manifest-path <Cargo.toml> [--require-enforcing]\n       quenchant-gates witnesses --manifest-path <Cargo.toml> [--inventory <nextest-list.json>]... [--package <name>]... [--exclude <name>]...\n       quenchant-gates obligations --manifest-path <Cargo.toml> --base <revision> --records <directory> --rustdoc <directory> [--previous <comment>] [--body <file>] [--comment <file>] [--selection <file>] [--labels <label,...>] [--hotpath <report>] [--require-acknowledged]\n       quenchant-gates <public-boundary | pins | action-pins | publish-allowlist | conflict-markers> [--root <repository>]\n       quenchant-gates toolchain-bump <--version <stable> | --clippy-rev <commit>> [--root <repository>]";
 
 /// Argument interpretation selects one consumer or repository operation.
 ///

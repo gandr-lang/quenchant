@@ -21,6 +21,11 @@ pub enum Pin
     Channel,
     /// Stable rust-clippy release tag.
     ClippyTag,
+    /// Full rust-clippy commit, for a nightly that no release tag names.
+    ClippyRev,
+    /// Version that `clippy_utils` publishes at the selected rust-clippy
+    /// source.
+    ClippyVersion,
     /// Dylint library runtime version.
     Linting,
     /// Dylint fixture harness version.
@@ -56,6 +61,8 @@ quenchant_shape::reason_enum! {
             ConsumerPair,
             /// No unique matching compiler-plugin source was declared.
             ConsumerLibrary,
+            /// `clippy_utils` names both a release tag and a commit.
+            ClippySource,
         }
     }
 }
@@ -77,6 +84,8 @@ quenchant_shape::reason_enum! {
     let keys: &[&str] = match name {
         Pin::Channel => &["toolchain", "channel"],
         Pin::ClippyTag => &["workspace", "dependencies", "clippy_utils", "tag"],
+        Pin::ClippyRev => &["workspace", "dependencies", "clippy_utils", "rev"],
+        Pin::ClippyVersion => &["package", "version"],
         Pin::Linting => &["workspace", "dependencies", "dylint_linting", "version"],
         Pin::Testing => &["workspace", "dependencies", "dylint_testing", "version"],
         Pin::Driver => &["tools", "cargo:cargo-dylint"],
@@ -98,6 +107,8 @@ fn pin(
     let keys: &[&str] = match name {
         Pin::Channel => &["toolchain", "channel"],
         Pin::ClippyTag => &["workspace", "dependencies", "clippy_utils", "tag"],
+        Pin::ClippyRev => &["workspace", "dependencies", "clippy_utils", "rev"],
+        Pin::ClippyVersion => &["package", "version"],
         Pin::Linting => &["workspace", "dependencies", "dylint_linting", "version"],
         Pin::Testing => &["workspace", "dependencies", "dylint_testing", "version"],
         Pin::Driver => &["tools", "cargo:cargo-dylint"],
@@ -153,11 +164,125 @@ fn stable_tag(tag: SourceText<'_>) -> Maybe<Passed, refusal::Refused>
     }
 }
 
-/// Fetch the selected rust-clippy release's own compiler declaration.
+/// Validate a full rust-clippy commit before it can enter a remote request or
+/// edit.
 ///
 /// # Specification
-/// - requires: the caller has validated the stable release tag.
-/// - ensures: returns the remote toolchain document for that exact tag.
+/// - ensures: accepts exactly 40 bytes, each an ASCII digit or a lowercase
+///   letter from `a` to `f`.
+/// - provides: `refusal::Refused::Invalid` retains an invalid commit.
+/// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 short, uppercase, and nonhexadecimal commits distinguish
+///   permissive length and alphabet guards.
+/// - witness: `repository::pins::tests::consumer_revision_boundaries`
+/// - witness: `repository::pins::tests::clippy_reference_boundaries`
+#[spec(ensures: |ref output| matches!(*output, Maybe::Present(_)) == (revision.0.len() == 40 && revision.0.bytes().all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))))]
+fn full_revision(revision: SourceText<'_>) -> Maybe<Passed, refusal::Refused>
+{
+    if revision.0.len() == 40
+        && revision
+            .0
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a' ..= b'f').contains(&byte))
+    {
+        Maybe::Present(Passed)
+    }
+    else {
+        Maybe::Absent(refusal::Refused::Invalid(revision.0.into()))
+    }
+}
+
+/// The rust-clippy source that `clippy_utils` and the compiler channel follow.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Reference<'text>
+{
+    /// Stable release tag, `rust-<version>`.
+    Tag(SourceText<'text>),
+    /// Full commit, for a nightly that no release tag names.
+    Rev(SourceText<'text>),
+}
+
+impl<'text> Reference<'text>
+{
+    /// The tag or the commit as remote reference text.
+    ///
+    /// # Specification
+    /// trivial.
+    const fn text(self) -> SourceText<'text>
+    {
+        match self {
+            Self::Tag(text) | Self::Rev(text) => text,
+        }
+    }
+
+    /// Refuse a malformed tag or commit before it can enter a remote request or
+    /// edit.
+    ///
+    /// # Specification
+    /// - ensures: a tag passes exactly when `stable_tag` passes it, and a
+    ///   commit exactly when `full_revision` passes it.
+    /// - panics: none.
+    /// - executable: none — the outcome is the selected validator's, which a
+    ///   predicate could only call again.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 a valid tag and a valid commit pass, and a malformed
+    ///   one of each is refused.
+    /// - witness: `repository::pins::tests::clippy_reference_boundaries`
+    fn valid(self) -> Maybe<Passed, refusal::Refused>
+    {
+        match self {
+            Self::Tag(tag) => stable_tag(tag),
+            Self::Rev(revision) => full_revision(revision),
+        }
+    }
+}
+
+/// Read the one rust-clippy source that `clippy_utils` names.
+///
+/// # Specification
+/// - ensures: returns the tag when only a tag is pinned, or the commit when
+///   only a commit is pinned, once its spelling passes.
+/// - provides: `Missing(ClippyTag)` when neither is pinned, `ClippySource` when
+///   both are, and `Invalid` for a malformed tag or commit.
+/// - panics: none.
+///
+/// # Adequacy
+/// - hypothesis: L3 tag-only, commit-only, both, neither, and malformed sources
+///   distinguish a reader that takes the wrong key or skips the spelling check.
+/// - witness: `repository::pins::tests::clippy_reference_boundaries`
+#[spec(ensures: |ref output| match (pin(manifest, Pin::ClippyTag), pin(manifest, Pin::ClippyRev)) {
+    (Maybe::Present(_), Maybe::Present(_)) => *output == Maybe::Absent(refusal::Refused::ClippySource),
+    (Maybe::Absent(_), Maybe::Absent(_)) => *output == Maybe::Absent(refusal::Refused::Missing(Pin::ClippyTag)),
+    (Maybe::Present(tag), Maybe::Absent(_)) => matches!(*output, Maybe::Present(Reference::Tag(found)) if found == tag) == matches!(stable_tag(tag), Maybe::Present(_)),
+    (Maybe::Absent(_), Maybe::Present(revision)) => matches!(*output, Maybe::Present(Reference::Rev(found)) if found == revision) == matches!(full_revision(revision), Maybe::Present(_)),
+})]
+fn clippy_reference(manifest: &toml_edit::DocumentMut) -> Maybe<Reference<'_>, refusal::Refused>
+{
+    let reference = match (pin(manifest, Pin::ClippyTag), pin(manifest, Pin::ClippyRev)) {
+        (Maybe::Present(_), Maybe::Present(_)) => {
+            return Maybe::Absent(refusal::Refused::ClippySource);
+        },
+        (Maybe::Present(tag), Maybe::Absent(_)) => Reference::Tag(tag),
+        (Maybe::Absent(_), Maybe::Present(revision)) => Reference::Rev(revision),
+        (Maybe::Absent(_), Maybe::Absent(_)) => {
+            return Maybe::Absent(refusal::Refused::Missing(Pin::ClippyTag));
+        },
+    };
+    match reference.valid() {
+        Maybe::Present(Passed) => Maybe::Present(reference),
+        Maybe::Absent(reason) => Maybe::Absent(reason),
+    }
+}
+
+/// Fetch one file of the selected rust-clippy source.
+///
+/// # Specification
+/// - requires: the caller has validated the tag or the commit.
+/// - ensures: returns the remote TOML document of `file` at that exact
+///   reference.
 /// - fails: transport, authentication, and TOML failures remain operational
 ///   errors.
 /// - panics: none.
@@ -167,15 +292,19 @@ fn stable_tag(tag: SourceText<'_>) -> Maybe<Passed, refusal::Refused>
 ///
 /// # Adequacy
 /// - hypothesis: the remote instrument remains outside the offline L3
-///   comparison witnesses; the live pin gate exercises the selected release
+///   comparison witnesses; the live pin gate exercises the selected reference's
 ///   query.
 /// - witness: `repository::pins::tests::pin_presence_and_drift`
-#[spec(requires: matches!(stable_tag(tag), Maybe::Present(_)))]
-fn upstream(tag: SourceText<'_>) -> Result<toml_edit::DocumentMut, GateError>
+#[spec(requires: matches!(reference.valid(), Maybe::Present(_)))]
+fn upstream(
+    reference: Reference<'_>,
+    file: SourceText<'_>,
+) -> Result<toml_edit::DocumentMut, GateError>
 {
     let endpoint = format!(
-        "repos/rust-lang/rust-clippy/contents/rust-toolchain.toml?ref={}",
-        tag.0
+        "repos/rust-lang/rust-clippy/contents/{}?ref={}",
+        file.0,
+        reference.text().0
     );
     let text = super::output(Command::new("gh").args([
         "api",
@@ -183,19 +312,18 @@ fn upstream(tag: SourceText<'_>) -> Result<toml_edit::DocumentMut, GateError>
         "--header",
         "Accept: application/vnd.github.raw+json",
     ]))?;
+    let label = format!("rust-clippy {}", file.0);
     text.parse().map_err(|error: toml_edit::TomlError| {
-        GateError::parse(
-            Path::new("rust-clippy toolchain"),
-            ErrorMessage(&error.to_string()),
-        )
+        GateError::parse(Path::new(&label), ErrorMessage(&error.to_string()))
     })
 }
 
 /// Compare the local toolchain and Dylint versions with the upstream compiler.
 ///
 /// # Specification
-/// - ensures: all required pins exist, the tag is stable, the channel matches
-///   upstream, and all four Dylint versions agree.
+/// - ensures: all required pins exist, the rust-clippy source is one stable tag
+///   or one full commit, the channel matches upstream, and all four Dylint
+///   versions agree.
 /// - provides: sealed missing, invalid, and drift reasons identify the failing
 ///   pin.
 /// - panics: none.
@@ -204,8 +332,8 @@ fn upstream(tag: SourceText<'_>) -> Result<toml_edit::DocumentMut, GateError>
 /// - hypothesis: L3 independently drifted pins and missing values distinguish
 ///   weakened comparisons and vacuous success.
 /// - witness: `repository::pins::tests::pin_presence_and_drift`
-#[spec(ensures: |ref output| matches!(*output, Maybe::Present(_)) == match (pin(manifest, Pin::ClippyTag), pin(toolchain, Pin::Channel), pin(remote, Pin::Channel), pin(manifest, Pin::Linting)) {
-    (Maybe::Present(tag), Maybe::Present(channel), Maybe::Present(expected), Maybe::Present(linting)) => matches!(stable_tag(tag), Maybe::Present(_)) && channel == expected && [(manifest, Pin::Testing), (tools, Pin::Driver), (tools, Pin::Linker)].iter().all(|&(document, name)| pin(document, name) == Maybe::Present(linting)),
+#[spec(ensures: |ref output| matches!(*output, Maybe::Present(_)) == match (clippy_reference(manifest), pin(toolchain, Pin::Channel), pin(remote, Pin::Channel), pin(manifest, Pin::Linting)) {
+    (Maybe::Present(_), Maybe::Present(channel), Maybe::Present(expected), Maybe::Present(linting)) => channel == expected && [(manifest, Pin::Testing), (tools, Pin::Driver), (tools, Pin::Linker)].iter().all(|&(document, name)| pin(document, name) == Maybe::Present(linting)),
     _ => false,
 })]
 fn compare(
@@ -215,11 +343,7 @@ fn compare(
     remote: &toml_edit::DocumentMut,
 ) -> Maybe<Passed, refusal::Refused>
 {
-    let Maybe::Present(tag) = pin(manifest, Pin::ClippyTag)
-    else {
-        return Maybe::Absent(refusal::Refused::Missing(Pin::ClippyTag));
-    };
-    if let Maybe::Absent(reason) = stable_tag(tag) {
+    if let Maybe::Absent(reason) = clippy_reference(manifest) {
         return Maybe::Absent(reason);
     }
     let Maybe::Present(channel) = pin(toolchain, Pin::Channel)
@@ -323,12 +447,8 @@ fn consumer(
         return Maybe::Absent(refusal::Refused::Missing(Pin::ConsumerBinary));
     };
     for revision in [library, binary.0] {
-        if revision.len() != 40
-            || !revision
-                .bytes()
-                .all(|byte| byte.is_ascii_digit() || (b'a' ..= b'f').contains(&byte))
-        {
-            return Maybe::Absent(refusal::Refused::Invalid(revision.into()));
+        if let Maybe::Absent(reason) = full_revision(SourceText(revision)) {
+            return Maybe::Absent(reason);
         }
     }
     if library != binary.0 {
@@ -357,8 +477,8 @@ fn input(
 /// Check compiler pins and the optional paired consumer revision boundary.
 ///
 /// # Specification
-/// - ensures: local pins agree with the exact upstream tag and optional
-///   consumer inputs agree with each other.
+/// - ensures: local pins agree with the exact upstream tag or commit and
+///   optional consumer inputs agree with each other.
 /// - provides: sealed pin refusals; `--upstream-toolchain` supplies an explicit
 ///   offline evidence document.
 /// - fails: input access, parsing, and upstream process failures return
@@ -395,16 +515,13 @@ pub fn check(
         SourceText("TOOLCHAIN_FILE"),
         Path::new("rust-toolchain.toml"),
     ))?;
-    let Maybe::Present(tag) = pin(&manifest, Pin::ClippyTag)
-    else {
-        return Ok(Maybe::Absent(refusal::Refused::Missing(Pin::ClippyTag)));
+    let reference = match clippy_reference(&manifest) {
+        Maybe::Present(reference) => reference,
+        Maybe::Absent(reason) => return Ok(Maybe::Absent(reason)),
     };
-    if let Maybe::Absent(reason) = stable_tag(tag) {
-        return Ok(Maybe::Absent(reason));
-    }
     let remote = match options.get("--upstream-toolchain") {
         Some(path) => super::document(&root.join(path))?,
-        None => upstream(tag)?,
+        None => upstream(reference, SourceText("rust-toolchain.toml"))?,
     };
     if let Maybe::Absent(reason) = compare(&manifest, &tools, &toolchain, &remote) {
         return Ok(Maybe::Absent(reason));
@@ -423,60 +540,73 @@ pub fn check(
     }
 }
 
-/// Replace only the selected compiler channel and the compiler-utilities tag,
-/// with the exact `clippy_utils` version requirement that tag publishes.
+/// Replace only the selected compiler channel and the rust-clippy source, with
+/// the exact `clippy_utils` version requirement that source publishes.
 ///
 /// # Specification
 /// - ensures: the replacements preserve unrelated TOML fields and comments.
+/// - ensures: the source's key, `tag` or `rev`, holds the reference, and the
+///   other key is gone.
 /// - ensures: a declared `clippy_utils` version requirement becomes
-///   `=0.1.<minor>` for the `rust-1.<minor>.<patch>` tag, the version every
-///   rust-clippy release tag publishes.
+///   `=<version>`, the version the source publishes.
 /// - ensures: refusal leaves both input documents unchanged.
-/// - provides: a missing pin or non-nightly upstream channel refuses the edit.
+/// - provides: a missing pin, an invalid reference or version, or a non-nightly
+///   upstream channel refuses the edit.
 /// - panics: none.
 ///
 /// # Adequacy
 /// - hypothesis: L3 unrelated tag fields and comments survive an exact pin
-///   update, the version requirement follows the tag's minor release; absent
-///   keys refuse before mutation.
+///   update; a tag moves to a commit, and the version requirement follows the
+///   source; absent keys refuse before mutation.
 /// - witness: `repository::pins::tests::bump_preserves_unrelated_configuration`
 #[spec(
     captures: [before_manifest = manifest.to_string(), before_toolchain = toolchain.to_string()],
     ensures: |ref output| match *output {
-        Maybe::Present(_) => pin(manifest, Pin::ClippyTag) == Maybe::Present(tag) && pin(toolchain, Pin::Channel) == Maybe::Present(channel),
+        Maybe::Present(_) => clippy_reference(manifest) == Maybe::Present(reference) && pin(toolchain, Pin::Channel) == Maybe::Present(channel),
         Maybe::Absent(_) => manifest.to_string() == before_manifest && toolchain.to_string() == before_toolchain,
     },
 )]
 fn replace(
     manifest: &mut toml_edit::DocumentMut,
     toolchain: &mut toml_edit::DocumentMut,
-    tag: SourceText<'_>,
+    reference: Reference<'_>,
     channel: SourceText<'_>,
+    version: SourceText<'_>,
 ) -> Maybe<Passed, refusal::Refused>
 {
-    if let Maybe::Absent(reason) = stable_tag(tag) {
+    if let Maybe::Absent(reason) = reference.valid() {
         return Maybe::Absent(reason);
     }
     if !channel.0.starts_with("nightly-") {
         return Maybe::Absent(refusal::Refused::Invalid(channel.0.into()));
     }
-    // A validated stable tag always has a minor release; the guard keeps the
-    // edit unwritten rather than assuming it.
-    let Some(minor) = tag
-        .0
-        .strip_prefix("rust-")
-        .and_then(|release| release.split('.').nth(1))
-    else {
-        return Maybe::Absent(refusal::Refused::Invalid(tag.0.into()));
+    if version.0.is_empty()
+        || !version
+            .0
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || byte == b'.')
+    {
+        return Maybe::Absent(refusal::Refused::Invalid(version.0.into()));
+    }
+    let (key, other) = match reference {
+        Reference::Tag(_) => ("tag", "rev"),
+        Reference::Rev(_) => ("rev", "tag"),
     };
-    let requirement = format!("=0.1.{minor}");
-    let tag_item = manifest
+    let source = manifest
         .get_mut("workspace")
         .and_then(|item| item.get_mut("dependencies"))
         .and_then(|item| item.get_mut("clippy_utils"))
-        .and_then(|item| item.get_mut("tag"))
-        .and_then(toml_edit::Item::as_value_mut);
-    let Some(tag_item) = tag_item
+        .and_then(toml_edit::Item::as_table_like_mut);
+    let Some(source) = source
+    else {
+        return Maybe::Absent(refusal::Refused::Missing(Pin::ClippyTag));
+    };
+    // The new pin keeps the decoration of the tag or commit it replaces.
+    let Some(decor) = source
+        .get(key)
+        .or_else(|| source.get(other))
+        .and_then(toml_edit::Item::as_value)
+        .map(|value| value.decor().clone())
     else {
         return Maybe::Absent(refusal::Refused::Missing(Pin::ClippyTag));
     };
@@ -488,20 +618,18 @@ fn replace(
     else {
         return Maybe::Absent(refusal::Refused::Missing(Pin::Channel));
     };
-    let mut replacement = toml_edit::Value::from(tag.0);
-    *replacement.decor_mut() = tag_item.decor().clone();
-    *tag_item = replacement;
     let mut replacement = toml_edit::Value::from(channel.0);
     *replacement.decor_mut() = channel_item.decor().clone();
     *channel_item = replacement;
-    let version_item = manifest
-        .get_mut("workspace")
-        .and_then(|item| item.get_mut("dependencies"))
-        .and_then(|item| item.get_mut("clippy_utils"))
-        .and_then(|item| item.get_mut("version"))
-        .and_then(toml_edit::Item::as_value_mut);
-    if let Some(version_item) = version_item {
-        let mut replacement = toml_edit::Value::from(requirement);
+    source.remove(other);
+    let mut replacement = toml_edit::Value::from(reference.text().0);
+    *replacement.decor_mut() = decor;
+    source.insert(key, toml_edit::Item::Value(replacement));
+    if let Some(version_item) = source
+        .get_mut("version")
+        .and_then(toml_edit::Item::as_value_mut)
+    {
+        let mut replacement = toml_edit::Value::from(format!("={}", version.0));
         *replacement.decor_mut() = version_item.decor().clone();
         *version_item = replacement;
     }
@@ -513,9 +641,9 @@ fn replace(
 ///
 /// # Specification
 /// - ensures: successful completion writes only the compiler channel, the
-///   `clippy_utils` tag and its declared version requirement.
-/// - provides: a sealed pin refusal before writing when the release or selected
-///   fields are invalid.
+///   rust-clippy source and the `clippy_utils` version requirement.
+/// - provides: a sealed pin refusal before writing when the reference, the
+///   upstream evidence or the selected fields are invalid.
 /// - fails: upstream, parsing, or write failures return `GateError`; a failed
 ///   second write restores the first file or reports both failures.
 /// - panics: none.
@@ -529,30 +657,35 @@ fn replace(
 ///   replacement and missing-key mutation; filesystem write failures remain an
 ///   operational boundary.
 /// - witness: `repository::pins::tests::bump_preserves_unrelated_configuration`
-#[spec(ensures: |ref output| match stable_tag(SourceText(&format!("rust-{}", version.0))) {
+#[spec(ensures: |ref output| match reference.valid() {
     Maybe::Present(_) => true,
     Maybe::Absent(ref reason) => matches!(output, &Ok(Maybe::Absent(ref actual)) if actual == reason),
 })]
 pub fn bump(
     root: &Path,
-    version: SourceText<'_>,
+    reference: Reference<'_>,
 ) -> Result<Maybe<Passed, refusal::Refused>, GateError>
 {
-    let tag = format!("rust-{}", version.0);
-    if let Maybe::Absent(reason) = stable_tag(SourceText(&tag)) {
+    if let Maybe::Absent(reason) = reference.valid() {
         return Ok(Maybe::Absent(reason));
     }
-    let remote = upstream(SourceText(&tag))?;
+    let remote = upstream(reference, SourceText("rust-toolchain.toml"))?;
     let Maybe::Present(channel) = pin(&remote, Pin::Channel)
     else {
         return Ok(Maybe::Absent(refusal::Refused::Missing(Pin::Channel)));
+    };
+    let utilities = upstream(reference, SourceText("clippy_utils/Cargo.toml"))?;
+    let Maybe::Present(version) = pin(&utilities, Pin::ClippyVersion)
+    else {
+        return Ok(Maybe::Absent(refusal::Refused::Missing(Pin::ClippyVersion)));
     };
     let manifest_path = root.join("Cargo.toml");
     let toolchain_path = root.join("rust-toolchain.toml");
     let original = super::read_text(&manifest_path)?;
     let mut manifest = super::document(&manifest_path)?;
     let mut toolchain = super::document(&toolchain_path)?;
-    if let Maybe::Absent(reason) = replace(&mut manifest, &mut toolchain, SourceText(&tag), channel)
+    if let Maybe::Absent(reason) =
+        replace(&mut manifest, &mut toolchain, reference, channel, version)
     {
         return Ok(Maybe::Absent(reason));
     }
@@ -687,6 +820,69 @@ channel = "nightly-2026-07-30"
     }
 
     #[test]
+    fn clippy_reference_boundaries()
+    {
+        let revision = "a".repeat(40);
+        let tools: toml_edit::DocumentMut = TOOLS.parse().unwrap();
+        let toolchain: toml_edit::DocumentMut = TOOLCHAIN.parse().unwrap();
+        let tagged: toml_edit::DocumentMut = MANIFEST.parse().unwrap();
+        assert_eq!(
+            clippy_reference(&tagged),
+            Maybe::Present(Reference::Tag(SourceText("rust-1.98.0")))
+        );
+        let committed: toml_edit::DocumentMut = MANIFEST
+            .replace("tag = \"rust-1.98.0\"", &format!("rev = \"{revision}\""))
+            .parse()
+            .unwrap();
+        assert_eq!(
+            clippy_reference(&committed),
+            Maybe::Present(Reference::Rev(SourceText(&revision)))
+        );
+        assert_eq!(
+            compare(&committed, &tools, &toolchain, &toolchain),
+            Maybe::Present(Passed)
+        );
+        let both: toml_edit::DocumentMut = MANIFEST
+            .replace(
+                "tag = \"rust-1.98.0\"",
+                &format!("tag = \"rust-1.98.0\", rev = \"{revision}\""),
+            )
+            .parse()
+            .unwrap();
+        assert_eq!(
+            clippy_reference(&both),
+            Maybe::Absent(refusal::Refused::ClippySource)
+        );
+        let neither: toml_edit::DocumentMut = MANIFEST
+            .replace(
+                "tag = \"rust-1.98.0\"",
+                "git = \"https://github.com/rust-lang/rust-clippy\"",
+            )
+            .parse()
+            .unwrap();
+        assert_eq!(
+            clippy_reference(&neither),
+            Maybe::Absent(refusal::Refused::Missing(Pin::ClippyTag))
+        );
+        for malformed in ["a".repeat(39), "A".repeat(40), "g".repeat(40)] {
+            let invalid: toml_edit::DocumentMut = MANIFEST
+                .replace("tag = \"rust-1.98.0\"", &format!("rev = \"{malformed}\""))
+                .parse()
+                .unwrap();
+            assert_eq!(
+                clippy_reference(&invalid),
+                Maybe::Absent(refusal::Refused::Invalid(malformed))
+            );
+        }
+        let untagged: toml_edit::DocumentMut =
+            MANIFEST.replace("rust-1.98.0", "1.98.0").parse().unwrap();
+        assert_eq!(
+            clippy_reference(&untagged),
+            Maybe::Absent(refusal::Refused::Invalid("1.98.0".into()))
+        );
+    }
+
+    #[test]
     fn consumer_revision_boundaries()
     {
         let revision = "a".repeat(40);
@@ -764,8 +960,9 @@ tag = "keep" # unrelated
             replace(
                 &mut manifest,
                 &mut toolchain,
-                SourceText("rust-1.99.0"),
-                SourceText("nightly-2026-08-01")
+                Reference::Tag(SourceText("rust-1.99.0")),
+                SourceText("nightly-2026-08-01"),
+                SourceText("0.1.99")
             ),
             Maybe::Present(Passed)
         );
@@ -794,8 +991,9 @@ tag = "keep" # unrelated
             replace(
                 &mut manifest,
                 &mut toml_edit::DocumentMut::new(),
-                SourceText("rust-1.99.0"),
-                SourceText("nightly-2026-08-01")
+                Reference::Tag(SourceText("rust-1.99.0")),
+                SourceText("nightly-2026-08-01"),
+                SourceText("0.1.99")
             ),
             Maybe::Absent(refusal::Refused::Missing(Pin::Channel))
         );
@@ -812,8 +1010,9 @@ version = "=0.1.98" # exact
             replace(
                 &mut versioned,
                 &mut TOOLCHAIN.parse().unwrap(),
-                SourceText("rust-1.99.0"),
-                SourceText("nightly-2026-08-01")
+                Reference::Tag(SourceText("rust-1.99.0")),
+                SourceText("nightly-2026-08-01"),
+                SourceText("0.1.99")
             ),
             Maybe::Present(Passed)
         );
@@ -829,6 +1028,38 @@ version = "=0.1.98" # exact
         assert!(
             versioned.to_string().contains("# exact"),
             "the requirement's comment must remain"
+        );
+        let revision = "b".repeat(40);
+        assert_eq!(
+            replace(
+                &mut versioned,
+                &mut TOOLCHAIN.parse().unwrap(),
+                Reference::Rev(SourceText(&revision)),
+                SourceText("nightly-2026-10-01"),
+                SourceText("0.1.101")
+            ),
+            Maybe::Present(Passed)
+        );
+        assert_eq!(
+            pin(&versioned, Pin::ClippyRev),
+            Maybe::Present(SourceText(&revision))
+        );
+        assert_eq!(
+            pin(&versioned, Pin::ClippyTag),
+            Maybe::Absent(refusal::Refused::Missing(Pin::ClippyTag))
+        );
+        let clippy_utils = versioned
+            .get("workspace")
+            .and_then(|item| item.get("dependencies"))
+            .and_then(|item| item.get("clippy_utils"))
+            .unwrap();
+        assert_eq!(
+            clippy_utils.get("version").unwrap().as_str(),
+            Some("=0.1.101")
+        );
+        assert!(
+            versioned.to_string().contains("# exact"),
+            "the requirement's comment must remain past a move to a commit"
         );
     }
 }
