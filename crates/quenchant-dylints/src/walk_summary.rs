@@ -25,8 +25,8 @@ use std::collections::HashSet;
 
 use anodized::spec;
 use quenchant_shape::shape::Maybe;
-use rustc_hir::Attribute;
-use rustc_hir::LangItem;
+use rustc_attr_ir::Attribute;
+use rustc_attr_ir::lang_items::LangItem;
 use rustc_hir::def::DefKind;
 use rustc_hir::def_id::DefId;
 use rustc_middle::mir::AggregateKind;

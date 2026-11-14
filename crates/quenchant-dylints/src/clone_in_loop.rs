@@ -37,8 +37,8 @@ use rustc_hir::Expr;
 use rustc_hir::ExprKind;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
-use rustc_session::declare_lint;
-use rustc_session::impl_lint_pass;
+use rustc_lint::declare_lint;
+use rustc_lint::impl_lint_pass;
 use rustc_span::sym;
 
 use crate::clause_cost::ClauseRegions;

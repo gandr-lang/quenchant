@@ -343,9 +343,9 @@ fn owned_field_types<'tcx>(
             else {
                 field.name.to_string()
             };
-            // The pinned compiler exposes this field type before normalization. `reach`
-            // normalizes every popped type, so classification still uses the normalized
-            // view.
+            // The pinned compiler exposes this field type before normalization.
+            // `reach` normalizes every popped type, so
+            // classification still uses the normalized view.
             fields.push((label, field.ty(cx.tcx, args).skip_norm_wip()));
         }
     }
@@ -393,9 +393,9 @@ fn owned_parameters(
         let count = cx.tcx.generics_of(def_id.to_def_id()).count();
         owned.insert(def_id.to_def_id(), vec![OwnedParameter(false); count]);
     }
-    // economy: each round revisits every local field. Remaining false flags bound
-    // the number of rounds; a dependency-driven worklist is the upgrade if repeated
-    // scans dominate a profile.
+    // economy: each round revisits every local field. Remaining false flags
+    // bound the number of rounds; a dependency-driven worklist is the
+    // upgrade if repeated scans dominate a profile.
     loop {
         let mut marks: Vec<(DefId, Vec<ParameterIndex>)> = Vec::with_capacity(nodes.len());
         {
@@ -572,9 +572,10 @@ impl<'tcx> OwnershipWalk<'_, 'tcx>
         if def_id.is_local() || self.allow_list.paths.is_empty() {
             return NonOwningAdt(false);
         }
-        // economy: a nonempty allow-list requires one rendered definition path per
-        // reached external ADT. Resolving the list to definition ids once per crate
-        // would remove that allocation if long lists become costly.
+        // economy: a nonempty allow-list requires one rendered definition path
+        // per reached external ADT. Resolving the list to definition
+        // ids once per crate would remove that allocation if long lists
+        // become costly.
         self.allow_list
             .admits(TypePath::from(self.cx.tcx.def_path_str(def_id).as_str()))
     }
@@ -746,8 +747,9 @@ mod tests
     #[test]
     fn a_container_of_cycle_members_is_not_in_the_cycle()
     {
-        // Vertex 0 holds a row in the 1–2 cycle but has no return edge. The arena
-        // remains outside the recursive component even though it reaches a cyclic row.
+        // Vertex 0 holds a row in the 1–2 cycle but has no return edge. The
+        // arena remains outside the recursive component even though it
+        // reaches a cyclic row.
         let adjacency = vec![vec![Vertex(1)], vec![Vertex(2)], vec![Vertex(1)]];
         let mut components = tarjan_components(&adjacency);
         for component in &mut components {

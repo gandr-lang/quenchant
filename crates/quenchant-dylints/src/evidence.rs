@@ -125,17 +125,17 @@ use rustc_lint::EarlyContext;
 use rustc_lint::EarlyLintPass;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
+use rustc_lint::impl_lint_pass;
 use rustc_middle::ty;
 use rustc_middle::ty::Instance;
 use rustc_middle::ty::InstanceKind;
 use rustc_middle::ty::TyCtxt;
 use rustc_session::Session;
-use rustc_session::config::CrateType;
-use rustc_session::impl_lint_pass;
 use rustc_span::BytePos;
 use rustc_span::FileName;
 use rustc_span::Span;
 use rustc_span::Symbol;
+use rustc_structures::CrateType;
 
 use crate::executable::clause_spans;
 use crate::walk_summary::INSTRUMENTATION_CRATE;
@@ -994,8 +994,8 @@ fn named_item(
         DefKind::Ctor(..) => cx.tcx.parent(def_id),
         DefKind::AssocFn => resolved_method(cx, def_id, hir_id),
         DefKind::Fn
-        | DefKind::Const { .. }
-        | DefKind::AssocConst { .. }
+        | DefKind::Const
+        | DefKind::AssocConst
         | DefKind::Static { .. }
         | DefKind::Struct
         | DefKind::Union
@@ -1262,8 +1262,8 @@ fn item_record(
     let kind = match tcx.def_kind(def_id) {
         DefKind::Fn => "fn",
         DefKind::AssocFn => "assoc-fn",
-        DefKind::Const { .. } => "const",
-        DefKind::AssocConst { .. } => "assoc-const",
+        DefKind::Const => "const",
+        DefKind::AssocConst => "assoc-const",
         DefKind::Static { .. } => "static",
         DefKind::Struct => "struct",
         DefKind::Union => "union",

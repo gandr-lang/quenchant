@@ -16,9 +16,9 @@ use rustc_hir::def_id::LocalDefId;
 use rustc_hir::intravisit::FnKind;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
+use rustc_lint::declare_lint;
+use rustc_lint::impl_lint_pass;
 use rustc_middle::ty;
-use rustc_session::declare_lint;
-use rustc_session::impl_lint_pass;
 use rustc_span::Span;
 use rustc_span::Symbol;
 use rustc_span::sym;
@@ -148,7 +148,7 @@ fn check_declaration<'tcx>(
         .tcx
         .lint_level_spec_at_node(OPTION_SIGNATURE, cx.tcx.local_def_id_to_hir_id(owner))
         .level()
-        == rustc_session::lint::Level::Allow
+        == rustc_lint::Level::Allow
     {
         return;
     }
@@ -228,7 +228,26 @@ pub fn exposure<'tcx>(
     // interns fresh regions each time, and identity on those would never
     // repeat.
     while let Some((actual, required)) = pending.pop() {
-        let actual = normalize_middle_ty(cx, actual);
+        // Normalization reveals an opaque type's hidden type, as a future's
+        // coroutine, and the signature states the opaque's bounds. So only an
+        // alias other than an opaque normalizes, one layer at a time: each
+        // child normalizes when the walk pops it.
+        #[expect(
+            clippy::wildcard_enum_match_arm,
+            reason = "`TyKind` is rustc's type kind, whose variants move with the pinned nightly; \
+                      only an alias normalizes"
+        )]
+        let actual = match *actual.kind() {
+            ty::Alias(
+                _,
+                ty::AliasTy {
+                    kind: ty::Opaque { .. },
+                    ..
+                },
+            ) => actual,
+            ty::Alias(..) => normalize_middle_ty(cx, actual),
+            _ => actual,
+        };
         let required_ty = match required {
             Required::Foreign(required) => Some(required),
             Required::Authored => None,
@@ -335,8 +354,9 @@ pub fn exposure<'tcx>(
                     if let Some(bound) = clause.as_trait_clause() {
                         let bound = bound.skip_binder().trait_ref;
                         let required = required_trait(cx, required, bound.def_id);
-                        // `args[0]` is `Self`: this opaque. Only the trait's own
-                        // parameters can carry absence.
+                        // `args[0]` is `Self`: this opaque. Only the trait's
+                        // own parameters can carry
+                        // absence.
                         push_arguments(&mut pending, &bound.args[1 ..], required);
                     }
                 }

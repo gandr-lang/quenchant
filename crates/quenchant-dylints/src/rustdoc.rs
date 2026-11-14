@@ -12,7 +12,7 @@
 
 use anodized::spec;
 use quenchant_shape::shape::Maybe;
-use rustc_hir::Attribute;
+use rustc_attr_ir::Attribute;
 use rustc_hir::def_id::LocalDefId;
 use rustc_lint::LateContext;
 

@@ -54,9 +54,9 @@ use rustc_hir::def_id::DefId;
 use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
+use rustc_lint::declare_lint;
+use rustc_lint::impl_lint_pass;
 use rustc_middle::ty::TyCtxt;
-use rustc_session::declare_lint;
-use rustc_session::impl_lint_pass;
 
 use crate::answer_totality::CONFIGURATION_TABLE;
 use crate::answer_totality::names_local_crate;
@@ -203,14 +203,18 @@ impl DishonestAnswer
             .flatten()
         {
             let text = entry.get("text").and_then(|value| value.as_str());
-            let crates: Vec<&str> = entry
+            // The entry's own list answers both questions, with no copy of it.
+            let mut crates = entry
                 .get("crates")
                 .and_then(|value| value.as_array())
-                .map(|crates| crates.iter().filter_map(|name| name.as_str()).collect())
-                .unwrap_or_default();
-            let read_here = crates.is_empty() || crates.contains(&krate.as_str());
+                .into_iter()
+                .flatten()
+                .filter_map(|name| name.as_str())
+                .peekable();
+            let listed = crates.peek().is_some();
+            let read_here = !listed || crates.any(|name| name == krate.as_str());
             match text {
-                Some(text) if !text.is_empty() && !crates.is_empty() => {
+                Some(text) if !text.is_empty() && listed => {
                     if read_here {
                         table.spellings.push(text.to_owned());
                     }

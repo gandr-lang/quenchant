@@ -215,7 +215,8 @@ mod tests
     #[test]
     fn nested_cycles_separate_by_reachability()
     {
-        // The 1–2 cycle reaches terminal vertex 3 without making 3 a cycle member.
+        // The 1–2 cycle reaches terminal vertex 3 without making 3 a cycle
+        // member.
         let adjacency = vec![
             vec![Vertex(1)],
             vec![Vertex(2)],
@@ -235,8 +236,9 @@ mod tests
         // Exploring 0's first successor completes component {1, 2}; the second
         // successor reaches that already-finished component.
         //
-        // Only active-stack edges may lower a lowlink. Admitting this cross edge would
-        // leave vertex 0 on the pending stack and omit it from the component result.
+        // Only active-stack edges may lower a lowlink. Admitting this cross
+        // edge would leave vertex 0 on the pending stack and omit it
+        // from the component result.
         let adjacency = vec![vec![Vertex(1), Vertex(2)], vec![Vertex(2)], vec![Vertex(1)]];
         assert_eq!(
             normalized(&adjacency),
@@ -250,8 +252,9 @@ mod tests
     {
         // Vertex 1 first reaches terminal 2, then reaches ancestor 0 through 3.
         //
-        // The later child must still propagate its lowlink into the resumed parent.
-        // Otherwise component {0, 1, 3} incorrectly splits into {0} and {1, 3}.
+        // The later child must still propagate its lowlink into the resumed
+        // parent. Otherwise component {0, 1, 3} incorrectly splits into
+        // {0} and {1, 3}.
         let adjacency = vec![
             vec![Vertex(1)],
             vec![Vertex(2), Vertex(3)],

@@ -17,7 +17,6 @@ members = [
 version = "0.0.0"
 edition = "2024"
 rust-version = "1.97"
-homepage = "https://github.com/gandr-lang/quenchant"
 repository = "https://github.com/gandr-lang/quenchant"
 # One license for every package. The exception covers the Dylint library's
 # compiler linking and GPL-2.0 compatibility, so no package carries a second.
@@ -60,16 +59,18 @@ default-features = false
 version = "4.6.7"
 features = ["derive"]
 
-# Clippy's internal lint-authoring utilities. The tag is the stable release the
-# pinned nightly matches: rust-clippy's rust-<stable> tag names that nightly in
-# its own rust-toolchain.toml, so the tag and the root toolchain file move
-# together under `mise run toolchain:bump <stable>`.
+# Clippy's internal lint-authoring utilities. The source is a rust-clippy
+# commit whose own rust-toolchain.toml names the pinned nightly. A stable
+# release's rust-<stable> tag or a full commit pins it, and
+# `mise run toolchain:bump` moves the source and the root toolchain file
+# together. This commit is the first rust-clippy merge whose nightly carries
+# Rust 1.100.0's custom allocators and never type.
 # consumers:
 # - quenchant-dylints
 [workspace.dependencies.clippy_utils]
 git = "https://github.com/rust-lang/rust-clippy"
-tag = "rust-1.99.0"
-version = "=0.1.99"
+rev = "281a3af2d08bc87fa8b9a7fd0829cfde47dd638a"
+version = "=0.1.101"
 
 # The real bridge macro verifies pre-expansion linting in a UI fixture.
 # consumers:

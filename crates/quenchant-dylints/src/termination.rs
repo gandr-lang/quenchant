@@ -57,7 +57,7 @@ quenchant_shape::reason_enum! {
     }
 }
 
-use rustc_hir::Attribute;
+use rustc_attr_ir::Attribute;
 use rustc_hir::def_id::LocalDefId;
 use rustc_lint::LateContext;
 

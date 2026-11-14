@@ -63,7 +63,8 @@ macro_rules! family_grid {
                 let rhs = Int::from(right);
                 assert_eq!($checked(lhs, rhs), expected);
                 if !zero_divisor {
-                    // These model calls intentionally inhabit modular and clamped domains.
+                    // These model calls intentionally inhabit modular and clamped
+                    // domains.
                     assert_eq!($wrapping(lhs, rhs), Int::from(left.$wrapping(right)));
                     assert_eq!(
                         $saturating(lhs, rhs),
@@ -76,8 +77,9 @@ macro_rules! family_grid {
                     assert_eq!($default(lhs, rhs), exact);
                     #[cfg(feature = "fast")]
                     {
-                        // SAFETY: the primitive specification, not the implementation under
-                        // test, just proved this exact operation is defined and representable.
+                        // SAFETY: the primitive specification, not the
+                        // implementation under test, just
+                        // proved this exact operation is defined and representable.
                         unsafe {
                             assert_eq!($default(lhs, rhs), exact);
                         }
@@ -233,7 +235,8 @@ macro_rules! signed_specification {
                 checked_rem(min, minus_one),
                 Err(ArithmeticError::Overflow(Operation::Rem))
             );
-            // The two domains intentionally give different answers at quotient overflow.
+            // The two domains intentionally give different answers at quotient
+            // overflow.
             assert_eq!(wrapping_div(min, minus_one), min);
             assert_eq!(wrapping_rem(min, minus_one), zero);
             assert_eq!(saturating_div(min, minus_one), Int::<$representation>::MAX);

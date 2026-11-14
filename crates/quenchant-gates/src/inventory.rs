@@ -163,21 +163,20 @@ pub fn discover(manifest_path: &Path) -> Result<Workspace, GateError>
         let mut source_roots: Vec<PathBuf> = package
             .get("targets")
             .and_then(serde_json::Value::as_array)
-            .map(|targets| {
+            .map_or_default(|targets| {
                 targets
                     .iter()
                     .filter(|target| target_holds_package_source(target).0)
                     .filter_map(|target| target.get("src_path").and_then(serde_json::Value::as_str))
                     .filter_map(|source| Path::new(source).parent().map(Path::to_path_buf))
                     .collect()
-            })
-            .unwrap_or_default();
+            });
         source_roots.sort();
         source_roots.dedup();
         let integration_targets: BTreeSet<String> = package
             .get("targets")
             .and_then(serde_json::Value::as_array)
-            .map(|targets| {
+            .map_or_default(|targets| {
                 targets
                     .iter()
                     .filter(|target| {
@@ -191,8 +190,7 @@ pub fn discover(manifest_path: &Path) -> Result<Workspace, GateError>
                     .filter_map(|target| target.get("name").and_then(serde_json::Value::as_str))
                     .map(str::to_owned)
                     .collect()
-            })
-            .unwrap_or_default();
+            });
         members.push(Member {
             name: name.to_owned(),
             directory,

@@ -35,15 +35,15 @@ use clippy_utils::diagnostics::span_lint_hir_and_then;
 use quenchant_shape::shape::Maybe;
 use rustc_ast::AttrStyle;
 use rustc_ast::attr::AttributeExt as _;
-use rustc_hir::Attribute;
+use rustc_attr_ir::Attribute;
 use rustc_hir::CRATE_HIR_ID;
 use rustc_hir::HirId;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
 use rustc_lint::Level;
+use rustc_lint::declare_lint;
+use rustc_lint::impl_lint_pass;
 use rustc_middle::ty::TyCtxt;
-use rustc_session::declare_lint;
-use rustc_session::impl_lint_pass;
 use rustc_span::Span;
 use rustc_span::Symbol;
 

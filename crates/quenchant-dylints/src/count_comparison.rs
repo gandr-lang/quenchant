@@ -33,8 +33,8 @@ use rustc_hir::ExprKind;
 use rustc_hir::Node;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
-use rustc_session::declare_lint;
-use rustc_session::impl_lint_pass;
+use rustc_lint::declare_lint;
+use rustc_lint::impl_lint_pass;
 
 use crate::clause_cost::ClauseRegions;
 use crate::cost_shape::Inspection;

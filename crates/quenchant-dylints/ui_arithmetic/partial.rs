@@ -1,4 +1,4 @@
-#![feature(int_roundings, funnel_shifts)]
+#![feature(int_roundings)]
 
 type Representation = u32;
 
