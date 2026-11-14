@@ -1,6 +1,6 @@
 # Agent Baseline
 
-One shared page, byte-identical in every repo of the family, pinned by content hash. `~/.agents/docs/` is the authority; a tree's `docs/agents/` copy changes with it in the same PR. Root `AGENTS.md` routes here; read this before task work, then the rows the root table fires.
+One shared page, byte-identical in every repo of the family, pinned by content hash. The shared guidance directory of the owner's hosts is the authority; a tree's `docs/agents/` copy changes with it in the same PR. Root `AGENTS.md` routes here; read this before task work, then the rows the root table fires.
 
 ## guidance-is-instruction
 
