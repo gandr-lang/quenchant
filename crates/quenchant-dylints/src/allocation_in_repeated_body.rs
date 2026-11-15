@@ -10,98 +10,96 @@
 //! An allocation is a growable buffer made by `Vec::new`, `VecDeque::new`,
 //! `String::new` or an empty `vec![]` and then grown; `with_capacity` and
 //! `vec![..]` with elements; `Box::new` of a value with a size; `format!` and
-//! `to_string()`; and `collect()` into an owned collection. A `clone()` of an
-//! owned value is not one of them.
+//! `to_string()`; and `collect()` into an owned collection. In a crate that
+//! `repeated_call_crates` names, a call allocates too when its callee answers
+//! for its own allocations and returns a heap value that its body allocates
+//! ([`Returns::fresh`]): a function of this crate, or of a crate that
+//! `allocation_default_crates` names. So does each item of a `for` loop whose
+//! iterator's `next` is such a function. The caller cannot change how a
+//! different crate makes its result, so a call into one counts only by its
+//! standard forms above. A `clone()` of an owned value is not one of them:
+//! [`clone_in_loop`] prices it.
 //!
 //! # Boundaries
 //!
 //! The repetition is [`crate::cost_shape`]'s: a loop body or a per-element
 //! closure whose trip count is open, and that the allocation does not leave
-//! at once. An allocation whose value leaves the pass — pushed into an outer
-//! collection, returned, stored, handed on by value or captured by a moving
-//! closure — is the structure's growth, not a throwaway, and is accepted. So
-//! is an allocation on a path that diverges, such as a panic's message, and a
-//! `collect()` that [`collect_read_once`] already refuses.
+//! at once, else the body of a function that a loop, a role or a repeated
+//! caller repeats ([`crate::repetition`]). An allocation whose value leaves
+//! the pass — pushed into an outer collection, returned, stored, handed on by
+//! value or captured by a moving closure — is the structure's growth, not a
+//! throwaway, and is accepted. So is an allocation on a path that diverges,
+//! such as a panic's message, and a `collect()` that [`collect_read_once`]
+//! already refuses.
 //!
-//! In a crate that `repeated_call_crates` names, the lint also follows each
-//! call of a repeated body into its callee, over MIR, with the summaries of
-//! [`crate::allocation_free_region`]. A call is refused when some path of its
-//! callee reaches the allocator or an allocating signature, as a marked region
-//! reads it, and the pass drops what it allocates. A callee that the build
-//! cannot name, as a trait object or one that names a parameter of its caller,
-//! is not refused. Nor is a call that borrows an argument mutably and returns
-//! nothing that owns heap memory: that is the growth of the borrowed place, as
-//! with `push`. The refusal is `clone_in_loop`'s when the call path passes
-//! through `Clone::clone` or `ToOwned::to_owned`. The other crates follow no
-//! call, and pay nothing for it.
+//! The lint follows a call only through the machinery: the repetition table
+//! and the summaries of [`crate::allocation_free_region`]. It reads no callee
+//! of its own. The machinery follows calls only in a crate that
+//! `repeated_call_crates` names, and the lint reports each entry of that key
+//! that names no crate at the crate's root.
 //!
 //! Clippy's `format_collect` and `format_push_string` take a `format!`
 //! collected or pushed onto a `String`; no Clippy lint prices an allocation
 //! per pass.
 //!
 //! [`collect_read_once`]: crate::collect_read_once::COLLECT_READ_ONCE
+//! [`clone_in_loop`]: crate::clone_in_loop::CLONE_IN_LOOP
 
 use anodized::spec;
 use clippy_utils::diagnostics::span_lint_and_then;
+use clippy_utils::higher::ForLoop;
 use clippy_utils::macros::root_macro_call_first_node;
 use quenchant_shape::shape::Maybe;
 use rustc_hir::Expr;
 use rustc_hir::ExprKind;
+use rustc_hir::MatchSource;
 use rustc_hir::Node;
 use rustc_hir::PatKind;
+use rustc_hir::StmtKind;
 use rustc_hir::def::Res;
 use rustc_hir::def_id::DefId;
-use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
 use rustc_lint::declare_lint;
 use rustc_lint::impl_lint_pass;
 use rustc_middle::ty;
-use rustc_middle::ty::Ty;
-use rustc_middle::ty::TypeVisitableExt as _;
+use rustc_middle::ty::GenericArgsRef;
+use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::TypingEnv;
 use rustc_middle::ty::layout::LayoutOf as _;
-use rustc_span::DesugaringKind;
 use rustc_span::Span;
 use rustc_span::sym;
 
-use crate::allocation_free_region::Cause;
-use crate::allocation_free_region::Reach;
-use crate::allocation_free_region::Summaries;
-use crate::allocation_free_region::Witness;
-use crate::allocation_free_region::allocation_path;
-use crate::allocation_free_region::callee_reach;
+use crate::allocation_free_region::Fresh;
+use crate::allocation_free_region::Returns;
+use crate::allocation_free_region::default_crates;
+use crate::allocation_free_region::fresh_reading;
 use crate::answer_totality::report_defects;
-use crate::clause_cost::ClauseRegions;
 use crate::clause_cost::Enclosure;
-use crate::clone_in_loop::CLONE_IN_LOOP;
-use crate::clone_in_loop::clone_reading;
-use crate::clone_in_loop::copy;
-use crate::clone_in_loop::copying_method;
 use crate::collect_read_once::read_once;
 use crate::cost_shape::Divergence;
 use crate::cost_shape::Escape;
+use crate::cost_shape::Machinery;
 use crate::cost_shape::Method;
 use crate::cost_shape::Mutation;
 use crate::cost_shape::Owner;
 use crate::cost_shape::Ownership;
+use crate::cost_shape::Repetition;
+use crate::cost_shape::binding_escape;
 use crate::cost_shape::divergence;
 use crate::cost_shape::heap_ownership;
 use crate::cost_shape::pass_escape;
 use crate::cost_shape::pass_mutation;
 use crate::cost_shape::repetition;
 use crate::cost_shape::std_method;
-use crate::crate_list;
 use crate::crate_list::CratePattern;
-use crate::crate_list::ListKey;
-use crate::semantic::CrateName;
 use crate::semantic::FollowsCalls;
 use crate::walk_summary::standard_name;
 
 declare_lint! {
     /// ### What it does
     ///
-    /// Refuses an allocation inside a `loop`, `while` or `for` body, or a closure an iterator or a standard container calls once per element, whose value is dropped before the next pass: a `Vec`, `VecDeque` or `String` made by `new` or an empty `vec![]` and then grown, or made by `with_capacity` or `vec![..]` with elements; `Box::new` of a value with a size; `format!`; `to_string()`; `collect()` into an owned collection.
+    /// Refuses an allocation inside a `loop`, `while` or `for` body, a closure an iterator or a standard container calls once per element, or a function that a loop, an `Iterator::next` role or a repeated caller repeats, whose value is dropped before the next pass: a `Vec`, `VecDeque` or `String` made by `new` or an empty `vec![]` and then grown, or made by `with_capacity` or `vec![..]` with elements; `Box::new` of a value with a size; `format!`; `to_string()`; `collect()` into an owned collection; a call of a function that returns a heap value its body allocates; the item of a `for` loop that such an iterator's `next` returns. A function that its caller repeats, a call and a loop's item count only in a crate that `repeated_call_crates` names.
     ///
     /// ### Why is this bad?
     ///
@@ -152,6 +150,9 @@ quenchant_shape::reason_enum! {
             NeverGrown,
             /// The allocation does not repeat; the reason is the repetition's.
             Unrepeated(crate::cost_shape::repetition_reading::Unrepeated),
+            /// The call makes no fresh heap value; the reason is the
+            /// summaries'.
+            Unmade(crate::allocation_free_region::fresh_reading::Unmade),
             /// The allocation sits on a path that diverges.
             Diverges,
             /// The value leaves the pass.
@@ -172,68 +173,119 @@ enum Making
     Allocates,
 }
 
-/// A refused allocation: where it is and the loop that repeats it.
+/// Where a refused allocation stands.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Site
+{
+    /// An expression of the pass makes it.
+    Expression,
+    /// The iterator of a `for` loop makes each item.
+    Item,
+}
+
+/// What makes a refused allocation.
+#[derive(Clone, Copy, Debug)]
+pub enum Maker
+{
+    /// A standard form that this lint prices by name.
+    Priced,
+    /// A callee that allocates the value it returns.
+    Called(Fresh),
+}
+
+/// A refused allocation: where it is and what repeats it.
 #[derive(Clone, Copy, Debug)]
 pub struct Allocation<'tcx>
 {
-    /// The allocating expression, or its macro call.
+    /// The allocating expression, its macro call, or a `for` loop's pattern.
     pub at: Span,
-    /// The repetition that makes it again on every pass.
-    pub scope: &'tcx Expr<'tcx>,
+    /// Whether an expression or a loop's iterator makes it.
+    pub site: Site,
+    /// What makes it again on every pass.
+    pub repetition: Repetition<'tcx>,
+    /// What makes the value.
+    pub maker: Maker,
 }
 
-/// The key of the crates whose loops the lint follows into their callees.
-const CALLS_KEY: ListKey = ListKey("repeated_call_crates");
+/// The summaries a pass follows a call by, with the crates whose functions
+/// answer for their own allocations.
+pub struct Following<'tcx>
+{
+    /// The reach and return-place readings of each body read, by instance.
+    returns: Returns<'tcx>,
+    /// The patterns of `allocation_default_crates`.
+    crates: Vec<CratePattern>,
+    /// Whether `repeated_call_crates` names the crate under the lint.
+    follows: FollowsCalls,
+}
+
+impl<'tcx> Following<'tcx>
+{
+    /// The allocation a call of `callee` makes for the value it returns.
+    ///
+    /// # Specification
+    /// - ensures: `Absent(Unfollowed)` in a crate that `repeated_call_crates`
+    ///   does not name; [`Returns::fresh`] under the crates that answer
+    ///   otherwise.
+    /// - panics: none.
+    /// - executable: none — the outcome is the readings, which a predicate
+    ///   could only compute again.
+    ///
+    /// # Adequacy
+    /// - hypothesis: L3 — as [`Returns::fresh`]; the unfollowed fixture's crate
+    ///   follows no call.
+    /// - witness: `tests::ui_repeated_call`
+    fn fresh(
+        &mut self,
+        tcx: TyCtxt<'tcx>,
+        typing_env: TypingEnv<'tcx>,
+        callee: DefId,
+        args: GenericArgsRef<'tcx>,
+    ) -> Maybe<Fresh, fresh_reading::Unmade>
+    {
+        if !self.follows.0 {
+            return Maybe::Absent(fresh_reading::Unmade::Unfollowed);
+        }
+        self.returns
+            .fresh(tcx, typing_env, &self.crates, callee, args)
+    }
+}
 
 /// Repeated-allocation policy; specification clauses are left to
 /// `spec_clause_traversal`.
 pub struct AllocationInRepeatedBody<'tcx>
 {
-    /// The authored `spec` attribute ranges, whose clauses are not inspected.
-    regions: ClauseRegions,
-    /// The crates whose loops the lint follows into their callees.
-    crates: Vec<CratePattern>,
-    /// Each entry of the configuration the lint cannot read.
-    defects: Vec<String>,
-    /// Whether the crate under lint is one of `crates`.
-    follows: FollowsCalls,
-    /// The reach of each callee read so far, over MIR, by instance.
-    summaries: Summaries<'tcx>,
+    /// The machinery every cost-shape pass takes.
+    machinery: Machinery,
+    /// What the pass follows a call by.
+    following: Following<'tcx>,
 }
 
 impl AllocationInRepeatedBody<'_>
 {
-    /// The pass reads the ranges the pre-expansion clause collector records,
-    /// and the crates whose loops it follows into their callees.
+    /// The pass over the shared machinery, with summaries of its own and the
+    /// crates of the default's configuration.
     ///
     /// # Specification
-    /// - requires: `dylint_linting::init_config` has already run, which
-    ///   [`crate::register_lints`] guarantees by calling it first.
-    /// - ensures: each entry of `repeated_call_crates` that names a crate, or
-    ///   the start of one followed by `*`, becomes a pattern
-    ///   ([`crate_list::read`]); a value that is no list, and each other entry,
-    ///   becomes a defect. With no configuration or no key, no crate is
-    ///   followed.
+    /// - requires: as [`default_crates`].
+    /// - ensures: empty summaries and the configured crates; no call is
+    ///   followed before [`LateLintPass::check_crate`] reads the crate's name.
     /// - panics: none.
-    /// - executable: none — the outcome is the configuration as read, which a
-    ///   predicate could only read again.
+    /// - executable: none — the configuration read outcome is not retained.
     ///
     /// # Adequacy
-    /// - hypothesis: L3 — the call fixture names its crate; the refused
-    ///   configuration names a number, an empty entry and `*`, each reported.
-    /// - witness: `tests::ui_repeated_call`
-    /// - witness: `tests::ui_repeated_call_refused`
+    /// - hypothesis: L3 — the cost-shape fixtures run the pass so built.
+    /// - witness: `tests::ui_cost_shape`
     #[must_use]
-    pub fn new(regions: ClauseRegions) -> Self
+    pub fn configured(machinery: Machinery) -> Self
     {
-        let mut defects = Vec::new();
-        let crates = crate_list::read(CALLS_KEY, &mut defects);
         Self {
-            regions,
-            crates,
-            defects,
-            follows: FollowsCalls(false),
-            summaries: Summaries::default(),
+            machinery,
+            following: Following {
+                returns: Returns::default(),
+                crates: default_crates(),
+                follows: FollowsCalls(false),
+            },
         }
     }
 }
@@ -242,44 +294,41 @@ impl_lint_pass!(AllocationInRepeatedBody<'_> => [ALLOCATION_IN_REPEATED_BODY]);
 
 impl<'tcx> LateLintPass<'tcx> for AllocationInRepeatedBody<'tcx>
 {
-    /// Decide whether the crate's loops are followed into their callees, and
-    /// report each defect of the configuration.
+    /// Decide whether the pass follows the crate's calls, and report each
+    /// defect of `repeated_call_crates`.
     ///
     /// # Specification
-    /// - ensures: the crate's loops are followed exactly when one of the
-    ///   configured patterns takes its name; each defect is reported at the
-    ///   crate root.
+    /// - ensures: the pass follows calls exactly when the machinery does
+    ///   ([`Machinery::follows`]); each defect is reported at the crate root.
     /// - panics: none.
     /// - executable: none — rustc owns diagnostic emission; no readback exists.
     ///
     /// # Adequacy
-    /// - hypothesis: L3 — the call fixture names its crate, and the plain
-    ///   fixture names none and follows no call.
+    /// - hypothesis: L3 — the call fixture names its crates, the unfollowed
+    ///   fixture follows no call, and the refused configuration reports each
+    ///   defect.
     /// - witness: `tests::ui_repeated_call`
+    /// - witness: `tests::ui_repeated_call_refused`
     fn check_crate(
         &mut self,
         cx: &LateContext<'tcx>,
     )
     {
-        let name = cx.tcx.crate_name(LOCAL_CRATE);
-        self.follows = FollowsCalls(
-            self.crates
-                .iter()
-                .any(|pattern| pattern.matches(CrateName(name.as_str())).0),
+        self.following.follows = self.machinery.follows(cx.tcx);
+        report_defects(
+            cx,
+            ALLOCATION_IN_REPEATED_BODY,
+            self.machinery.repetitions.followed().defects(),
         );
-        report_defects(cx, ALLOCATION_IN_REPEATED_BODY, &self.defects);
     }
 
-    /// Report each allocation a repeated body drops before its next pass, made
-    /// in the body or, in a crate whose loops are followed, in a callee of it.
+    /// Report each allocation a repeated body drops before its next pass.
     ///
     /// # Specification
-    /// - ensures: reports every expression [`allocation`] answers `Present`
-    ///   for, at the expression or its macro call, with a note at the loop that
-    ///   repeats it; and, in a crate whose loops are followed, every call that
-    ///   [`allocation`] does not price and [`allocating_call`] answers
-    ///   `Present` for, with notes at the loop and at the allocation that the
-    ///   callee reaches.
+    /// - ensures: reports every expression that [`allocation`] or
+    ///   [`item_allocation`] answers `Present` for, at the expression, its
+    ///   macro call or the loop's pattern, with the note of what repeats it
+    ///   and, for a call, a note at the callee's call that allocates.
     /// - ensures: an expression whose span, or whose macro call's span, lies
     ///   inside a `spec` attribute is not inspected.
     /// - panics: none.
@@ -288,290 +337,74 @@ impl<'tcx> LateLintPass<'tcx> for AllocationInRepeatedBody<'tcx>
     ///
     /// # Adequacy
     /// - hypothesis: L3 — the fixtures refuse each allocating form in each
-    ///   repetition and each call whose callee allocates a value the pass
-    ///   drops, and accept each exception beside them.
+    ///   repetition and accept each exception beside it.
     /// - witness: `tests::ui_cost_shape`
-    /// - witness: `tests::ui_repeated_call`
     fn check_expr(
         &mut self,
         cx: &LateContext<'tcx>,
         expr: &'tcx Expr<'tcx>,
     )
     {
-        let found = match allocation(cx, expr) {
+        let found = match allocation(cx, &self.machinery, &mut self.following, expr) {
             Maybe::Present(found) => found,
-            Maybe::Absent(allocation_reading::Unrefused::NotAnAllocation) => {
-                if self.follows.0
-                    && let Maybe::Present(called) = allocating_call(cx, expr, &mut self.summaries)
-                    && self.regions.encloses(expr.span) != Enclosure::Inside
-                {
-                    report_call(cx, expr, &called);
-                }
-                return;
+            Maybe::Absent(_) => match item_allocation(cx, &mut self.following, expr) {
+                Maybe::Present(found) => found,
+                Maybe::Absent(_) => return,
             },
-            Maybe::Absent(_) => return,
         };
-        if self.regions.encloses(found.at) == Enclosure::Inside {
+        if self.machinery.regions.encloses(found.at) == Enclosure::Inside {
             return;
         }
+        let message = match found.site {
+            Site::Expression => {
+                "this allocates on every pass of a loop, and the value is dropped before the next \
+                 pass"
+            },
+            Site::Item => {
+                "each pass of this loop takes an item that its iterator allocates, and the pass \
+                 drops it before the next pass"
+            },
+        };
         span_lint_and_then(
             cx,
             ALLOCATION_IN_REPEATED_BODY,
             found.at,
-            "this allocates on every pass of a loop, and the value is dropped before the next pass",
+            message,
             |diagnostic| {
-                diagnostic.span_note(found.scope.span, "the loop that repeats it");
+                found.repetition.note(cx.tcx, diagnostic);
+                if let Maker::Called(fresh) = found.maker {
+                    diagnostic.span_note(
+                        fresh.at,
+                        format!(
+                            "`{}` allocates the value it returns here",
+                            cx.tcx.def_path_str(fresh.item)
+                        ),
+                    );
+                }
                 diagnostic.help(
-                    "make the buffer once before the loop and `clear()` it each pass, write into \
-                     one reused buffer, or borrow what the pass reads",
-                );
+                "make the buffer once before the loop and `clear()` it each pass, write into one \
+                 reused buffer, or borrow what the pass reads",
+            );
             },
         );
     }
 }
 
-quenchant_shape::reason_enum! {
-    /// A call in a repeated body can allocate nothing that the pass drops.
-    pub mod call_reading {
-        /// Why the call is not refused.
-        #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-        pub enum Unrefused {
-            /// The expression is no call, or a macro's expansion made it.
-            NotACall,
-            /// `clone_in_loop` prices the call.
-            Copy,
-            /// The call does not repeat; the reason is the repetition's.
-            Unrepeated(crate::cost_shape::repetition_reading::Unrepeated),
-            /// The callee reaches no allocation.
-            Free,
-            /// The callee can reach an implementation that the build cannot
-            /// name: a trait object, a function pointer or a type parameter.
-            Unknown,
-            /// The call sits on a path that diverges.
-            Diverges,
-            /// The call's value owns heap memory and leaves the pass.
-            Escapes,
-            /// The call borrows a place mutably and hands back no heap memory,
-            /// so its allocation is the growth of that place.
-            Grows,
-        }
-    }
-}
-
-/// A refused call: the loop that repeats it, the allocation its callee
-/// reaches, and the functions the allocation passes through.
-#[derive(Clone, Debug)]
-pub struct Called<'tcx>
+/// What an expression may allocate, before the repetition is read.
+#[derive(Clone, Copy, Debug)]
+enum Candidate
 {
-    /// The repetition that makes the call again on every pass.
-    pub scope: &'tcx Expr<'tcx>,
-    /// The first allocation that the callee reaches.
-    pub witness: Witness,
-    /// The functions from the callee down to the body that allocates
-    /// ([`allocation_path`]).
-    pub path: Vec<DefId>,
-}
-
-/// Decide whether a call in a repeated body allocates, in its callee, a value
-/// that the pass drops.
-///
-/// # Specification
-/// - ensures: `Present` when `expr` is a call or a method call that no macro
-///   expands and that `clone_in_loop` does not price, inside an open repetition
-///   ([`repetition`]), whose callee reaches an allocation over MIR
-///   ([`callee_reach`]) through calls the build can name, on a path that does
-///   not diverge ([`divergence`]); and either its value owns heap memory and
-///   does not leave the pass ([`pass_escape`]), or it borrows no argument
-///   mutably.
-/// - ensures: `Absent` with the first reason that holds otherwise, in the order
-///   the body tests them.
-/// - panics: none.
-/// - executable: none — the outcome is the compiler's resolution, the callee's
-///   MIR and the use walk of the enclosing body, which a predicate could only
-///   repeat.
-///
-/// # Adequacy
-/// - hypothesis: L3 — the fixtures refuse a call whose callee returns a fresh
-///   vector the pass drops, one whose callee makes and drops a buffer, and one
-///   two calls deep; and accept a push into an outer vector, a callee whose
-///   value is pushed outward, a free callee and a call through `dyn`.
-/// - witness: `tests::ui_repeated_call`
-pub fn allocating_call<'tcx>(
-    cx: &LateContext<'tcx>,
-    expr: &'tcx Expr<'tcx>,
-    summaries: &mut Summaries<'tcx>,
-) -> Maybe<Called<'tcx>, call_reading::Unrefused>
-{
-    if expr.span.from_expansion() && expr.span.desugaring_kind() != Some(DesugaringKind::ForLoop) {
-        return Maybe::Absent(call_reading::Unrefused::NotACall);
-    }
-    let typeck = cx.typeck_results();
-    let (callee, receiver, arguments) = if let ExprKind::Call(function, arguments) = expr.kind {
-        (typeck.expr_ty(function), None, arguments)
-    }
-    else if let ExprKind::MethodCall(_, receiver, arguments, _) = expr.kind
-        && let Some(method) = typeck.type_dependent_def_id(expr.hir_id)
-    {
-        (
-            Ty::new_fn_def(
-                cx.tcx,
-                method,
-                ty::Binder::dummy(typeck.node_args(expr.hir_id)),
-            ),
-            Some(receiver),
-            arguments,
-        )
-    }
-    else {
-        return Maybe::Absent(call_reading::Unrefused::NotACall);
-    };
-    if !matches!(
-        copy(cx, expr),
-        Maybe::Absent(clone_reading::Unrefused::NotACopy)
-    ) {
-        return Maybe::Absent(call_reading::Unrefused::Copy);
-    }
-    // A callee instantiated with the caller's own parameters names no body
-    // that the build can read, as a type parameter's method names none.
-    if callee.has_param() {
-        return Maybe::Absent(call_reading::Unrefused::Unknown);
-    }
-    let scope = match repetition(cx, expr) {
-        Maybe::Present(scope) => scope,
-        Maybe::Absent(reason) => {
-            return Maybe::Absent(call_reading::Unrefused::Unrepeated(reason));
-        },
-    };
-    // The callee names no parameter of the caller, so its body reads with no
-    // caller bound, after analysis: a specialization resolves and an opaque
-    // type shows its hidden type.
-    let owner = cx.tcx.hir_enclosing_body_owner(expr.hir_id);
-    let Reach::Allocates(witness) = callee_reach(
-        cx.tcx,
-        TypingEnv::fully_monomorphized(),
-        summaries,
-        callee,
-        expr.span,
-        owner.to_def_id(),
-    )
-    else {
-        return Maybe::Absent(call_reading::Unrefused::Free);
-    };
-    if matches!(witness.cause, Cause::Dynamic | Cause::Parameter) {
-        return Maybe::Absent(call_reading::Unrefused::Unknown);
-    }
-    if divergence(cx, expr, scope) == Divergence::Diverges {
-        return Maybe::Absent(call_reading::Unrefused::Diverges);
-    }
-    if heap_ownership(cx.tcx, cx.typing_env(), typeck.expr_ty(expr)) == Ownership::Owning {
-        if pass_escape(cx, expr, scope) == Escape::Escapes {
-            return Maybe::Absent(call_reading::Unrefused::Escapes);
-        }
-    }
-    else if receiver.into_iter().chain(arguments).any(|argument| {
-        matches!(
-            typeck.expr_ty_adjusted(argument).kind(),
-            ty::Ref(_, _, ty::Mutability::Mut)
-        )
-    }) {
-        return Maybe::Absent(call_reading::Unrefused::Grows);
-    }
-    let path = allocation_path(cx.tcx, TypingEnv::fully_monomorphized(), summaries, callee);
-    Maybe::Present(Called {
-        scope,
-        witness,
-        path,
-    })
-}
-
-/// Report a call whose callee allocates a value that the pass drops.
-///
-/// # Specification
-/// - ensures: one diagnostic at `expr`, under `clone_in_loop` when a function
-///   of the call path is `Clone::clone` or `ToOwned::to_owned`
-///   ([`copying_method`]) and under `allocation_in_repeated_body` otherwise. It
-///   carries a note at the loop that repeats the call; a note with the call
-///   path, up to its first function outside the crate under lint; and a note
-///   that names the allocation the callee reaches: at its span when the crate
-///   under lint holds it, by its function's path otherwise, as a span or a
-///   function in another crate moves with each toolchain.
-/// - panics: none.
-/// - executable: none — rustc emits diagnostics without a queryable result.
-///
-/// # Adequacy
-/// - hypothesis: L3 — the call fixture refuses a clone one call down under
-///   `clone_in_loop`, and a vector one and two calls down under
-///   `allocation_in_repeated_body`, each with its call path.
-/// - witness: `tests::ui_repeated_call`
-fn report_call<'tcx>(
-    cx: &LateContext<'tcx>,
-    expr: &'tcx Expr<'tcx>,
-    called: &Called<'tcx>,
-)
-{
-    let reached = match called.witness.cause {
-        Cause::Allocator => "a call into the allocator",
-        Cause::Signature => {
-            "a call whose body is unavailable and whose signature hands back heap memory"
-        },
-        Cause::Dynamic | Cause::Parameter => "a call that the build cannot name",
-    };
-    let (lint, message, help) = if called
-        .path
-        .iter()
-        .any(|function| copying_method(cx.tcx, *function).0)
-    {
-        (
-            CLONE_IN_LOOP,
-            "this call copies a value that owns heap memory on every pass of a loop, and the \
-             pass drops the copy",
-            "let the callee lend what it copies, or turn one value in place over the passes",
-        )
-    }
-    else {
-        (
-            ALLOCATION_IN_REPEATED_BODY,
-            "this call allocates on every pass of a loop, and the pass drops what it allocates",
-            "make the buffer once before the loop and lend it to the callee, or let the callee \
-             write into one reused buffer",
-        )
-    };
-    let mut shown = Vec::new();
-    for function in &called.path {
-        shown.push(format!("`{}`", cx.tcx.def_path_str(*function)));
-        if !function.is_local() {
-            break;
-        }
-    }
-    let rest = if shown.len() < called.path.len() {
-        " -> ..."
-    }
-    else {
-        ""
-    };
-    span_lint_and_then(cx, lint, expr.span, message, |diagnostic| {
-        diagnostic.span_note(called.scope.span, "the loop that repeats it");
-        if !shown.is_empty() {
-            diagnostic.note(format!("the call path: {}{rest}", shown.join(" -> ")));
-        }
-        let owner = cx.tcx.def_path_str(called.witness.owner);
-        if called.witness.owner.is_local() {
-            diagnostic.span_note(
-                called.witness.span,
-                format!("the callee reaches {reached} here, in `{owner}`"),
-            );
-        }
-        else {
-            diagnostic.note(format!("the callee reaches {reached}, in `{owner}`"));
-        }
-        diagnostic.help(help);
-    });
+    /// A standard form this lint prices by name, and where to report it.
+    Priced(Making, Span),
+    /// A call whose result owns a heap allocation, which the summaries read.
+    Call,
 }
 
 /// Decide whether an expression is an allocation a repeated body drops.
 ///
 /// # Specification
-/// - ensures: `Present` when `expr` allocates ([`making`]) inside an open
+/// - ensures: `Present` when `expr` allocates ([`making`]), or is a call that
+///   returns a heap value its callee allocates ([`fresh_call`]), inside a
 ///   repetition ([`repetition`]) on a path that does not diverge
 ///   ([`divergence`]), its value does not leave the pass ([`pass_escape`]), an
 ///   empty buffer is bound to a local the repetition mutates, and a `collect`
@@ -584,40 +417,232 @@ fn report_call<'tcx>(
 ///
 /// # Adequacy
 /// - hypothesis: L3 — the fixtures refuse a grown buffer, a `with_capacity`
-///   buffer, `vec![..]`, `Box::new`, `format!`, `to_string()` and a `collect`
-///   into a set, each dropped in its pass, and accept the same allocations
-///   pushed outward, returned from a per-element closure, stored, made by `new`
-///   and never grown, outside any loop, in a loop over an array, in a panic's
-///   message and read once by `collect_read_once`.
+///   buffer, `vec![..]`, `Box::new`, `format!`, `to_string()`, a `collect` into
+///   a set and a call of a function that returns a `vec!`, each dropped in its
+///   pass, and accept the same allocations pushed outward, returned from a
+///   per-element closure, stored, made by `new` and never grown, outside any
+///   loop, in a loop over an array, in a panic's message and read once by
+///   `collect_read_once`.
 /// - witness: `tests::ui_cost_shape`
 pub fn allocation<'tcx>(
     cx: &LateContext<'tcx>,
+    machinery: &Machinery,
+    following: &mut Following<'tcx>,
     expr: &'tcx Expr<'tcx>,
 ) -> Maybe<Allocation<'tcx>, allocation_reading::Unrefused>
 {
-    let (made, at) = match making(cx, expr) {
-        Maybe::Present(found) => found,
-        Maybe::Absent(reason) => return Maybe::Absent(reason),
+    let candidate = match making(cx, expr) {
+        Maybe::Present((made, at)) => Candidate::Priced(made, at),
+        Maybe::Absent(reason) => match owning_call(cx, expr) {
+            Ownership::Owning => Candidate::Call,
+            Ownership::Unknown | Ownership::Refcounted | Ownership::Plain => {
+                return Maybe::Absent(reason);
+            },
+        },
     };
-    let scope = match repetition(cx, expr) {
-        Maybe::Present(scope) => scope,
+    let found = match repetition(cx, machinery, expr) {
+        Maybe::Present(found) => found,
         Maybe::Absent(reason) => {
             return Maybe::Absent(allocation_reading::Unrefused::Unrepeated(reason));
         },
     };
+    let scope = found.scope();
     if divergence(cx, expr, scope) == Divergence::Diverges {
         return Maybe::Absent(allocation_reading::Unrefused::Diverges);
     }
     if pass_escape(cx, expr, scope) == Escape::Escapes {
         return Maybe::Absent(allocation_reading::Unrefused::Escapes);
     }
+    let (made, at, maker) = match candidate {
+        Candidate::Priced(made, at) => (made, at, Maker::Priced),
+        Candidate::Call => match fresh_call(cx, following, expr) {
+            Maybe::Present(fresh) => (Making::Allocates, expr.span, Maker::Called(fresh)),
+            Maybe::Absent(reason) => {
+                return Maybe::Absent(allocation_reading::Unrefused::Unmade(reason));
+            },
+        },
+    };
     if made == Making::Empty && grown(cx, expr, scope) == Mutation::Untouched {
         return Maybe::Absent(allocation_reading::Unrefused::NeverGrown);
     }
     if matches!(read_once(cx, expr), Maybe::Present(_)) {
         return Maybe::Absent(allocation_reading::Unrefused::ReadOnce);
     }
-    Maybe::Present(Allocation { at, scope })
+    Maybe::Present(Allocation {
+        at,
+        site: Site::Expression,
+        repetition: found,
+        maker,
+    })
+}
+
+/// Whether an expression is a call, outside a macro, whose result owns a heap
+/// allocation and that `clone_in_loop` does not price.
+///
+/// # Specification
+/// - ensures: [`heap_ownership`] of `expr`'s type when `expr` is a call or a
+///   method call outside a macro expansion that resolves to neither
+///   `Clone::clone` nor `ToOwned::to_owned`; `Plain` otherwise.
+/// - panics: none.
+/// - executable: none — the outcome is the compiler's types, which a predicate
+///   could only read again.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures call a function that returns a vector and
+///   one that returns a count, and clone a local type.
+/// - witness: `tests::ui_cost_shape`
+fn owning_call<'tcx>(
+    cx: &LateContext<'tcx>,
+    expr: &'tcx Expr<'tcx>,
+) -> Ownership
+{
+    if expr.span.from_expansion()
+        || !matches!(expr.kind, ExprKind::Call(..) | ExprKind::MethodCall(..))
+    {
+        return Ownership::Plain;
+    }
+    let copies = cx
+        .typeck_results()
+        .type_dependent_def_id(expr.hir_id)
+        .and_then(|method| cx.tcx.trait_of_assoc(method))
+        .is_some_and(|owner| {
+            cx.tcx.is_diagnostic_item(sym::Clone, owner)
+                || cx
+                    .tcx
+                    .get_diagnostic_name(owner)
+                    .is_some_and(|name| name.as_str() == "ToOwned")
+        });
+    if copies {
+        return Ownership::Plain;
+    }
+    heap_ownership(cx.tcx, cx.typing_env(), cx.typeck_results().expr_ty(expr))
+}
+
+/// The callee's allocation of the heap value a call returns.
+///
+/// # Specification
+/// - ensures: [`Returns::fresh`] of the function `expr` calls, under the
+///   arguments type checking records for it and the typing of the body that
+///   holds `expr`; `Absent(Unresolved)` when `expr` names no function.
+/// - panics: none.
+/// - executable: none — the outcome is the summaries, which a predicate could
+///   only compute again.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures call a function and a method that return a
+///   vector they allocate, and one that returns an empty vector.
+/// - witness: `tests::ui_cost_shape`
+fn fresh_call<'tcx>(
+    cx: &LateContext<'tcx>,
+    following: &mut Following<'tcx>,
+    expr: &'tcx Expr<'tcx>,
+) -> Maybe<Fresh, fresh_reading::Unmade>
+{
+    let typeck = cx.typeck_results();
+    #[expect(
+        clippy::wildcard_enum_match_arm,
+        reason = "`ExprKind` is rustc's, its variants moving with the pinned nightly; only a call \
+                  or a method call names a function"
+    )]
+    let (callee, args) = match expr.kind {
+        ExprKind::Call(function, _) => match *typeck.expr_ty(function).kind() {
+            ty::FnDef(callee, args) => match args.no_bound_vars() {
+                Some(args) => (callee, args),
+                None => return Maybe::Absent(fresh_reading::Unmade::Unresolved),
+            },
+            _ => return Maybe::Absent(fresh_reading::Unmade::Unresolved),
+        },
+        ExprKind::MethodCall(..) => match typeck.type_dependent_def_id(expr.hir_id) {
+            Some(method) => (method, typeck.node_args(expr.hir_id)),
+            None => return Maybe::Absent(fresh_reading::Unmade::Unresolved),
+        },
+        _ => return Maybe::Absent(fresh_reading::Unmade::Unresolved),
+    };
+    let typing_env = TypingEnv::post_analysis(cx.tcx, expr.hir_id.owner.def_id);
+    following.fresh(cx.tcx, typing_env, callee, args)
+}
+
+/// Decide whether a `for` loop takes, on each pass, an item that its iterator
+/// allocates and the pass drops.
+///
+/// # Specification
+/// - ensures: `Present` at the loop's pattern when `expr` is a `for` loop, its
+///   desugared `Iterator::next` call returns a heap value its callee allocates
+///   ([`Returns::fresh`]), the pattern is a plain binding, and the loop's pass
+///   does not move that binding out ([`binding_escape`]).
+/// - ensures: `Absent` with the first reason that holds otherwise.
+/// - panics: none.
+/// - executable: none — the outcome is the compiler's resolution and use walk,
+///   which a predicate could only repeat.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures refuse a `for` loop over a local iterator
+///   whose `next` returns a clone of its digits, only borrowed in the pass, and
+///   accept the same loop that pushes each item outward.
+/// - witness: `tests::ui_cost_shape`
+pub fn item_allocation<'tcx>(
+    cx: &LateContext<'tcx>,
+    following: &mut Following<'tcx>,
+    expr: &'tcx Expr<'tcx>,
+) -> Maybe<Allocation<'tcx>, allocation_reading::Unrefused>
+{
+    let none = Maybe::Absent(allocation_reading::Unrefused::NotAnAllocation);
+    let Some(for_loop) = ForLoop::hir(expr)
+    else {
+        return none;
+    };
+    let Node::Expr(looped) = cx.tcx.hir_node(for_loop.loop_id)
+    else {
+        return none;
+    };
+    let ExprKind::Loop(block, ..) = looped.kind
+    else {
+        return none;
+    };
+    let matched = match (block.stmts, block.expr) {
+        (&[ref statement], None) => match statement.kind {
+            StmtKind::Expr(matched) | StmtKind::Semi(matched) => matched,
+            StmtKind::Let(_) | StmtKind::Item(_) => return none,
+        },
+        (&[], Some(matched)) => matched,
+        _ => return none,
+    };
+    let ExprKind::Match(next, _, MatchSource::ForLoopDesugar) = matched.kind
+    else {
+        return none;
+    };
+    let ExprKind::Call(function, _) = next.kind
+    else {
+        return none;
+    };
+    let ty::FnDef(callee, args) = *cx.typeck_results().expr_ty(function).kind()
+    else {
+        return none;
+    };
+    let Some(args) = args.no_bound_vars()
+    else {
+        return none;
+    };
+    let typing_env = TypingEnv::post_analysis(cx.tcx, expr.hir_id.owner.def_id);
+    let fresh = match following.fresh(cx.tcx, typing_env, callee, args) {
+        Maybe::Present(fresh) => fresh,
+        Maybe::Absent(reason) => {
+            return Maybe::Absent(allocation_reading::Unrefused::Unmade(reason));
+        },
+    };
+    let PatKind::Binding(_, local, _, None) = for_loop.pat.kind
+    else {
+        return Maybe::Absent(allocation_reading::Unrefused::Escapes);
+    };
+    if binding_escape(cx, local, looped) == Escape::Escapes {
+        return Maybe::Absent(allocation_reading::Unrefused::Escapes);
+    }
+    Maybe::Present(Allocation {
+        at: for_loop.pat.span,
+        site: Site::Item,
+        repetition: Repetition::Local(looped),
+        maker: Maker::Called(fresh),
+    })
 }
 
 /// Decide whether an empty buffer is grown.

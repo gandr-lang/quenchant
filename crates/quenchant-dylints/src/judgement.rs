@@ -17,6 +17,11 @@
 //!
 //! This rule constrains dispatch shape. It neither invents missing judgment
 //! rules nor proves the soundness or completeness of the declared system.
+//!
+//! The rule reads one body at a time, by design. A declaration attaches to the
+//! parameter or the mode type of one function, and the dispatch is the match
+//! in that function's body. A callee's match is a different dispatch, and its
+//! own declaration governs it. Thus the rule follows no call.
 
 use alloc::collections::VecDeque;
 

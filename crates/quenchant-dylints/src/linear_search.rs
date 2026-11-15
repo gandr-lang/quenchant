@@ -41,11 +41,11 @@ use rustc_lint::declare_lint;
 use rustc_lint::impl_lint_pass;
 use rustc_span::sym;
 
-use crate::clause_cost::ClauseRegions;
 use crate::cost_shape::Inspection;
+use crate::cost_shape::Machinery;
 use crate::cost_shape::Method;
 use crate::cost_shape::Owner;
-use crate::cost_shape::Repeated;
+use crate::cost_shape::Repetition;
 use crate::cost_shape::Trip;
 use crate::cost_shape::inspection;
 use crate::cost_shape::length_trip;
@@ -120,8 +120,8 @@ pub struct Search<'tcx>
 {
     /// The collection the search walks.
     pub collection: &'tcx Expr<'tcx>,
-    /// The repetition that searches it again on every pass.
-    pub repeated: Repeated<'tcx>,
+    /// What searches it again on every pass.
+    pub repeated: Repetition<'tcx>,
 }
 
 /// Repeated-search policy; specification clauses are left to
@@ -129,20 +129,20 @@ pub struct Search<'tcx>
 #[repr(transparent)]
 pub struct LinearSearchInLoop
 {
-    /// The authored `spec` attribute ranges, whose clauses are not inspected.
-    regions: ClauseRegions,
+    /// The machinery every cost-shape pass takes.
+    machinery: Machinery,
 }
 
 impl LinearSearchInLoop
 {
-    /// The pass reads the ranges the pre-expansion clause collector records.
+    /// The pass over the shared machinery.
     ///
     /// # Specification
     /// trivial.
     #[must_use]
-    pub const fn new(regions: ClauseRegions) -> Self
+    pub const fn new(machinery: Machinery) -> Self
     {
-        Self { regions }
+        Self { machinery }
     }
 }
 
@@ -154,7 +154,7 @@ impl<'tcx> LateLintPass<'tcx> for LinearSearchInLoop
     ///
     /// # Specification
     /// - ensures: reports every expression [`search`] answers `Present` for,
-    ///   labelling the collection, with a note at the loop that repeats it.
+    ///   labelling the collection, with the note of what repeats it.
     /// - ensures: expressions from macro expansions and inside `spec`
     ///   attributes are not inspected ([`inspection`]).
     /// - panics: none.
@@ -171,10 +171,10 @@ impl<'tcx> LateLintPass<'tcx> for LinearSearchInLoop
         expr: &'tcx Expr<'tcx>,
     )
     {
-        if inspection(&self.regions, expr) == Inspection::Skipped {
+        if inspection(&self.machinery.regions, expr) == Inspection::Skipped {
             return;
         }
-        let Maybe::Present(found) = search(cx, expr)
+        let Maybe::Present(found) = search(cx, &self.machinery, expr)
         else {
             return;
         };
@@ -185,7 +185,7 @@ impl<'tcx> LateLintPass<'tcx> for LinearSearchInLoop
             "this linear search runs once per pass of a loop over a collection that outlives it",
             |diagnostic| {
                 diagnostic.span_label(found.collection.span, "searched again on every pass");
-                diagnostic.span_note(found.repeated.scope.span, "the loop that repeats it");
+                found.repeated.note(cx.tcx, diagnostic);
                 diagnostic.help(
                     "build a `HashSet` or `BTreeSet` of the collection once before the loop, or \
                      sort it once and use `binary_search`",
@@ -220,6 +220,7 @@ impl<'tcx> LateLintPass<'tcx> for LinearSearchInLoop
 })]
 pub fn search<'tcx>(
     cx: &LateContext<'tcx>,
+    machinery: &Machinery,
     expr: &'tcx Expr<'tcx>,
 ) -> Maybe<Search<'tcx>, search_reading::Bounded>
 {
@@ -255,7 +256,7 @@ pub fn search<'tcx>(
     ) {
         return Maybe::Absent(search_reading::Bounded::FixedLength);
     }
-    match repeated_read(cx, expr, collection) {
+    match repeated_read(cx, machinery, expr, collection) {
         Maybe::Present(repeated) => Maybe::Present(Search {
             collection,
             repeated,

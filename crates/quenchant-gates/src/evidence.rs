@@ -264,6 +264,13 @@ impl Graph
 ///   executable edges; a malformed record is refused, not skipped.
 /// - witness: `gates::obligations::the_fixture_names_its_clause_items_and_nothing_else`
 /// - witness: `gates::obligations::a_malformed_record_is_an_operational_error`
+#[cfg_attr(
+    dylint_lib = "quenchant_dylints",
+    expect(
+        clone_in_loop,
+        reason = "each edge owns its names; gandr-lang/gandr#7673 shares them"
+    )
+)]
 #[inline]
 #[spec(ensures: |ref output| output.as_ref().is_ok_and(|graph| graph.edges.iter().all(|edge| edge.naming == Naming::Executable)) || matches!(output, &Err(GateError::Io { .. } | GateError::Parse { .. })))]
 pub fn read_records(
@@ -421,6 +428,13 @@ fn item_from_record(
 /// - hypothesis: L3 — the fixture's prose clause links one item, its summary
 ///   and adequacy sections link others; only the clause's link becomes an edge.
 /// - witness: `gates::obligations::the_fixture_names_its_clause_items_and_nothing_else`
+#[cfg_attr(
+    dylint_lib = "quenchant_dylints",
+    expect(
+        clone_in_loop,
+        reason = "each edge owns its names; gandr-lang/gandr#7673 shares them"
+    )
+)]
 #[inline]
 pub fn read_prose(
     graph: &mut Graph,

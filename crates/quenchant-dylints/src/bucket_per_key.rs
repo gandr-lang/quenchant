@@ -59,8 +59,8 @@ use rustc_middle::ty::consts::ConstExt as _;
 use rustc_span::Span;
 use rustc_span::Symbol;
 
-use crate::clause_cost::ClauseRegions;
 use crate::cost_shape::Inspection;
+use crate::cost_shape::Machinery;
 use crate::cost_shape::inspection;
 use crate::walk_summary::standard_name;
 
@@ -210,23 +210,23 @@ impl Record
 /// `spec_clause_traversal`.
 pub struct BucketPerKey
 {
-    /// The authored `spec` attribute ranges, whose clauses are not inspected.
-    regions: ClauseRegions,
+    /// The machinery every cost-shape pass takes.
+    machinery: Machinery,
     /// Every candidate map used in the crate, with what its uses decide.
     maps: HashMap<MapId, Record>,
 }
 
 impl BucketPerKey
 {
-    /// The pass reads the ranges the pre-expansion clause collector records.
+    /// The pass over the shared machinery.
     ///
     /// # Specification
     /// trivial.
     #[must_use]
-    pub fn new(regions: ClauseRegions) -> Self
+    pub fn new(machinery: Machinery) -> Self
     {
         Self {
-            regions,
+            machinery,
             maps: HashMap::new(),
         }
     }
@@ -259,7 +259,7 @@ impl<'tcx> LateLintPass<'tcx> for BucketPerKey
         expr: &'tcx Expr<'tcx>,
     )
     {
-        if inspection(&self.regions, expr) == Inspection::Skipped {
+        if inspection(&self.machinery.regions, expr) == Inspection::Skipped {
             return;
         }
         let map = match candidate(cx, expr) {

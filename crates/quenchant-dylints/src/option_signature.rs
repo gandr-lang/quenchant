@@ -2,6 +2,10 @@
 //!
 //! Foreign methods are paired with their unsubstituted declarations: required
 //! Option layers are accepted, while absence introduced by substitution is not.
+//!
+//! The lint reads one signature at a time, by design. The absence that a
+//! signature states is a property of that signature, and no callee changes it.
+//! Thus the lint follows no call.
 
 use anodized::spec;
 use rustc_hir::Body;

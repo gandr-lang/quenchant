@@ -110,6 +110,7 @@ mod ownership;
 mod pool_only_threads;
 mod presenter_coverage;
 mod raw_pointer;
+mod repetition;
 mod reverse_after_build;
 mod rustdoc;
 mod safety;
@@ -123,6 +124,7 @@ mod termination;
 mod trait_object;
 mod walk_summary;
 
+use alloc::sync::Arc;
 use std::collections::HashMap;
 
 use anodized::spec;
@@ -410,7 +412,10 @@ pub fn register_lints(
     let collected_spelling = spelling.clone();
     let clause_regions = clause_cost::ClauseRegions::default();
     let collected_regions = clause_regions.clone();
-    let cost_regions = clause_regions.clone();
+    let cost_machinery = cost_shape::Machinery::new(
+        clause_regions.clone(),
+        Arc::new(repetition::Followed::configured()),
+    );
     lint_store.register_lints(&[
         SINGLE_FIELD_STRUCT_NEEDS_TRANSPARENT_REPR,
         PRIMITIVE_SIGNATURE,
@@ -520,42 +525,42 @@ pub fn register_lints(
     lint_store.register_late_lint_pass(Box::new(|tcx| {
         Box::new(doc_shape::DocShape::configured(tcx))
     }));
-    let allocated = cost_regions.clone();
+    let allocated = cost_machinery.clone();
     lint_store.register_late_lint_pass(Box::new(move |_| {
-        Box::new(allocation_in_repeated_body::AllocationInRepeatedBody::new(
-            allocated.clone(),
-        ))
+        Box::new(
+            allocation_in_repeated_body::AllocationInRepeatedBody::configured(allocated.clone()),
+        )
     }));
     lint_store.register_late_lint_pass(Box::new(|_| {
         Box::new(allocation_free_region::AllocationFreeRegion::configured())
     }));
-    let cloned = cost_regions.clone();
+    let cloned = cost_machinery.clone();
     lint_store.register_late_lint_pass(Box::new(move |_| {
         Box::new(clone_in_loop::CloneInLoop::new(cloned.clone()))
     }));
-    let bucketed = cost_regions.clone();
+    let bucketed = cost_machinery.clone();
     lint_store.register_late_lint_pass(Box::new(move |_| {
         Box::new(bucket_per_key::BucketPerKey::new(bucketed.clone()))
     }));
-    let read_once = cost_regions.clone();
+    let read_once = cost_machinery.clone();
     lint_store.register_late_lint_pass(Box::new(move |_| {
         Box::new(collect_read_once::CollectReadOnce::new(read_once.clone()))
     }));
-    let counted = cost_regions.clone();
+    let counted = cost_machinery.clone();
     lint_store.register_late_lint_pass(Box::new(move |_| {
         Box::new(count_comparison::CountAgainstConstant::new(counted.clone()))
     }));
-    let shifted = cost_regions.clone();
+    let shifted = cost_machinery.clone();
     lint_store.register_late_lint_pass(Box::new(move |_| {
         Box::new(front_shift::FrontShiftInLoop::new(shifted.clone()))
     }));
-    let searched = cost_regions.clone();
+    let searched = cost_machinery.clone();
     lint_store.register_late_lint_pass(Box::new(move |_| {
         Box::new(linear_search::LinearSearchInLoop::new(searched.clone()))
     }));
     lint_store.register_late_lint_pass(Box::new(move |_| {
         Box::new(reverse_after_build::ReverseAfterBuild::new(
-            cost_regions.clone(),
+            cost_machinery.clone(),
         ))
     }));
     lint_store.register_late_lint_pass(Box::new(|_| Box::new(pool_only_threads::PoolOnlyThreads)));
@@ -1519,6 +1524,13 @@ unproduced = [
             .run();
     }
 
+    /// The cost fixtures whose repetitions the machinery follows over calls;
+    /// the other fixtures of the directory are not named.
+    const COST_SHAPE: &str = r#"
+[quenchant-dylints]
+repeated_call_crates = ["repeated_body*", "site_*"]
+"#;
+
     #[test]
     fn ui_cost_shape()
     {
@@ -1543,6 +1555,7 @@ unproduced = [
         );
         dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_cost_shape")
             .rustc_flags(flags)
+            .dylint_toml(COST_SHAPE)
             .run();
     }
 

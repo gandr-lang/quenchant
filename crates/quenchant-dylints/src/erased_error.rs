@@ -11,6 +11,10 @@
 //! library half of a unit-test build is checked again by its ordinary build,
 //! and an integration-test crate has no other build. A method implementing a
 //! foreign trait answers to that trait's signature and is exempt too.
+//!
+//! The lint reads one signature at a time, by design. An erased error is a
+//! property of the boundary that the signature states. No callee changes what
+//! the signature tells its caller, so the lint follows no call.
 
 use core::cell::OnceCell;
 

@@ -1,7 +1,8 @@
 //! The calls of a repeated body in a crate that `repeated_call_crates` names:
-//! the lint follows each into its callee. A call is refused when its callee
-//! allocates on every pass and the pass drops what it allocates; the forms
-//! beside them are accepted.
+//! the machinery follows each into its callee. A call is refused when its
+//! callee returns a heap value that it allocates and the pass drops it; a
+//! call in a function that the loop repeats is refused in that function. The
+//! forms beside them are accepted.
 #![allow(dead_code, unused_variables)]
 
 /// Every assignment of digits below each base, in order.
@@ -114,10 +115,11 @@ impl Map
     }
 }
 
-/// A value of any type, copied into a vector.
-fn copied<T: Clone>(value: &T) -> Vec<T>
+/// A value of any type, copied: the copy allocates only as the parameter's
+/// `clone` does.
+fn copied<T: Clone>(value: &T) -> T
 {
-    vec![value.clone()]
+    value.clone()
 }
 
 /// A refusal; its message allocates on the path that panics.
@@ -127,7 +129,8 @@ fn refuse(digit: usize) -> !
 }
 
 // Refused: site 1, the `next` of the `for` loop clones the digits; site 2,
-// the images are made fresh; site 10, the marks are made fresh one call down.
+// the images are made fresh; site 10, the marks are made fresh in `validate`,
+// which the loop repeats.
 fn homs(
     map: &Map,
     bases: Vec<usize>,
@@ -169,7 +172,7 @@ fn unnamed<T: Clone>(
 {
     let mut total = 0;
     for (index, value) in values.iter().enumerate() {
-        total += copied(value).len();
+        let copy = copied(value);
         total += make(index).len();
     }
     total

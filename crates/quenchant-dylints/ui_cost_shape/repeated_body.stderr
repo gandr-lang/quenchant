@@ -1,0 +1,113 @@
+error: this allocates on every pass of a loop, and the value is dropped before the next pass
+  --> $DIR/repeated_body.rs:23:21
+   |
+LL |         let label = format!("v{}", self.count);
+   |                     ^^^^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = note: the function that holds it implements `std::iter::Iterator::next`, which an iteration calls once for each element
+   = help: make the buffer once before the loop and `clear()` it each pass, write into one reused buffer, or borrow what the pass reads
+   = note: requested on the command line with `-D allocation-in-repeated-body`
+
+error: this linear search runs once per pass of a loop over a collection that outlives it
+  --> $DIR/repeated_body.rs:44:12
+   |
+LL |         if self.seen.contains(&candidate) {
+   |            ---------^^^^^^^^^^^^^^^^^^^^^
+   |            |
+   |            searched again on every pass
+   |
+   = note: the function that holds it implements `std::iter::Iterator::next`, which an iteration calls once for each element
+   = help: build a `HashSet` or `BTreeSet` of the collection once before the loop, or sort it once and use `binary_search`
+   = note: requested on the command line with `-D linear-search-in-loop`
+
+error: this allocates on every pass of a loop, and the value is dropped before the next pass
+  --> $DIR/repeated_body.rs:57:16
+   |
+LL |     let text = format!("v{value}");
+   |                ^^^^^^^^^^^^^^^^^^^
+   |
+note: a function that repeats makes this call of the function that holds it
+  --> $DIR/repeated_body.rs:63:5
+   |
+LL |     describe(value) + 1
+   |     ^^^^^^^^^^^^^^^
+   = help: make the buffer once before the loop and `clear()` it each pass, write into one reused buffer, or borrow what the pass reads
+
+error: this allocates on every pass of a loop, and the value is dropped before the next pass
+  --> $DIR/repeated_body.rs:79:16
+   |
+LL |     let text = value.to_string();
+   |                ^^^^^^^^^^^^^^^^^
+   |
+note: a loop makes this call of the function that holds it
+  --> $DIR/repeated_body.rs:88:22
+   |
+LL |             total += render(*value);
+   |                      ^^^^^^^^^^^^^^
+   = help: make the buffer once before the loop and `clear()` it each pass, write into one reused buffer, or borrow what the pass reads
+
+error: this allocates on every pass of a loop, and the value is dropped before the next pass
+  --> $DIR/repeated_body.rs:117:21
+   |
+LL |         let names = index.names();
+   |                     ^^^^^^^^^^^^^
+   |
+note: the loop that repeats it
+  --> $DIR/repeated_body.rs:116:5
+   |
+LL | /     for query in queries {
+LL | |         let names = index.names();
+LL | |         if names.len() > query.len() {
+LL | |             hits += 1;
+LL | |         }
+LL | |     }
+   | |_____^
+note: `Index::names` allocates the value it returns here
+  --> $DIR/repeated_body.rs:106:20
+   |
+LL |         self.names.clone()
+   |                    ^^^^^^^
+   = help: make the buffer once before the loop and `clear()` it each pass, write into one reused buffer, or borrow what the pass reads
+
+error: this allocates on every pass of a loop, and the value is dropped before the next pass
+  --> $DIR/repeated_body.rs:138:18
+   |
+LL |         total += label(*value).len();
+   |                  ^^^^^^^^^^^^^
+   |
+note: the loop that repeats it
+  --> $DIR/repeated_body.rs:137:5
+   |
+LL | /     for value in values {
+LL | |         total += label(*value).len();
+LL | |     }
+   | |_____^
+note: `label` allocates the value it returns here
+  --> $DIR/repeated_body.rs:130:10
+   |
+LL |     text.push_str(if value > 9 { "large" } else { "small" });
+   |          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+   = help: make the buffer once before the loop and `clear()` it each pass, write into one reused buffer, or borrow what the pass reads
+
+error: this allocates on every pass of a loop, and the value is dropped before the next pass
+  --> $DIR/repeated_body.rs:154:18
+   |
+LL |         total += relabel(*value).len();
+   |                  ^^^^^^^^^^^^^^^
+   |
+note: the loop that repeats it
+  --> $DIR/repeated_body.rs:153:5
+   |
+LL | /     for value in values {
+LL | |         total += relabel(*value).len();
+LL | |     }
+   | |_____^
+note: `relabel` allocates the value it returns here
+  --> $DIR/repeated_body.rs:147:5
+   |
+LL |     label(value)
+   |     ^^^^^^^^^^^^
+   = help: make the buffer once before the loop and `clear()` it each pass, write into one reused buffer, or borrow what the pass reads
+
+error: aborting due to 7 previous errors
+

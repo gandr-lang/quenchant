@@ -18,17 +18,29 @@
 //!
 //! # Boundaries
 //!
-//! The repetition and the escape are [`crate::cost_shape`]'s: a copy that
-//! leaves the pass — the iteration's own value stored, pushed or handed on by
-//! value — is accepted, and so is a copy on a path that diverges.
-//! `Iterator::cloned` copies each element into whatever consumes the
-//! iterator, which is that consumer's to price.
+//! The repetition and the escape are [`crate::cost_shape`]'s: a loop body or
+//! a per-element closure, else the body of a function that a loop, a role or
+//! a repeated caller repeats ([`crate::repetition`]). A copy that leaves the
+//! pass — the iteration's own value stored, pushed or handed on by value — is
+//! accepted, and so is a copy on a path that diverges. `Iterator::cloned`
+//! copies each element into whatever consumes the iterator, which is that
+//! consumer's to price.
+//!
+//! A copy of a value that the repetition reads again and does not change is
+//! refused even when it leaves the pass: each pass keeps an equal copy of
+//! one value, where one shared value, an index or a borrow serves them all.
+//! The repetition reads the value again when it is a local bound outside a
+//! loop, or the receiver `self` of a function that a role repeats
+//! ([`reread`]). A copy that a closure returns to a call stays accepted: the
+//! call can run the closure once for each new key, and the pass can change
+//! each copy after.
 //!
 //! Clippy's `redundant_clone`, `unnecessary_to_owned` and `implicit_clone`
 //! refuse copies a move or a borrow serves within one statement; this lint
 //! takes the copy repeated per pass.
 //!
 //! [`heap_ownership`]: crate::cost_shape::heap_ownership
+//! [`reread`]: crate::cost_shape::reread
 
 use clippy_utils::diagnostics::span_lint_and_then;
 use clippy_utils::ty::is_copy;
@@ -43,18 +55,23 @@ use rustc_lint::impl_lint_pass;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::sym;
 
-use crate::clause_cost::ClauseRegions;
 use crate::cost_shape::Divergence;
 use crate::cost_shape::Escape;
 use crate::cost_shape::Inspection;
+use crate::cost_shape::Machinery;
 use crate::cost_shape::Method;
+use crate::cost_shape::Mutation;
 use crate::cost_shape::Owner;
 use crate::cost_shape::Ownership;
+use crate::cost_shape::Repetition;
 use crate::cost_shape::divergence;
 use crate::cost_shape::heap_ownership;
 use crate::cost_shape::inspection;
 use crate::cost_shape::pass_escape;
+use crate::cost_shape::pass_mutation;
 use crate::cost_shape::repetition;
+use crate::cost_shape::reread;
+use crate::cost_shape::returned_by;
 use crate::cost_shape::std_method;
 use crate::semantic::CopyingMethod;
 use crate::walk_summary::standard_name;
@@ -62,7 +79,7 @@ use crate::walk_summary::standard_name;
 declare_lint! {
     /// ### What it does
     ///
-    /// Refuses `clone()`, `Option::cloned()`, `Result::cloned()`, `to_vec()` or `to_owned()` inside a `loop`, `while` or `for` body, or a closure an iterator or a standard container calls once per element, when the copy's type owns a heap allocation by its structure and the copy is dropped before the next pass.
+    /// Refuses `clone()`, `Option::cloned()`, `Result::cloned()`, `to_vec()` or `to_owned()` inside a `loop`, `while` or `for` body, a closure an iterator or a standard container calls once per element, or a function that a loop, an `Iterator::next` role or a repeated caller repeats, when the copy's type owns a heap allocation by its structure and the copy is dropped before the next pass, or copies a value the repetition reads again and does not change.
     ///
     /// ### Why is this bad?
     ///
@@ -70,7 +87,7 @@ declare_lint! {
     ///
     /// ### Accepted forms
     ///
-    /// The copy's type decides: a `Copy` type, a type whose components are all plain data, and an `Rc` or `Arc` are accepted, and so is a type whose ownership the site cannot read, such as a type parameter. A copy that leaves the pass — stored, pushed, returned or handed on by value — is accepted, and so is a copy outside any loop, in a loop over an array or a range with constant bounds, in a pass it leaves at once and on a path that diverges.
+    /// The copy's type decides: a `Copy` type, a type whose components are all plain data, and an `Rc` or `Arc` are accepted, and so is a type whose ownership the site cannot read, such as a type parameter. A copy that leaves the pass — stored, pushed, returned or handed on by value — is accepted unless it copies a value the repetition reads again and does not change; a copy that a closure returns to a call is accepted. So is a copy outside any loop, in a loop over an array or a range with constant bounds, in a pass it leaves at once and on a path that diverges.
     ///
     /// ### Clippy
     ///
@@ -124,25 +141,45 @@ quenchant_shape::reason_enum! {
     }
 }
 
+/// Why a refused copy is refused.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Waste
+{
+    /// The pass drops the copy before the next pass.
+    Dropped,
+    /// The copy repeats a value that the repetition does not change.
+    Equal,
+}
+
+/// A refused copy: what repeats it, and why it is waste.
+#[derive(Clone, Copy, Debug)]
+pub struct Copied<'tcx>
+{
+    /// What makes the copy again on every pass.
+    pub repetition: Repetition<'tcx>,
+    /// Why the copy is waste.
+    pub waste: Waste,
+}
+
 /// Repeated-copy policy; specification clauses are left to
 /// `spec_clause_traversal`.
 #[repr(transparent)]
 pub struct CloneInLoop
 {
-    /// The authored `spec` attribute ranges, whose clauses are not inspected.
-    regions: ClauseRegions,
+    /// The machinery every cost-shape pass takes.
+    machinery: Machinery,
 }
 
 impl CloneInLoop
 {
-    /// The pass reads the ranges the pre-expansion clause collector records.
+    /// The pass over the shared machinery.
     ///
     /// # Specification
     /// trivial.
     #[must_use]
-    pub const fn new(regions: ClauseRegions) -> Self
+    pub const fn new(machinery: Machinery) -> Self
     {
-        Self { regions }
+        Self { machinery }
     }
 }
 
@@ -150,12 +187,12 @@ impl_lint_pass!(CloneInLoop => [CLONE_IN_LOOP]);
 
 impl<'tcx> LateLintPass<'tcx> for CloneInLoop
 {
-    /// Report each heap-owning copy a repeated body drops.
+    /// Report each heap-owning copy a repeated body drops, or that repeats a
+    /// value its repetition does not change.
     ///
     /// # Specification
     /// - ensures: reports every expression [`copy`] answers `Present` for, from
-    ///   the method's name to the call's end, with a note at the loop that
-    ///   repeats it.
+    ///   the method's name to the call's end, with the note of what repeats it.
     /// - ensures: expressions from macro expansions and inside `spec`
     ///   attributes are not inspected ([`inspection`]).
     /// - panics: none.
@@ -172,10 +209,10 @@ impl<'tcx> LateLintPass<'tcx> for CloneInLoop
         expr: &'tcx Expr<'tcx>,
     )
     {
-        if inspection(&self.regions, expr) == Inspection::Skipped {
+        if inspection(&self.machinery.regions, expr) == Inspection::Skipped {
             return;
         }
-        let Maybe::Present(scope) = copy(cx, expr)
+        let Maybe::Present(found) = copy(cx, &self.machinery, expr)
         else {
             return;
         };
@@ -183,17 +220,27 @@ impl<'tcx> LateLintPass<'tcx> for CloneInLoop
         else {
             return;
         };
+        let (message, help) = match found.waste {
+            Waste::Dropped => (
+                "this copies a heap-owning value on every pass of a loop, and the copy is \
+                 dropped before the next pass",
+                "borrow the original, or make the copy once before the loop and reuse it",
+            ),
+            Waste::Equal => (
+                "this copies, on every pass of a loop, a heap-owning value that the loop does \
+                 not change, so each pass keeps an equal copy",
+                "share one value: keep an index or a borrow of the original, or an `Rc` or `Arc` \
+                 of it, in place of each copy",
+            ),
+        };
         span_lint_and_then(
             cx,
             CLONE_IN_LOOP,
             segment.ident.span.with_hi(expr.span.hi()),
-            "this copies a heap-owning value on every pass of a loop, and the copy is dropped \
-             before the next pass",
+            message,
             |diagnostic| {
-                diagnostic.span_note(scope.span, "the loop that repeats it");
-                diagnostic.help(
-                    "borrow the original, or make the copy once before the loop and reuse it",
-                );
+                found.repetition.note(cx.tcx, diagnostic);
+                diagnostic.help(help);
             },
         );
     }
@@ -212,9 +259,8 @@ impl<'tcx> LateLintPass<'tcx> for CloneInLoop
 ///
 /// # Adequacy
 /// - hypothesis: L3 — the clone fixtures refuse `clone()` and `to_owned()` in a
-///   loop, and the call fixture refuses a call whose callee clones.
+///   loop, and accept a type parameter's copy.
 /// - witness: `tests::ui_cost_shape`
-/// - witness: `tests::ui_repeated_call`
 pub fn copying_method(
     tcx: TyCtxt<'_>,
     method: DefId,
@@ -237,15 +283,18 @@ pub fn copying_method(
     }))
 }
 
-/// Decide whether an expression is a heap-owning copy a repeated body drops.
+/// Decide whether an expression is a heap-owning copy a repeated body drops,
+/// or one that repeats a value its repetition does not change.
 ///
 /// # Specification
 /// - ensures: `Present` with the repetition when `expr` calls `Clone::clone`,
 ///   `ToOwned::to_owned`, a slice's `to_vec` or `cloned` on an `Option` or
 ///   `Result`, its result's type is not `Copy` and owns a heap allocation
-///   ([`heap_ownership`]), and it sits in an open repetition ([`repetition`])
-///   on a path that does not diverge ([`divergence`]) and does not leave the
-///   pass ([`pass_escape`]).
+///   ([`heap_ownership`]), and it sits in a repetition ([`repetition`]) on a
+///   path that does not diverge ([`divergence`]); then `Dropped` when the copy
+///   does not leave the pass ([`pass_escape`]), else `Equal` when the receiver
+///   is a local the repetition reads again ([`reread`]) and does not change
+///   ([`pass_mutation`]) and no closure returns the copy ([`returned_by`]).
 /// - ensures: `Absent` with the first reason that holds otherwise, in the order
 ///   the body tests them; a type parameter's copy is `Absent(Unknown)`.
 /// - panics: none.
@@ -255,18 +304,22 @@ pub fn copying_method(
 /// # Adequacy
 /// - hypothesis: L3 — the fixtures refuse a copied `Vec`, `String`, a struct
 ///   holding a map and an `Option` of a boxed value, each dropped in its pass,
-///   and accept a `Copy` struct, a struct of plain fields, an `Rc`, a type
-///   parameter, a copy pushed outward and a copy outside any loop.
+///   and a copy of an unchanged outer value stored in each pass; and accept a
+///   `Copy` struct, a struct of plain fields, an `Rc`, a type parameter, a copy
+///   of each element pushed outward, a copy a closure returns to a map's entry
+///   and a copy outside any loop.
 /// - witness: `tests::ui_cost_shape`
 pub fn copy<'tcx>(
     cx: &LateContext<'tcx>,
+    machinery: &Machinery,
     expr: &'tcx Expr<'tcx>,
-) -> Maybe<&'tcx Expr<'tcx>, clone_reading::Unrefused>
+) -> Maybe<Copied<'tcx>, clone_reading::Unrefused>
 {
     let not_a_copy = Maybe::Absent(clone_reading::Unrefused::NotACopy);
-    if !matches!(expr.kind, ExprKind::MethodCall(..)) {
+    let ExprKind::MethodCall(_, receiver, ..) = expr.kind
+    else {
         return not_a_copy;
-    }
+    };
     let Some(method) = cx.typeck_results().type_dependent_def_id(expr.hir_id)
     else {
         return not_a_copy;
@@ -307,17 +360,34 @@ pub fn copy<'tcx>(
         Ownership::Refcounted => return Maybe::Absent(clone_reading::Unrefused::Refcounted),
         Ownership::Plain => return Maybe::Absent(clone_reading::Unrefused::PlainData),
     }
-    let scope = match repetition(cx, expr) {
-        Maybe::Present(scope) => scope,
+    let found = match repetition(cx, machinery, expr) {
+        Maybe::Present(found) => found,
         Maybe::Absent(reason) => {
             return Maybe::Absent(clone_reading::Unrefused::Unrepeated(reason));
         },
     };
+    let scope = found.scope();
     if divergence(cx, expr, scope) == Divergence::Diverges {
         return Maybe::Absent(clone_reading::Unrefused::Diverges);
     }
-    if pass_escape(cx, expr, scope) == Escape::Escapes {
+    if pass_escape(cx, expr, scope) == Escape::Stays {
+        return Maybe::Present(Copied {
+            repetition: found,
+            waste: Waste::Dropped,
+        });
+    }
+    let equal = match reread(cx, found, receiver) {
+        Maybe::Present(local) => {
+            pass_mutation(cx, local, scope) == Mutation::Untouched
+                && matches!(returned_by(cx, expr), Maybe::Absent(_))
+        },
+        Maybe::Absent(_) => false,
+    };
+    if !equal {
         return Maybe::Absent(clone_reading::Unrefused::Escapes);
     }
-    Maybe::Present(scope)
+    Maybe::Present(Copied {
+        repetition: found,
+        waste: Waste::Equal,
+    })
 }
