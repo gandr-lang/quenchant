@@ -233,6 +233,14 @@ semantic_copy!(
     struct ClauseBearing(bool);
 );
 semantic_copy!(
+    /// The number of an issue that owes the clauses of `external` blocks.
+    struct IssueNumber(u64);
+);
+semantic_copy!(
+    /// A pattern takes a name or an authority.
+    struct MatchesPattern(bool);
+);
+semantic_copy!(
     /// A returned `Result` hides which failure occurred.
     struct ErasedError(bool);
 );
@@ -288,6 +296,10 @@ semantic_borrowed_str!(
 semantic_borrowed_str!(
     /// A crate's name as the compiler spells it.
     struct CrateName;
+);
+semantic_borrowed_str!(
+    /// One authority an `external` paragraph names, as it writes it.
+    struct Authority;
 );
 semantic_borrowed_str!(
     /// The why of an allocation line: the text after its last `, `.
