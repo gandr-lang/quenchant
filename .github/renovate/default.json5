@@ -31,9 +31,11 @@
   labels: [],
   // The dashboard indexes what Renovate sees, so it carries the labels the
   // triage workflow reads.
-  dependencyDashboard: true,
-  dependencyDashboardTitle: "Dependency updates",
-  dependencyDashboardLabels: ["kind:ci", "area:workflow"],
+  dependencyDashboard: {
+    enabled: true,
+    title: "Dependency updates",
+    labels: ["kind:ci", "area:workflow"],
+  },
   // Lock files refreshed in the same weekly window: `cargo update` and
   // `mise lock`.
   lockFileMaintenance: {
@@ -74,6 +76,19 @@
       groupName: "github actions",
     },
     {
+      description: "The built-in reader takes a step's YAML anchor as part of the action's name, and finds no such action. The anchored action manager below reads those lines.",
+      matchManagers: ["github-actions"],
+      matchPackageNames: ["/^&/"],
+      enabled: false,
+    },
+    {
+      matchManagers: ["custom.regex"],
+      matchFileNames: [".github/workflows/**", ".github/actions/**"],
+      matchDatasources: ["github-tags"],
+      semanticCommitScope: "ci",
+      groupName: "github actions",
+    },
+    {
       description: "The Dylint library, its UI harness, its driver and its linker share one version.",
       matchPackageNames: ["/dylint/"],
       groupName: "dylint",
@@ -94,6 +109,13 @@
       matchStrings: ['git = "(?<packageName>https://github\\.com/gandr-lang/(?<depName>[\\w.-]+))"\\s+rev = "(?<currentDigest>[0-9a-f]{40})"'],
       datasourceTemplate: "git-refs",
       currentValueTemplate: "main",
+    },
+    {
+      customType: "regex",
+      description: "An action pinned on a line that defines a YAML anchor, `uses: &name owner/repo@<commit> # v<release>`. Each alias of the anchor takes the new pin with it.",
+      managerFilePatterns: ["/^\\.github/(workflows|actions)/.+\\.ya?ml$/"],
+      matchStrings: ['uses: &[\\w-]+ (?<depName>(?<packageName>[\\w.-]+/[\\w.-]+)(?:/[\\w./-]+)?)@(?<currentDigest>[0-9a-f]{40}) # (?<currentValue>v?\\d[\\w.-]*)'],
+      datasourceTemplate: "github-tags",
     },
   ],
 }
