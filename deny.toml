@@ -143,7 +143,7 @@ allow-build-scripts = [
   # Dylint's Git backend builds its vendored fallback through this script.
   "libgit2-sys@0.18.8+1.9.7",
   # libgit2-sys builds its zlib fallback through this script.
-  "libz-sys@1.1.31",
+  "libz-sys@1.1.33",
   # Dylint uses paste's compiler capability probe.
   "paste@1.0.15",
   # Procedural macros require proc-macro2's compiler capability probe.

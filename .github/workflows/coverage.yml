@@ -155,6 +155,8 @@ jobs:
     outputs:
       ref: ${{ steps.resolve.outputs.ref }}
     steps:
+      # The reference is the hash of the tree's pin files, so the tree is read.
+      - *git-checkout
       - *resolve-image
 
   # The scheduled run measures only when main moved since the last successful
