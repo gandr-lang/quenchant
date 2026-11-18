@@ -132,6 +132,7 @@ use rustc_middle::ty::Instance;
 use rustc_middle::ty::InstanceKind;
 use rustc_middle::ty::TyCtxt;
 use rustc_middle::ty::print::with_no_trimmed_paths;
+use rustc_middle::ty::print::with_no_visible_paths;
 use rustc_session::Session;
 use rustc_span::BytePos;
 use rustc_span::FileName;
@@ -1359,7 +1360,7 @@ fn item_record(
 /// The version of the canonical text of [`BodyHasher`]. A change of the text
 /// that an unchanged body prints raises it, so that no base of the earlier text
 /// reads as changed.
-const TEXT_VERSION: &str = "mir-text-2";
+const TEXT_VERSION: &str = "mir-text-3";
 
 /// The text that stands for the compiling crate's manifest directory in a
 /// body's text. A base builds in another directory than its head, so the path
@@ -1400,7 +1401,8 @@ pub fn body_scheme() -> String
 ///
 /// The text is the function's argument count, the type of each local, and
 /// each statement and terminator of each block. The closures that the
-/// function defines follow it. Paths print whole and by crate name. Each
+/// function defines follow it. Paths print whole, each by its defining crate,
+/// so a crate's first `use` of a dependency keeps every hash. Each
 /// allocation prints by its order of first use in the function, so no
 /// session's numbering enters the hash. The span that a closure's type prints
 /// after `@` is dropped. The compiling crate's manifest directory, which
@@ -1530,20 +1532,32 @@ impl<'tcx> BodyHasher<'tcx>
 
         let body = self.tcx.optimized_mir(def_id);
         self.line.clear();
-        with_no_trimmed_paths!(write!(self.line, "{}(", body.arg_count))?;
+        with_no_visible_paths!(with_no_trimmed_paths!(write!(
+            self.line,
+            "{}(",
+            body.arg_count
+        )))?;
         for declaration in &body.local_decls {
-            with_no_trimmed_paths!(write!(self.line, "{},", declaration.ty))?;
+            with_no_visible_paths!(with_no_trimmed_paths!(write!(
+                self.line,
+                "{},",
+                declaration.ty
+            )))?;
         }
         self.feed(hasher);
         for (block, data) in body.basic_blocks.iter_enumerated() {
             for statement in &data.statements {
                 self.line.clear();
-                with_no_trimmed_paths!(write!(self.line, "{statement:?}"))?;
+                with_no_visible_paths!(with_no_trimmed_paths!(write!(self.line, "{statement:?}")))?;
                 self.feed(hasher);
             }
             if let Some(ref terminator) = data.terminator {
                 self.line.clear();
-                with_no_trimmed_paths!(write!(self.line, "{block:?}: {:?}", terminator.kind))?;
+                with_no_visible_paths!(with_no_trimmed_paths!(write!(
+                    self.line,
+                    "{block:?}: {:?}",
+                    terminator.kind
+                )))?;
                 self.feed(hasher);
             }
         }
