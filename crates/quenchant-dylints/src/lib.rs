@@ -1957,20 +1957,31 @@ std_container_crates = [1, "", "*"]
     /// dependency moves, so the kept function also shows that the hash
     /// holds no crate's identity. They also take different manifest
     /// directories, as a base built in a scratch worktree does, and the
-    /// function that reads its directory is kept.
+    /// function that reads its directory is kept. The head alone declares
+    /// `clap_builder` before any path names `clap`, so the crate that defines
+    /// `Command` loads before the crate that re-exports it, as a crate's first
+    /// `use` of a dependency does. The function that holds a `Command` is
+    /// kept.
     #[test]
     fn ui_allocation_base()
     {
         use core::fmt::Write as _;
 
+        let flags = |metadata: &str| {
+            let mut flags = fixture_extern_flags();
+            flags.extend(
+                trait_object_flags()
+                    .into_iter()
+                    .filter(|flag| !flag.starts_with("--edition")),
+            );
+            flags.push(format!("-Cmetadata={metadata}"));
+            flags
+        };
+
         let records = emptied(std::path::Path::new("ui-allocation-base-records"));
         let base = emptied(std::path::Path::new("ui-allocation-base"));
         dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_allocation_base_record")
-            .rustc_flags({
-                let mut flags = trait_object_flags();
-                flags.push("-Cmetadata=base".to_owned());
-                flags
-            })
+            .rustc_flags(flags("base"))
             .dylint_toml(format!(
                 "[quenchant-dylints]\nevidence_directory = \"{}\"\n",
                 records.display()
@@ -2018,17 +2029,13 @@ std_container_crates = [1, "", "*"]
             writeln!(lines, "{value}").expect("a string takes each record");
         }
         assert_eq!(
-            hashed, 5,
+            hashed, 6,
             "each function of the fixture has a body hash: {text}"
         );
         std::fs::create_dir_all(&base).expect("the base directory can be made");
         std::fs::write(base.join(name), lines).expect("the base record can be written");
         dylint_testing::ui::Test::src_base(env!("CARGO_CRATE_NAME"), "ui_allocation_base")
-            .rustc_flags({
-                let mut flags = trait_object_flags();
-                flags.push("-Cmetadata=head".to_owned());
-                flags
-            })
+            .rustc_flags(flags("head"))
             .dylint_toml(format!(
                 "[quenchant-dylints]\nallocation_base_records = \"{}\"\n",
                 base.display()
@@ -2190,6 +2197,7 @@ std_container_crates = [1, "", "*"]
         let mut cxx = None;
         let mut serde = None;
         let mut clap = None;
+        let mut clap_builder = None;
         let mut rayon = None;
         for message in
             serde_json::Deserializer::from_slice(&output.stdout).into_iter::<serde_json::Value>()
@@ -2244,6 +2252,9 @@ std_container_crates = [1, "", "*"]
                     (Some("clap"), Some("rmeta")) => {
                         clap = Some(path.to_path_buf());
                     },
+                    (Some("clap_builder"), Some("rmeta")) => {
+                        clap_builder = Some(path.to_path_buf());
+                    },
                     (Some("rayon"), Some("rmeta")) => {
                         rayon = Some(path.to_path_buf());
                     },
@@ -2274,6 +2285,7 @@ std_container_crates = [1, "", "*"]
         let cxx = cxx.expect("Cargo reported the real C++ bridge library");
         let serde = serde.expect("Cargo reported the serde library");
         let clap = clap.expect("Cargo reported the clap library");
+        let clap_builder = clap_builder.expect("Cargo reported the clap builder library");
         let rayon = rayon.expect("Cargo reported the rayon library");
         let mut flags = vec!["--edition=2024".to_owned()];
         for directory in directories {
@@ -2297,6 +2309,8 @@ std_container_crates = [1, "", "*"]
             format!("serde={}", serde.display()),
             "--extern".to_owned(),
             format!("clap={}", clap.display()),
+            "--extern".to_owned(),
+            format!("clap_builder={}", clap_builder.display()),
             "--extern".to_owned(),
             format!("rayon={}", rayon.display()),
             "--cfg".to_owned(),

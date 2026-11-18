@@ -4,6 +4,7 @@
 //! base's is not. This crate's text is the same as the base fixture's, so
 //! its records are the base of that fixture. The two build under two manifest
 //! directories, and `located` reads its own, so its hash holds no path.
+//! `commanded` holds a `Command`, which `clap` re-exports from `clap_builder`.
 
 fn kept(values: &mut Vec<u32>)
 {
@@ -20,6 +21,11 @@ fn fresh(values: &mut Vec<u32>)
     values.push(3);
 }
 
+fn commanded(commands: &mut Vec<clap::Command>)
+{
+    commands.push(clap::Command::new("kept"));
+}
+
 fn main()
 {
     let mut values = Vec::new();
@@ -28,6 +34,8 @@ fn main()
     fresh(&mut values);
     let mut directories = Vec::new();
     located(&mut directories);
+    let mut commands = Vec::new();
+    commanded(&mut commands);
 }
 
 fn located(directories: &mut Vec<&'static str>)
