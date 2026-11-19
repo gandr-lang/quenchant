@@ -236,15 +236,16 @@ impl StdContainer
 ///
 /// # Specification
 /// - requires: `hir_id` is the node of a reported container finding.
-/// - ensures: returns the enclosing implementation node exactly when that
-///   implementation owns the expectation resolved at `hir_id`; otherwise
+/// - ensures: returns the enclosing implementation node exactly when its
+///   `expect` attribute owns the expectation resolved at `hir_id`; otherwise
 ///   returns `hir_id`.
 /// - panics: none.
 /// - executable: none — rustc owns the lint-level map and HIR ancestry.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — the container fixture distinguishes expectations on a
-///   field, a type, an implementation, a function, and no finding.
+///   field, a type, an implementation, a configuration-derived implementation,
+///   a function, and no finding.
 /// - witness: `tests::ui_std_container_expectations`
 fn exception_site(
     cx: &LateContext<'_>,
@@ -262,7 +263,7 @@ fn exception_site(
                 .tcx
                 .hir_attrs(parent)
                 .iter()
-                .any(|attribute| attribute.span().contains(span))
+                .any(|attribute| attribute.has_name(sym::expect) && attribute.span().contains(span))
         {
             return parent;
         }

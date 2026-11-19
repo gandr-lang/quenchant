@@ -17,9 +17,12 @@ type Names = Vec<u8>;
 
 struct Holder;
 
-#[expect(
-    std_container,
-    reason = "the fixture keeps one implementation to test its local expectation"
+#[cfg_attr(
+    all(dylint_lib = "quenchant_dylints", not(test)),
+    expect(
+        std_container,
+        reason = "the fixture keeps one implementation to test its local expectation"
+    )
 )]
 impl Holder
 {
