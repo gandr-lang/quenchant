@@ -1,0 +1,11 @@
+warning: this lint expectation is unfulfilled
+  --> $DIR/expectations.rs:42:5
+   |
+LL |     std_container,
+   |     ^^^^^^^^^^^^^
+   |
+   = note: the fixture has no container at this expectation
+   = note: `#[warn(unfulfilled_lint_expectations)]` on by default
+
+warning: 1 warning emitted
+
