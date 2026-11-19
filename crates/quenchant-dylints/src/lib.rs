@@ -1874,7 +1874,7 @@ repeated_call_crates = [1, "", "*"]
     /// target. The crate `untaken` is not listed.
     const STD_CONTAINER_CRATES: &str = r#"
 [quenchant-dylints]
-std_container_crates = ["refused", "target"]
+std_container_crates = ["expectations", "refused", "target"]
 "#;
 
     /// A number, an empty entry and the bare `*` among the crates.
@@ -1890,6 +1890,18 @@ std_container_crates = [1, "", "*"]
             .rustc_flags(trait_object_flags())
             .dylint_toml(STD_CONTAINER_CRATES)
             .run();
+    }
+
+    #[test]
+    fn ui_std_container_expectations()
+    {
+        dylint_testing::ui::Test::src_base(
+            env!("CARGO_CRATE_NAME"),
+            "ui_std_container_expectations",
+        )
+        .rustc_flags(trait_object_flags())
+        .dylint_toml(STD_CONTAINER_CRATES)
+        .run();
     }
 
     #[test]

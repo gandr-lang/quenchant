@@ -35,6 +35,9 @@ use quenchant_shape::shape::Maybe;
 use rustc_hir::AmbigArg;
 use rustc_hir::Expr;
 use rustc_hir::ExprKind;
+use rustc_hir::HirId;
+use rustc_hir::ItemKind;
+use rustc_hir::Node;
 use rustc_hir::Ty;
 use rustc_hir::TyKind;
 use rustc_hir::def::Res;
@@ -42,8 +45,10 @@ use rustc_hir::def_id::DefId;
 use rustc_hir::def_id::LOCAL_CRATE;
 use rustc_lint::LateContext;
 use rustc_lint::LateLintPass;
+use rustc_lint::Lint;
 use rustc_lint::declare_lint;
 use rustc_lint::impl_lint_pass;
+use rustc_middle::lint::LintLevelSource;
 use rustc_middle::ty;
 use rustc_middle::ty::TyCtxt;
 use rustc_span::Span;
@@ -294,7 +299,7 @@ impl<'tcx> LateLintPass<'tcx> for StdContainer
         report_refusing(
             cx,
             STD_CONTAINER,
-            ty.hir_id,
+            exception_site(cx, STD_CONTAINER, ty.hir_id),
             ty.span,
             format!(
                 "`{}` of `alloc` in a crate whose containers are its own",
@@ -374,7 +379,7 @@ impl<'tcx> LateLintPass<'tcx> for StdContainer
         report_refusing(
             cx,
             STD_CONTAINER,
-            expr.hir_id,
+            exception_site(cx, STD_CONTAINER, expr.hir_id),
             span,
             format!(
                 "this call builds a `{}` of `alloc` in a crate whose containers are its own",
