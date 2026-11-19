@@ -232,6 +232,44 @@ impl StdContainer
     }
 }
 
+/// The HIR node whose lint level owns the container exception.
+///
+/// # Specification
+/// - requires: `hir_id` is the node of a reported container finding.
+/// - ensures: returns the enclosing implementation node exactly when that
+///   implementation owns the expectation resolved at `hir_id`; otherwise
+///   returns `hir_id`.
+/// - panics: none.
+/// - executable: none — rustc owns the lint-level map and HIR ancestry.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the container fixture distinguishes expectations on a
+///   field, a type, an implementation, a function, and no finding.
+/// - witness: `tests::ui_std_container_expectations`
+fn exception_site(
+    cx: &LateContext<'_>,
+    lint: &'static Lint,
+    hir_id: HirId,
+) -> HirId
+{
+    let LintLevelSource::Node { span, .. } = cx.tcx.lint_level_spec_at_node(lint, hir_id).src
+    else {
+        return hir_id;
+    };
+    for (parent, node) in cx.tcx.hir_parent_iter(hir_id) {
+        if matches!(node, Node::Item(item) if matches!(item.kind, ItemKind::Impl(..)))
+            && cx
+                .tcx
+                .hir_attrs(parent)
+                .iter()
+                .any(|attribute| attribute.span().contains(span))
+        {
+            return parent;
+        }
+    }
+    hir_id
+}
+
 impl<'tcx> LateLintPass<'tcx> for StdContainer
 {
     /// Report the configuration's defects once per crate.
