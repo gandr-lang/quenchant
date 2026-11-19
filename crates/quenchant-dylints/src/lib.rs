@@ -159,6 +159,8 @@ use rustc_lint::impl_lint_pass;
 use rustc_middle::lint::LintLevelSource;
 use rustc_session::Session;
 use rustc_span::Span;
+use rustc_span::hygiene::ExpnKind;
+use rustc_span::hygiene::MacroKind;
 
 use crate::adequacy::ADEQUACY_BLOCK_GRAMMAR;
 use crate::adequacy::ADEQUACY_PRESENT;
@@ -678,9 +680,10 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
     /// boundary.
     ///
     /// # Specification
-    /// - ensures: reports a source-authored struct of exactly one field that
-    ///   declares no transparent representation, and records every struct, enum
-    ///   and union for the ownership graph built at crate end.
+    /// - ensures: reports a source-authored struct outside a derived or
+    ///   attribute-macro expansion, with exactly one field and no transparent
+    ///   representation, and records every struct, enum and union for the
+    ///   ownership graph built at crate end.
     /// - panics: none.
     ///
     /// # Adequacy
@@ -699,6 +702,10 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
     {
         if let ItemKind::Struct(_, _, ref variant_data) = item.kind
             && name_authored(cx, item.owner_id.def_id).0
+            && !matches!(
+                item.span.ctxt().outer_expn_data().kind,
+                ExpnKind::Macro(MacroKind::Derive | MacroKind::Attr, _)
+            )
             && variant_data.fields().len() == 1_usize
             && !has_transparent_repr(cx, item).0
         {
