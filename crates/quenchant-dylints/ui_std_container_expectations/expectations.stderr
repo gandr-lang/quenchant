@@ -1,5 +1,5 @@
 warning: this lint expectation is unfulfilled
-  --> $DIR/expectations.rs:42:5
+  --> $DIR/expectations.rs:45:5
    |
 LL |     std_container,
    |     ^^^^^^^^^^^^^
