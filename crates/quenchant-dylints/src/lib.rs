@@ -678,9 +678,9 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
     /// boundary.
     ///
     /// # Specification
-    /// - ensures: reports a struct of exactly one field that declares no
-    ///   transparent representation, and records every struct, enum and union
-    ///   for the ownership graph built at crate end.
+    /// - ensures: reports a source-authored struct of exactly one field that
+    ///   declares no transparent representation, and records every struct, enum
+    ///   and union for the ownership graph built at crate end.
     /// - panics: none.
     ///
     /// # Adequacy
@@ -698,6 +698,7 @@ impl<'tcx> LateLintPass<'tcx> for WorkflowBoundaries
     )
     {
         if let ItemKind::Struct(_, _, ref variant_data) = item.kind
+            && name_authored(cx, item.owner_id.def_id).0
             && variant_data.fields().len() == 1_usize
             && !has_transparent_repr(cx, item).0
         {
