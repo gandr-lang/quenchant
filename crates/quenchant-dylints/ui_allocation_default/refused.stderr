@@ -63,5 +63,13 @@ error: an allocation is admitted only by its function's `- allocation:` line or 
 LL |     vec![1]
    |     ^^^^^^^
 
-error: aborting due to 9 previous errors
+error: this call reaches a call whose body is unavailable and whose signature hands back or writes a value that owns heap memory, and its function's `# Cost` declares no allocation
+  --> $DIR/refused.rs:83:5
+   |
+LL |     std::env::current_dir().ok()
+   |     ^^^^^^^^^^^^^^^^^^^^^^^
+   |
+   = help: move the allocation out of the function, or declare it under `# Cost` as `- allocation: <what>, <why>`, the why one of `setup`, `growth within <the source of the capacity>`, `error path`, `diagnostic` and `durable by <the key>`; a site that keeps it states why with `#[expect(allocation_free_region, reason = "...")]`
+
+error: aborting due to 10 previous errors
 
