@@ -75,6 +75,14 @@ fn allowed() -> Vec<u32>
     vec![1]
 }
 
+// A call of a body the build cannot read, whose `io::Result` holds heap in its
+// `Ok` arm: refused.
+
+fn directory() -> Option<std::path::PathBuf>
+{
+    std::env::current_dir().ok()
+}
+
 fn main()
 {
     let mut values = Vec::new();
@@ -87,4 +95,5 @@ fn main()
     drop(unexplained());
     drop(inherited::boxed());
     drop(allowed());
+    drop(directory());
 }

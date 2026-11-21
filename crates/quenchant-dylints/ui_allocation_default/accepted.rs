@@ -84,6 +84,14 @@ fn item() -> Vec<u8>
     vec![1]
 }
 
+// A call of a body the build cannot read, whose `io::Result` holds heap only
+// in its `Err` arm: that heap is the error path's.
+
+fn modified(metadata: &std::fs::Metadata) -> Option<std::time::SystemTime>
+{
+    metadata.modified().ok()
+}
+
 fn main()
 {
     let mut values = Vec::new();
@@ -96,4 +104,5 @@ fn main()
     let _rendered = rendered(&1_u32);
     let _table = statement();
     drop(item());
+    let _modified: fn(&std::fs::Metadata) -> Option<std::time::SystemTime> = modified;
 }

@@ -28,6 +28,9 @@
 //! - A non-generic call into `core` never allocates and is not followed; a
 //!   generic one is, since a closure or an implementation it calls may.
 //! - A call that returns `!` ends the steady state and is not followed.
+//! - A body the build cannot read is read by its signature. A returned `Result`
+//!   or `Maybe` is read by its variants: heap that only its `Err` or `Absent`
+//!   arm holds is the error path's, and the call reaches no allocation by it.
 //! - Destructors are not followed: dropping a value that owns heap memory
 //!   frees, and a region that drops one still holds the clause.
 //! - "Steady state" is the author's claim: a push into a vector reserved
@@ -119,7 +122,7 @@ use crate::walk_summary::doc_lines;
 declare_lint! {
     /// ### What it does
     ///
-    /// Refuses, in a function whose rustdoc carries a `# Cost` section with the clause `- allocation: none in steady state`, every call from which a path reaches an allocation: the allocator's entry points through any body the build can read, a body it cannot read whose signature returns or takes by `&mut` a value owning a heap allocation, and a call through a trait object, a function pointer or an unmarked trait method of a type parameter. An implementation of a trait method whose declaration carries the clause is held to it too. In a crate that `allocation_default_crates` names, it refuses each call that reaches an allocation at its origin, in a function whose `# Cost` declares none.
+    /// Refuses, in a function whose rustdoc carries a `# Cost` section with the clause `- allocation: none in steady state`, every call from which a path reaches an allocation: the allocator's entry points through any body the build can read, a body it cannot read whose signature returns or takes by `&mut` a value owning a heap allocation, and a call through a trait object, a function pointer or an unmarked trait method of a type parameter. For a body it cannot read, a returned `Result` or `Maybe` counts only the heap of its arms other than `Err` and `Absent`: the heap of the error arm is the error path's. An implementation of a trait method whose declaration carries the clause is held to it too. In a crate that `allocation_default_crates` names, it refuses each call that reaches an allocation at its origin, in a function whose `# Cost` declares none.
     ///
     /// ### Why is this bad?
     ///
@@ -1180,9 +1183,8 @@ enum Arm
 /// Classify the arm that an aggregate builds.
 ///
 /// # Specification
-/// - ensures: `Failure` exactly when `kind` builds the `Err` variant of
-///   `Result` or the `Absent` variant of `quenchant_shape`'s `Maybe`; `Value`
-///   otherwise.
+/// - ensures: [`variant_arm`] of the variant that `kind` builds when `kind`
+///   builds an ADT variant; `Value` otherwise.
 /// - panics: none.
 /// - executable: none — the outcome is the compiler's definition table.
 ///
@@ -1199,14 +1201,32 @@ fn arm(
     else {
         return Arm::Value;
     };
-    let Some(name) = tcx
-        .adt_def(def_id)
+    tcx.adt_def(def_id)
         .variants()
         .get(variant)
-        .map(|found| found.name)
-    else {
-        return Arm::Value;
-    };
+        .map_or(Arm::Value, |found| variant_arm(tcx, def_id, found.name))
+}
+
+/// Classify one variant of an ADT by the arm it is.
+///
+/// # Specification
+/// - ensures: `Failure` exactly when `def_id` is `Result` and `name` is `Err`,
+///   or `def_id` is `quenchant_shape`'s `Maybe` and `name` is `Absent`; `Value`
+///   otherwise.
+/// - panics: none.
+/// - executable: none — the outcome is the compiler's definition table.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the fixtures build an `Err` in a loop, and call a
+///   body-less callee whose `io::Result` holds heap only in its `Err`.
+/// - witness: `tests::ui_cost_shape`
+/// - witness: `tests::ui_allocation_default`
+fn variant_arm(
+    tcx: TyCtxt<'_>,
+    def_id: DefId,
+    name: Symbol,
+) -> Arm
+{
     let maybe = tcx.is_diagnostic_item(Symbol::intern("quenchant_maybe"), def_id)
         || (tcx.crate_name(def_id.krate).as_str() == "quenchant_shape"
             && tcx.item_name(def_id).as_str() == "Maybe");
@@ -1523,16 +1543,18 @@ fn trait_call(
 ///
 /// # Specification
 /// - ensures: `Allocates(Signature)` exactly when the callee returns a value
-///   [`heap_ownership`] reads as owning, refcounted or unknown, or takes a
-///   `&mut` to one; `Free` otherwise.
+///   whose [`steady_ownership`] is owning, refcounted or unknown, or takes a
+///   `&mut` to a value [`heap_ownership`] reads so; `Free` otherwise.
 /// - panics: none.
 /// - executable: none — the outcome is the compiler's signature and layout
 ///   reading, which a predicate could only repeat.
 ///
 /// # Adequacy
 /// - hypothesis: L3 — the fixtures call a foreign function returning a `Vec`
-///   and one returning a count.
+///   and one returning a count, and body-less callees returning an `io::Result`
+///   of a `SystemTime` and of a `PathBuf`.
 /// - witness: `tests::ui_cost_shape`
+/// - witness: `tests::ui_allocation_default`
 fn signature_allocates<'tcx>(
     tcx: TyCtxt<'tcx>,
     typing_env: TypingEnv<'tcx>,
@@ -1543,7 +1565,7 @@ fn signature_allocates<'tcx>(
         tcx.fn_sig(item).instantiate_identity().skip_norm_wip(),
     );
     let heavy = |held: Ty<'tcx>| heap_ownership(tcx, typing_env, held) != Ownership::Plain;
-    let returns = heavy(signature.output());
+    let returns = steady_ownership(tcx, typing_env, signature.output()) != Ownership::Plain;
     let writes = signature.inputs().iter().any(|input| {
         if let ty::Ref(_, pointee, ty::Mutability::Mut) = *input.kind() {
             heavy(pointee)
@@ -1558,6 +1580,52 @@ fn signature_allocates<'tcx>(
     else {
         Call::Free
     }
+}
+
+/// How a returned value owns the heap outside its error arm.
+///
+/// # Specification
+/// - ensures: for an ADT with a variant that [`variant_arm`] reads as
+///   `Failure`, the join of [`heap_ownership`] over the fields of its other
+///   variants, instantiated with their arguments; for any other type,
+///   [`heap_ownership`] of `output` whole. The join takes `Owning` over
+///   `Unknown` over `Refcounted` over `Plain`.
+/// - panics: none.
+/// - executable: none — the outcome is [`heap_ownership`] over the compiler's
+///   variant table, which a predicate could only repeat.
+///
+/// # Adequacy
+/// - hypothesis: L3 — the default fixtures call a body-less callee returning
+///   `io::Result<SystemTime>`, accepted with no `# Cost` line, and one
+///   returning `io::Result<PathBuf>`, refused.
+/// - witness: `tests::ui_allocation_default`
+fn steady_ownership<'tcx>(
+    tcx: TyCtxt<'tcx>,
+    typing_env: TypingEnv<'tcx>,
+    output: Ty<'tcx>,
+) -> Ownership
+{
+    let ty::Adt(definition, args) = *output.kind()
+    else {
+        return heap_ownership(tcx, typing_env, output);
+    };
+    let failure =
+        |variant: &ty::VariantDef| variant_arm(tcx, definition.did(), variant.name) == Arm::Failure;
+    if !definition.variants().iter().any(failure) {
+        return heap_ownership(tcx, typing_env, output);
+    }
+    definition
+        .variants()
+        .iter()
+        .filter(|variant| !failure(variant))
+        .flat_map(|variant| variant.fields.iter())
+        .map(|field| heap_ownership(tcx, typing_env, field.ty(tcx, args).skip_norm_wip()))
+        .fold(Ownership::Plain, |joined, next| match (joined, next) {
+            (Ownership::Owning, _) | (_, Ownership::Owning) => Ownership::Owning,
+            (Ownership::Unknown, _) | (_, Ownership::Unknown) => Ownership::Unknown,
+            (Ownership::Refcounted, _) | (_, Ownership::Refcounted) => Ownership::Refcounted,
+            (Ownership::Plain, Ownership::Plain) => Ownership::Plain,
+        })
 }
 
 /// What a reason names, for a diagnostic.
